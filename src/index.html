@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Pilot Sim — Пилот авиалайнера</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="thr" class="ctl"><div id="thrfill"></div><div class="lb">ГАЗ</div><div id="thrv">0%</div></div>
+  <div id="stick" class="ctl"><div class="lb">РУЧКА</div><div class="arr" style="top:22px">▲</div><div class="mid"></div><div class="arr" style="bottom:4px">▼</div><div id="knob"></div></div>
+  <div id="btns">
+    <button id="bGear" data-act="gear">ШАССИ</button>
+    <button id="bFlD" data-act="fl-">ЗАКР −</button>
+    <button id="bFlU" data-act="fl+">ЗАКР +</button>
+    <button id="bBrake" data-act="brake">ТОРМОЗ</button>
+    <button id="bWarp" data-act="warp">×1</button>
+    <button id="bAp" data-act="ap">А/П</button>
+    <button id="bAt" data-act="at">А/Т</button>
+    <button id="bAltD" data-act="altd">ВЫС −</button>
+    <button id="bAltU" data-act="altu">ВЫС +</button>
+    <button id="bAppr" data-act="appr">ПОСАДКА</button>
+  </div>
+  <div id="hint"></div>
+  <div id="log"></div>
+  <button id="quit" class="ctl">✕</button>
+</div>
+
+<div id="menu" class="screen on"></div>
+<div id="modal"><div class="box" id="modalBox"></div></div>
+<div id="rot">Поверните телефон горизонтально ↻</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "pilot-sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Симулятор пилота пассажирского самолёта",
+  "scripts": {
+    "bot": "node tools/bot.mjs",
+    "serve": "npx http-server www -p 8080 -c-1"
+  }
+}
