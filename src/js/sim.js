@@ -14,6 +14,7 @@ export const GS_TAN = Math.tan(GS_DEG * DEG);
 export const APPR_ALT = 1500; // высота выхода на глиссаду, м
 export const AIM_OFFSET = 300; // точка касания за торцом, м
 const IDLE = 0.06;
+const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const FLARE_H = 14;
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -49,11 +50,12 @@ export class Flight {
     this.tod = o.tod || 0; // 0 день, 1 сумерки, 2 ночь
     this.recAlt = o.recAlt || 9600;
 
+    this.yPos = 0; this.psi = 0; this.phi = 0; this.brg = o.bearing || 0; // боковое смещение, курс и крен относительно оси ВПП
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
     this.thrAct = 0; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1 };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = [];
@@ -80,7 +82,9 @@ export class Flight {
   }
 
   // ---------- вспомогательные расчёты ----------
-  get dist() { return this.D - this.x; } // до порога
+  get dist() { return this.D - this.x; } // до порога вдоль оси
+  get heading() { return (((this.brg + this.psi / DEG) % 360) + 360) % 360; }
+  get range() { return Math.hypot(this.D - this.x, this.yPos); }
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
   get mach() { return this.v / atmos(this.h + this.elev).a; }
@@ -186,7 +190,7 @@ export class Flight {
   fpRate(gCmd, extra, rmax) {
     // темп изменения тангажа, чтобы выйти на траекторию gCmd
     const W = this.mass * G;
-    const qs = Math.max(this.q * this.p.S, 1);
+    const qs = Math.max(this.q * this.p.S, 1) * Math.max(0.6, Math.cos(this.phi));
     const as = this.alphaS;
     const dcl = lerpTab(FLAP_DCL, this.flapAct);
     const aEq = clamp((W * Math.cos(this.gamma) / qs - CL0 - dcl) / CLA, -0.06, as - 0.03);
@@ -212,7 +216,7 @@ export class Flight {
     // помощник: автоматика конфигурации и снижения
     if (!this.onGround) {
       if (this.assist.auto && !this.autoEngaged && this.h > 200 && !c.gear && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
-        c.apOn = true; c.atOn = true; c.apAlt = this.recAlt; this.autoEngaged = true;
+        c.apOn = true; c.atOn = true; c.nav = true; c.apAlt = this.recAlt; this.autoEngaged = true;
         this.msg('Автопилот включён');
       }
       if (this.assist.auto && c.apOn && !this.autoDescDone && dist < this.todDist() && c.apAlt > APPR_ALT) {
@@ -238,7 +242,7 @@ export class Flight {
     // захват глиссады
     if (c.appr && c.apOn && !this.apprCap && !this.onGround) {
       const dd = this.D + AIM_OFFSET - this.x;
-      if (dist < 46000 && dist > 1500 && Math.abs(this.h - glideH(dd)) < 40 && this.h < 3200) { this.apprCap = true; this.msg('Глиссада захвачена'); }
+      if (dist < 46000 && dist > 1500 && Math.abs(this.h - glideH(dd)) < 40 && this.h < 3200 && Math.abs(this.yPos) < 150 && Math.abs(this.psi) < 12 * DEG) { this.apprCap = true; this.msg('Глиссада захвачена'); }
     }
     if (!c.apOn || !c.appr) { if (this.apprCap && !c.apOn) this.apprCap = false; }
     if (this.apprCap && !this.assist.auto && this.h < 45 && c.apOn) { c.apOn = false; this.apprCap = false; this.msg('Автопилот отключён — выравнивайте вручную!'); }
@@ -294,6 +298,22 @@ export class Flight {
       this.stats.tail = true; this.incident('tail', 'Касание хвостом', 6, 999);
     }
 
+    // крен и курс
+    if (!this.onGround) {
+      const roll = c.roll || 0;
+      let phiT = 0;
+      if (Math.abs(roll) > 0.04) phiT = roll * 33 * DEG;
+      else if (c.apOn && c.nav) {
+        const aim = this.D + AIM_OFFSET - this.x;
+        let psiC;
+        if (dist > 30000) psiC = Math.atan2(-this.yPos, aim);
+        else psiC = clamp(-this.yPos * 0.0015, -20 * DEG, 20 * DEG);
+        phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
+      }
+      this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
+      this.phi = clamp(this.phi, -35 * DEG, 35 * DEG);
+    } else this.phi = 0;
+
     // топливо
     const flow = 1.6e-5 * T;
     this.fuel = Math.max(0, this.fuel - flow * dt);
@@ -319,7 +339,14 @@ export class Flight {
       this.v += F / this.mass * dt;
       if (this.v < 0) this.v = 0;
     }
-    this.x += this.v * dt;
+    const steer = c.roll || 0;
+    if (this.v > 1) {
+      if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
+      else this.psi -= this.psi * 0.6 * dt;
+    }
+    this.psi = wrapPi(this.psi);
+    this.x += this.v * Math.cos(this.psi) * dt;
+    this.yPos += this.v * Math.sin(this.psi) * dt;
     this.gamma = 0; this.h = 0;
     // отрыв
     if (!this.td && this.v > 25 && this.L >= W && this.theta > 1.5 * DEG && this.gearPos > 0.5) {
@@ -328,14 +355,14 @@ export class Flight {
       return;
     }
     // заход в траву
-    if (!onRwy && this.v > 30 && !this.td && this.x > this.rwy0.e) { this.finish('crash', 'Самолёт выкатился за конец полосы при взлёте.'); return; }
-    if (!onRwy && this.td && this.v > 25) { this.finish('crash', this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
+    if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
+    if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
     // автотормоз
     if (this.td && this.assist.auto && this.v > 8) { c.brake = true; c.thr = 0; c.atOn = false; }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
-      const onDest = this.x >= this.rwy1.s - 20 && this.x <= this.rwy1.e + 20;
+      const onDest = this.x >= this.rwy1.s - 20 && this.x <= this.rwy1.e + 20 && Math.abs(this.yPos) <= 35;
       if (this.x > this.rwy1.e) this.finish('overrun', 'Самолёт остановился за пределами полосы.');
       else if (onDest) this.finish('ok', '');
       else if (this.x <= this.rwy0.e + 20) this.finish('forced', 'Вынужденная посадка в аэропорту вылета. Рейс отменён.');
@@ -345,7 +372,8 @@ export class Flight {
     if (!this.td && !this.airborneOnce && this.maxV > 25 && this.v < 0.5) this.finish('abort', 'Взлёт прекращён.');
   }
 
-  onRunway(x) {
+  onRunway(x, y = this.yPos) {
+    if (Math.abs(y) > 32) return false;
     return (x >= this.rwy0.s - 5 && x <= this.rwy0.e) || (x >= this.rwy1.s - 5 && x <= this.rwy1.e);
   }
 
@@ -353,10 +381,12 @@ export class Flight {
     const v = Math.max(this.v, 12), m = this.mass;
     const al = this.alpha, ca = Math.cos(al), sa = Math.sin(al);
     const dv = ((T * ca - this.Dr) / m - G * Math.sin(this.gamma)) * dt;
-    const dg = ((this.L + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
+    const dg = ((this.L * Math.cos(this.phi) + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
+    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
-    this.x += this.v * Math.cos(this.gamma) * dt;
+    this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
+    this.yPos += this.v * Math.cos(this.gamma) * Math.sin(this.psi) * dt;
     this.h += this.v * Math.sin(this.gamma) * dt;
     // перегрузка
     const n = this.L / (m * G);
@@ -365,25 +395,31 @@ export class Flight {
     if (this.h <= 0 && this.gamma <= 0.02) this.touchdown();
     else if (this.h < 0) this.h = 0;
     // пролетели
-    if (!this.done && this.x > this.rwy1.e + 20000) this.finish('missed', 'Вы пролетели аэропорт назначения.');
+    if (!this.done && this.x > this.rwy1.e + 20000 && Math.hypot(this.x - this.D, this.yPos) > 40000) this.finish('missed', 'Вы пролетели аэропорт назначения.');
+    if (!this.done && Math.abs(this.yPos) > 70000) this.finish('missed', 'Вы слишком далеко ушли от маршрута.');
   }
 
   touchdown() {
     const sink = -this.v * Math.sin(this.gamma);
     const tdx = this.x;
     this.h = 0;
-    const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e;
-    const onOrig = tdx >= this.rwy0.s && tdx <= this.rwy0.e;
+    const lat = Math.abs(this.yPos);
+    const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e && lat <= 32;
+    const onOrig = tdx >= this.rwy0.s && tdx <= this.rwy0.e && lat <= 32;
     const ias = this.ias;
     if (this.gearPos < 0.85) { this.finish('crash', 'Посадка с невыпущенным шасси.'); return; }
     if (!onDest && !onOrig && this.v > 35) {
-      this.finish('crash', tdx < this.rwy1.s ? 'Недолёт: самолёт приземлился до полосы.' : 'Приземление за пределами полосы.');
+      this.finish('crash', lat > 32 ? 'Приземление рядом с полосой: слишком большое боковое отклонение.' : tdx < this.rwy1.s ? 'Недолёт: самолёт приземлился до полосы.' : 'Приземление за пределами полосы.');
       return;
     }
+    if (Math.abs(this.phi) > 12 * DEG) { this.finish('crash', 'Касание крылом: слишком большой крен при посадке.'); return; }
+    if (Math.abs(this.psi) > 12 * DEG) { this.finish('crash', 'Боковой снос: самолёт приземлился не вдоль полосы.'); return; }
     if (sink > 5.5) { this.finish('crash', 'Слишком жёсткое приземление (' + sink.toFixed(1) + ' м/с): конструкция разрушена.'); return; }
     if (ias * 3.6 > 400) { this.finish('crash', 'Слишком высокая скорость при посадке.'); return; }
     this.onGround = true; this.gamma = 0;
-    this.td = { t: this.time, sink: Math.max(0, sink), v: this.v, ias, pitch: this.theta / DEG, x: tdx, onDest, onOrig, past: tdx - this.rwy1.s };
+    this.td = { t: this.time, sink: Math.max(0, sink), v: this.v, ias, pitch: this.theta / DEG, x: tdx, onDest, onOrig, past: tdx - this.rwy1.s, lat };
+    this.phi = 0;
+    if (lat > 12) this.incident('lat', 'Касание не по оси полосы', 2, 999);
     if (this.theta < 0.3 * DEG) this.incident('nose', 'Касание носовой стойкой', 4, 999);
     if (this.theta > 11.7 * DEG && !this.stats.tail) { this.stats.tail = true; this.incident('tail', 'Касание хвостом', 6, 999); }
     if (sink > 3.4) this.incident('hard', 'Жёсткая посадка', 0, 999);
@@ -421,6 +457,8 @@ export class Flight {
   allowedWarp() {
     const c = this.c;
     if (!c.apOn || !c.atOn || this.onGround || this.warnings.size) return 1;
+    if (Math.abs(c.roll || 0) > 0.04 || Math.abs(this.phi) > 6 * DEG) return 1;
+    if (!c.nav && Math.abs(this.yPos) > 800) return 1;
     const dist = this.dist;
     // заход по глиссаде: если всё делает автоматика, можно слегка ускорить
     if (this.apprCap) {
@@ -463,6 +501,8 @@ export class Flight {
     if (this.h < 12 && this.apprCap === false && dist < 3000 && dist > -1500 && c.gear) return 'ВЫРАВНИВАЙТЕ: слегка тяните ручку, газ малый';
     if (this.warnings.has('stall')) return 'Малая скорость! Опустите нос, добавьте тягу';
     if (!this.airborneOnce) return '';
+    if (!c.apOn && Math.abs(this.yPos) > 400 && dist < 60000 && dist > 0) return 'Вы в стороне от курса — поверните штурвал к оси полосы';
+    if (c.apOn && !c.nav && Math.abs(this.yPos) > 500 && dist < 60000 && dist > 0) return 'Нажмите НАВ — автопилот вернёт самолёт на курс';
     const far = dist > this.todDist() + 20000;
     if (c.gear && this.h > 25 && this.vs > 0 && dist > 50000) return 'Уберите шасси (кнопка ШАССИ)';
     if (!c.apOn && this.h > 150 && dist > 50000) return 'Включите автопилот (А/П) и выберите высоту ВЫС ±';

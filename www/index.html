@@ -14,16 +14,15 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #ui{position:fixed;inset:0;pointer-events:none;display:none}
 #ui.on{display:block}
 .ctl{pointer-events:auto;touch-action:none}
-#thr,#stick{position:absolute;bottom:12px;width:64px;height:58%;border-radius:16px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#thr{position:absolute;bottom:12px;width:64px;height:58%;border-radius:16px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
 #thr{left:calc(10px + env(safe-area-inset-left))}
-#stick{right:calc(10px + env(safe-area-inset-right))}
+#yoke{position:absolute;right:calc(8px + env(safe-area-inset-right));bottom:10px;width:min(150px,40vh);height:min(150px,40vh);border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,.06));border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#yoke svg{position:absolute;inset:6%;width:88%;height:88%;pointer-events:none}
+#yoke .yl{position:absolute;top:4px;left:0;right:0;text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.8;pointer-events:none}
 #thrfill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
-#thr .lb,#stick .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
+#thr .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
 #thrv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
-#knob{position:absolute;left:6px;right:6px;height:34px;top:calc(50% - 17px);border-radius:10px;background:#e8eefc;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-#stick .mid{position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.35)}
-#stick .arr{position:absolute;left:0;right:0;text-align:center;font-size:12px;opacity:.6}
-#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;width:min(420px,calc(100vw - 180px))}
+#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 300px))}
 #btns button{pointer-events:auto;touch-action:none;height:36px;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:9px;font-size:10.5px;font-weight:800;padding:0 2px;line-height:1.05}
 #btns button.on{background:#1f8f4e;border-color:#7dffb0}
 #btns button.warn{background:#a23232;border-color:#ff9a9a}
@@ -87,7 +86,13 @@ table.res td:last-child{text-align:right;font-weight:700}
 
 <div id="ui">
   <div id="thr" class="ctl"><div id="thrfill"></div><div class="lb">ГАЗ</div><div id="thrv">0%</div></div>
-  <div id="stick" class="ctl"><div class="lb">РУЧКА</div><div class="arr" style="top:22px">▲</div><div class="mid"></div><div class="arr" style="bottom:4px">▼</div><div id="knob"></div></div>
+  <div id="yoke" class="ctl"><svg id="yokeSvg" viewBox="-100 -100 200 200"><g id="yokeG">
+    <rect x="-9" y="8" width="18" height="86" rx="8" fill="#2b3242"/>
+    <path d="M-80 -52 L-80 -6 Q-80 26 -48 26 L48 26 Q80 26 80 -6 L80 -52" fill="none" stroke="#10141c" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-80 -52 L-80 -6 Q-80 26 -48 26 L48 26 Q80 26 80 -6 L80 -52" fill="none" stroke="#8b96ad" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="-80" cy="-52" r="8" fill="#ffc247"/><circle cx="80" cy="-52" r="8" fill="#ffc247"/>
+    <circle r="19" fill="#202737" stroke="#aab4c8" stroke-width="3"/><path d="M0 -10 L0 -26" stroke="#ffc247" stroke-width="5" stroke-linecap="round"/>
+  </g></svg><div class="yl">ШТУРВАЛ</div></div>
   <div id="btns">
     <button id="bGear" data-act="gear">ШАССИ</button>
     <button id="bFlD" data-act="fl-">ЗАКР −</button>
@@ -96,6 +101,7 @@ table.res td:last-child{text-align:right;font-weight:700}
     <button id="bWarp" data-act="warp">×1</button>
     <button id="bAp" data-act="ap">А/П</button>
     <button id="bAt" data-act="at">А/Т</button>
+    <button id="bNav" data-act="nav">НАВ</button>
     <button id="bAltD" data-act="altd">ВЫС −</button>
     <button id="bAltU" data-act="altu">ВЫС +</button>
     <button id="bAppr" data-act="appr">ПОСАДКА</button>
@@ -181,6 +187,12 @@ function distKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+function bearing(a, b) {
+  const t = Math.PI / 180, la = a.lat * t, lb = b.lat * t, dl = (b.lon - a.lon) * t;
+  const y = Math.sin(dl) * Math.cos(lb), x = Math.cos(la) * Math.sin(lb) - Math.sin(la) * Math.cos(lb) * Math.cos(dl);
+  return (Math.atan2(y, x) / t + 360) % 360;
+}
+
 const PAX_KG = 95; // пассажир с багажом
 const FUEL_PRICE = 70; // ₽ за кг
 
@@ -218,7 +230,7 @@ function contractsFor(plane, fromId, seed) {
 
 const fmtRub = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
 
-return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub};
+return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,bearing,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub};
 })();
 __m.sim = (function(){
 // Физика полёта: продольная модель материальной точки с аэродинамикой, тягой, топливом.
@@ -237,6 +249,7 @@ const GS_TAN = Math.tan(GS_DEG * DEG);
 const APPR_ALT = 1500; // высота выхода на глиссаду, м
 const AIM_OFFSET = 300; // точка касания за торцом, м
 const IDLE = 0.06;
+const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const FLARE_H = 14;
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -272,11 +285,12 @@ class Flight {
     this.tod = o.tod || 0; // 0 день, 1 сумерки, 2 ночь
     this.recAlt = o.recAlt || 9600;
 
+    this.yPos = 0; this.psi = 0; this.phi = 0; this.brg = o.bearing || 0; // боковое смещение, курс и крен относительно оси ВПП
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
     this.thrAct = 0; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1 };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = [];
@@ -303,7 +317,9 @@ class Flight {
   }
 
   // ---------- вспомогательные расчёты ----------
-  get dist() { return this.D - this.x; } // до порога
+  get dist() { return this.D - this.x; } // до порога вдоль оси
+  get heading() { return (((this.brg + this.psi / DEG) % 360) + 360) % 360; }
+  get range() { return Math.hypot(this.D - this.x, this.yPos); }
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
   get mach() { return this.v / atmos(this.h + this.elev).a; }
@@ -409,7 +425,7 @@ class Flight {
   fpRate(gCmd, extra, rmax) {
     // темп изменения тангажа, чтобы выйти на траекторию gCmd
     const W = this.mass * G;
-    const qs = Math.max(this.q * this.p.S, 1);
+    const qs = Math.max(this.q * this.p.S, 1) * Math.max(0.6, Math.cos(this.phi));
     const as = this.alphaS;
     const dcl = lerpTab(FLAP_DCL, this.flapAct);
     const aEq = clamp((W * Math.cos(this.gamma) / qs - CL0 - dcl) / CLA, -0.06, as - 0.03);
@@ -435,7 +451,7 @@ class Flight {
     // помощник: автоматика конфигурации и снижения
     if (!this.onGround) {
       if (this.assist.auto && !this.autoEngaged && this.h > 200 && !c.gear && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
-        c.apOn = true; c.atOn = true; c.apAlt = this.recAlt; this.autoEngaged = true;
+        c.apOn = true; c.atOn = true; c.nav = true; c.apAlt = this.recAlt; this.autoEngaged = true;
         this.msg('Автопилот включён');
       }
       if (this.assist.auto && c.apOn && !this.autoDescDone && dist < this.todDist() && c.apAlt > APPR_ALT) {
@@ -461,7 +477,7 @@ class Flight {
     // захват глиссады
     if (c.appr && c.apOn && !this.apprCap && !this.onGround) {
       const dd = this.D + AIM_OFFSET - this.x;
-      if (dist < 46000 && dist > 1500 && Math.abs(this.h - glideH(dd)) < 40 && this.h < 3200) { this.apprCap = true; this.msg('Глиссада захвачена'); }
+      if (dist < 46000 && dist > 1500 && Math.abs(this.h - glideH(dd)) < 40 && this.h < 3200 && Math.abs(this.yPos) < 150 && Math.abs(this.psi) < 12 * DEG) { this.apprCap = true; this.msg('Глиссада захвачена'); }
     }
     if (!c.apOn || !c.appr) { if (this.apprCap && !c.apOn) this.apprCap = false; }
     if (this.apprCap && !this.assist.auto && this.h < 45 && c.apOn) { c.apOn = false; this.apprCap = false; this.msg('Автопилот отключён — выравнивайте вручную!'); }
@@ -517,6 +533,22 @@ class Flight {
       this.stats.tail = true; this.incident('tail', 'Касание хвостом', 6, 999);
     }
 
+    // крен и курс
+    if (!this.onGround) {
+      const roll = c.roll || 0;
+      let phiT = 0;
+      if (Math.abs(roll) > 0.04) phiT = roll * 33 * DEG;
+      else if (c.apOn && c.nav) {
+        const aim = this.D + AIM_OFFSET - this.x;
+        let psiC;
+        if (dist > 30000) psiC = Math.atan2(-this.yPos, aim);
+        else psiC = clamp(-this.yPos * 0.0015, -20 * DEG, 20 * DEG);
+        phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
+      }
+      this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
+      this.phi = clamp(this.phi, -35 * DEG, 35 * DEG);
+    } else this.phi = 0;
+
     // топливо
     const flow = 1.6e-5 * T;
     this.fuel = Math.max(0, this.fuel - flow * dt);
@@ -542,7 +574,14 @@ class Flight {
       this.v += F / this.mass * dt;
       if (this.v < 0) this.v = 0;
     }
-    this.x += this.v * dt;
+    const steer = c.roll || 0;
+    if (this.v > 1) {
+      if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
+      else this.psi -= this.psi * 0.6 * dt;
+    }
+    this.psi = wrapPi(this.psi);
+    this.x += this.v * Math.cos(this.psi) * dt;
+    this.yPos += this.v * Math.sin(this.psi) * dt;
     this.gamma = 0; this.h = 0;
     // отрыв
     if (!this.td && this.v > 25 && this.L >= W && this.theta > 1.5 * DEG && this.gearPos > 0.5) {
@@ -551,14 +590,14 @@ class Flight {
       return;
     }
     // заход в траву
-    if (!onRwy && this.v > 30 && !this.td && this.x > this.rwy0.e) { this.finish('crash', 'Самолёт выкатился за конец полосы при взлёте.'); return; }
-    if (!onRwy && this.td && this.v > 25) { this.finish('crash', this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
+    if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
+    if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
     // автотормоз
     if (this.td && this.assist.auto && this.v > 8) { c.brake = true; c.thr = 0; c.atOn = false; }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
-      const onDest = this.x >= this.rwy1.s - 20 && this.x <= this.rwy1.e + 20;
+      const onDest = this.x >= this.rwy1.s - 20 && this.x <= this.rwy1.e + 20 && Math.abs(this.yPos) <= 35;
       if (this.x > this.rwy1.e) this.finish('overrun', 'Самолёт остановился за пределами полосы.');
       else if (onDest) this.finish('ok', '');
       else if (this.x <= this.rwy0.e + 20) this.finish('forced', 'Вынужденная посадка в аэропорту вылета. Рейс отменён.');
@@ -568,7 +607,8 @@ class Flight {
     if (!this.td && !this.airborneOnce && this.maxV > 25 && this.v < 0.5) this.finish('abort', 'Взлёт прекращён.');
   }
 
-  onRunway(x) {
+  onRunway(x, y = this.yPos) {
+    if (Math.abs(y) > 32) return false;
     return (x >= this.rwy0.s - 5 && x <= this.rwy0.e) || (x >= this.rwy1.s - 5 && x <= this.rwy1.e);
   }
 
@@ -576,10 +616,12 @@ class Flight {
     const v = Math.max(this.v, 12), m = this.mass;
     const al = this.alpha, ca = Math.cos(al), sa = Math.sin(al);
     const dv = ((T * ca - this.Dr) / m - G * Math.sin(this.gamma)) * dt;
-    const dg = ((this.L + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
+    const dg = ((this.L * Math.cos(this.phi) + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
+    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
-    this.x += this.v * Math.cos(this.gamma) * dt;
+    this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
+    this.yPos += this.v * Math.cos(this.gamma) * Math.sin(this.psi) * dt;
     this.h += this.v * Math.sin(this.gamma) * dt;
     // перегрузка
     const n = this.L / (m * G);
@@ -588,25 +630,31 @@ class Flight {
     if (this.h <= 0 && this.gamma <= 0.02) this.touchdown();
     else if (this.h < 0) this.h = 0;
     // пролетели
-    if (!this.done && this.x > this.rwy1.e + 20000) this.finish('missed', 'Вы пролетели аэропорт назначения.');
+    if (!this.done && this.x > this.rwy1.e + 20000 && Math.hypot(this.x - this.D, this.yPos) > 40000) this.finish('missed', 'Вы пролетели аэропорт назначения.');
+    if (!this.done && Math.abs(this.yPos) > 70000) this.finish('missed', 'Вы слишком далеко ушли от маршрута.');
   }
 
   touchdown() {
     const sink = -this.v * Math.sin(this.gamma);
     const tdx = this.x;
     this.h = 0;
-    const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e;
-    const onOrig = tdx >= this.rwy0.s && tdx <= this.rwy0.e;
+    const lat = Math.abs(this.yPos);
+    const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e && lat <= 32;
+    const onOrig = tdx >= this.rwy0.s && tdx <= this.rwy0.e && lat <= 32;
     const ias = this.ias;
     if (this.gearPos < 0.85) { this.finish('crash', 'Посадка с невыпущенным шасси.'); return; }
     if (!onDest && !onOrig && this.v > 35) {
-      this.finish('crash', tdx < this.rwy1.s ? 'Недолёт: самолёт приземлился до полосы.' : 'Приземление за пределами полосы.');
+      this.finish('crash', lat > 32 ? 'Приземление рядом с полосой: слишком большое боковое отклонение.' : tdx < this.rwy1.s ? 'Недолёт: самолёт приземлился до полосы.' : 'Приземление за пределами полосы.');
       return;
     }
+    if (Math.abs(this.phi) > 12 * DEG) { this.finish('crash', 'Касание крылом: слишком большой крен при посадке.'); return; }
+    if (Math.abs(this.psi) > 12 * DEG) { this.finish('crash', 'Боковой снос: самолёт приземлился не вдоль полосы.'); return; }
     if (sink > 5.5) { this.finish('crash', 'Слишком жёсткое приземление (' + sink.toFixed(1) + ' м/с): конструкция разрушена.'); return; }
     if (ias * 3.6 > 400) { this.finish('crash', 'Слишком высокая скорость при посадке.'); return; }
     this.onGround = true; this.gamma = 0;
-    this.td = { t: this.time, sink: Math.max(0, sink), v: this.v, ias, pitch: this.theta / DEG, x: tdx, onDest, onOrig, past: tdx - this.rwy1.s };
+    this.td = { t: this.time, sink: Math.max(0, sink), v: this.v, ias, pitch: this.theta / DEG, x: tdx, onDest, onOrig, past: tdx - this.rwy1.s, lat };
+    this.phi = 0;
+    if (lat > 12) this.incident('lat', 'Касание не по оси полосы', 2, 999);
     if (this.theta < 0.3 * DEG) this.incident('nose', 'Касание носовой стойкой', 4, 999);
     if (this.theta > 11.7 * DEG && !this.stats.tail) { this.stats.tail = true; this.incident('tail', 'Касание хвостом', 6, 999); }
     if (sink > 3.4) this.incident('hard', 'Жёсткая посадка', 0, 999);
@@ -644,6 +692,8 @@ class Flight {
   allowedWarp() {
     const c = this.c;
     if (!c.apOn || !c.atOn || this.onGround || this.warnings.size) return 1;
+    if (Math.abs(c.roll || 0) > 0.04 || Math.abs(this.phi) > 6 * DEG) return 1;
+    if (!c.nav && Math.abs(this.yPos) > 800) return 1;
     const dist = this.dist;
     // заход по глиссаде: если всё делает автоматика, можно слегка ускорить
     if (this.apprCap) {
@@ -686,6 +736,8 @@ class Flight {
     if (this.h < 12 && this.apprCap === false && dist < 3000 && dist > -1500 && c.gear) return 'ВЫРАВНИВАЙТЕ: слегка тяните ручку, газ малый';
     if (this.warnings.has('stall')) return 'Малая скорость! Опустите нос, добавьте тягу';
     if (!this.airborneOnce) return '';
+    if (!c.apOn && Math.abs(this.yPos) > 400 && dist < 60000 && dist > 0) return 'Вы в стороне от курса — поверните штурвал к оси полосы';
+    if (c.apOn && !c.nav && Math.abs(this.yPos) > 500 && dist < 60000 && dist > 0) return 'Нажмите НАВ — автопилот вернёт самолёт на курс';
     const far = dist > this.todDist() + 20000;
     if (c.gear && this.h > 25 && this.vs > 0 && dist > 50000) return 'Уберите шасси (кнопка ШАССИ)';
     if (!c.apOn && this.h > 150 && dist > 50000) return 'Включите автопилот (А/П) и выберите высоту ВЫС ±';
@@ -786,15 +838,16 @@ function hash2(i, j, s) {
 }
 
 // ---- состояние камеры ----
-let ctx, W, H, F, CX, CY, camX, camY, ct, st, NEAR = 1.2, U = 1;
+let ctx, W, H, F, CX, CY, camX, camY, camZ = 0, yc = 1, ys = 0, camPsi = 0, ct, st, NEAR = 1.2, U = 1;
 const bF = new Float64Array(40), bU = new Float64Array(40), bZ = new Float64Array(40);
 const oF = new Float64Array(40), oU = new Float64Array(40), oZ = new Float64Array(40);
 const P = new Float64Array(60);
 
 function polyFlat(pts, n, fill) {
   for (let i = 0; i < n; i++) {
-    const dx = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY;
-    bF[i] = dx * ct + dy * st; bU[i] = -dx * st + dy * ct; bZ[i] = pts[3 * i + 2];
+    const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY, dz0 = pts[3 * i + 2] - camZ;
+    const dx = dx0 * yc + dz0 * ys; // вперёд с учётом курса
+    bF[i] = dx * ct + dy * st; bU[i] = -dx * st + dy * ct; bZ[i] = -dx0 * ys + dz0 * yc;
   }
   let m = 0;
   for (let i = 0; i < n; i++) {
@@ -818,10 +871,11 @@ function rect(x0, z0, x1, z1, fill, y = 0) {
   return polyFlat(P, 4, fill);
 }
 function toScreen(X, Y, Z, out) {
-  const dx = X - camX, dy = Y - camY;
+  const dx0 = X - camX, dy = Y - camY, dz0 = Z - camZ;
+  const dx = dx0 * yc + dz0 * ys, rz = -dx0 * ys + dz0 * yc;
   const f = dx * ct + dy * st, u = -dx * st + dy * ct;
   if (f < NEAR) return false;
-  out.x = CX + F * Z / f; out.y = CY - F * u / f; out.f = f; return true;
+  out.x = CX + F * rz / f; out.y = CY - F * u / f; out.f = f; return true;
 }
 const SP = { x: 0, y: 0, f: 0 };
 function box(x0, x1, z0, z1, hgt, cols) {
@@ -839,7 +893,7 @@ function box(x0, x1, z0, z1, hgt, cols) {
   for (let i = 0; i < 5; i++) {
     const n = nrm[i];
     const fx = i === 0 ? x0 : i === 1 ? x1 : cxm, fy = i === 4 ? hgt : hgt / 2, fz = i === 2 ? z0 : i === 3 ? z1 : cz;
-    if (n[0] * (camX - fx) + n[1] * (camY - fy) + n[2] * (0 - fz) <= 0) continue;
+    if (n[0] * (camX - fx) + n[1] * (camY - fy) + n[2] * (camZ - fz) <= 0) continue;
     for (let k = 0; k < 4; k++) { P[3 * k] = faces[i][k][0]; P[3 * k + 1] = faces[i][k][1]; P[3 * k + 2] = faces[i][k][2]; }
     const c = cols[i % cols.length];
     polyFlat(P, 4, shadeCol(c, shade[i]));
@@ -864,7 +918,7 @@ function drawSky(pal, hy, hi, f) {
   const m = H;
   const g = ctx.createLinearGradient(0, hy - H * 1.4, 0, hy);
   g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(hor));
-  ctx.fillStyle = g; ctx.fillRect(-W * 0.3, -H * 0.3, W * 1.6, hy + H * 0.3 + 2);
+  ctx.fillStyle = g; ctx.fillRect(-W, -H * 1.5, W * 3, hy + H * 1.5 + 2);
   // звёзды
   const starA = pal.night > 0.8 ? 1 : clamp(hi * 1.2 - 0.3, 0, 0.8) + pal.night * 0.3;
   if (starA > 0.02) {
@@ -877,7 +931,7 @@ function drawSky(pal, hy, hi, f) {
   }
   // солнце / луна
   const sunEl = pal === PAL[0] ? 38 : pal === PAL[1] ? 2.5 : 28;
-  const sy = CY + F * Math.tan(f.theta - sunEl * DEG), sx = W * 0.72;
+  const sy = CY + F * Math.tan(f.theta - sunEl * DEG), sx = W * 0.72 - F * camPsi;
   if (sy > -F && sy < H + F) {
     if (pal.night < 0.8) {
       const r = (pal === PAL[1] ? 90 : 60) * U;
@@ -900,43 +954,51 @@ function drawMountains(pal, hy, f) {
     const amp = H * (layer ? 0.045 : 0.075), base = layer ? 0.35 : 0.55;
     const col = mixc(mixc(haze, [60, 80, 80], layer ? 0.5 : 0.25), pal.night > 0.5 ? [6, 10, 16] : [30, 50, 50], pal.night * 0.7);
     ctx.fillStyle = rgb(col);
-    ctx.beginPath(); ctx.moveTo(-W * 0.3, hy + 2);
-    for (let x = -W * 0.3; x <= W * 1.3; x += 14) {
-      const k = x / W * 6.28 * (layer ? 2.3 : 1.4);
+    ctx.beginPath(); ctx.moveTo(-W, hy + 2);
+    for (let x = -W; x <= W * 2; x += 14) {
+      const k = (x + F * camPsi) / W * 6.28 * (layer ? 2.3 : 1.4);
       const v = 0.5 + 0.28 * Math.sin(k + layer * 2.1) + 0.2 * Math.sin(k * 2.7 + 1.3 + layer) + 0.12 * Math.sin(k * 6.1 + layer * 4);
       ctx.lineTo(x, hy - amp * v * base * 1.8);
     }
-    ctx.lineTo(W * 1.3, hy + 2); ctx.closePath(); ctx.fill();
+    ctx.lineTo(W * 2, hy + 2); ctx.closePath(); ctx.fill();
   }
 }
 
+const cellI = new Int32Array(2000), cellJ = new Int32Array(2000), cellD = new Float64Array(2000);
 function drawGround(pal, hy, f) {
   ctx.fillStyle = pal.base;
-  ctx.fillRect(-W * 0.3, hy, W * 1.6, H * 1.3 - hy);
+  ctx.fillRect(-W, hy, W * 3, H * 2.2);
   const hh = Math.max(camY, 25);
   const lv = Math.log2(hh / 30), k = Math.floor(lv), fr = lv - k;
   const sA = 60 * Math.pow(2, k), sB = sA * 2;
+  const tanH = Math.hypot(W, H) / 2 / F * 1.1;
   const layer = (s, alpha) => {
     if (alpha < 0.03) return;
     ctx.globalAlpha = alpha;
-    const rows = 20;
-    const i0 = Math.floor(camX / s) + 1;
-    const iseed = Math.round(s);
-    for (let ri = rows; ri >= 0; ri--) {
-      const i = i0 + ri;
-      const xa = i * s, xb = xa + s;
-      const far = (xb - camX);
-      const half = Math.ceil((far * 0.55 * W / F + 40) / s);
-      for (let j = -half; j <= half; j++) {
-        const hv = hash2(i, j, iseed);
-        const col = pal.ground[(hv * 6) | 0];
-        rect(xa, j * s, xb, (j + 1) * s, col);
-        if (pal.night > 0.5 && ri < 11 && hash2(i, j, 77) < 0.06 && camY < 6000) {
-          if (toScreen(xa + s / 2, 0, (j + 0.5) * s, SP) && SP.y > hy) {
-            ctx.fillStyle = hv > 0.5 ? '#ffd890' : '#fff0c0';
-            const r = Math.max(1, Math.min(3, 600 * U / SP.f * 3));
-            ctx.fillRect(SP.x, SP.y, r, r);
-          }
+    const iseed = Math.round(s), R = 20;
+    const ci = Math.floor(camX / s), cj = Math.floor(camZ / s);
+    let n = 0;
+    for (let di = -R; di <= R; di++) {
+      for (let dj = -R; dj <= R; dj++) {
+        const dx = (ci + di + 0.5) * s - camX, dz = (cj + dj + 0.5) * s - camZ;
+        const fw = dx * yc + dz * ys, rt = -dx * ys + dz * yc;
+        if (fw < -s * 1.5 || fw > R * s) continue;
+        if (Math.abs(rt) > fw * tanH + s * 1.8) continue;
+        cellI[n] = ci + di; cellJ[n] = cj + dj; cellD[n] = fw; n++;
+      }
+    }
+    const order = new Array(n);
+    for (let k = 0; k < n; k++) order[k] = k;
+    order.sort((a, b) => cellD[b] - cellD[a]);
+    for (let q = 0; q < n; q++) {
+      const k = order[q], i = cellI[k], j = cellJ[k];
+      const hv = hash2(i, j, iseed);
+      rect(i * s, j * s, (i + 1) * s, (j + 1) * s, pal.ground[(hv * 6) | 0]);
+      if (pal.night > 0.5 && cellD[k] < 11 * s && hash2(i, j, 77) < 0.06 && camY < 6000) {
+        if (toScreen(i * s + s / 2, 0, (j + 0.5) * s, SP) && SP.y > hy) {
+          ctx.fillStyle = hv > 0.5 ? '#ffd890' : '#fff0c0';
+          const r = Math.max(1, Math.min(3, 600 * U / SP.f * 3));
+          ctx.fillRect(SP.x, SP.y, r, r);
         }
       }
     }
@@ -952,7 +1014,7 @@ function drawHaze(pal, hy) {
   g.addColorStop(0, rgb(hz, 0.0));
   g.addColorStop(0.12, rgb(hz, 0.92));
   g.addColorStop(1, rgb(hz, 0));
-  ctx.fillStyle = g; ctx.fillRect(-W * 0.3, hy - H * 0.05, W * 1.6, H * 0.4 + 2);
+  ctx.fillStyle = g; ctx.fillRect(-W, hy - H * 0.05, W * 3, H * 0.4 + 2);
 }
 
 function lightDot(x, y, z, col, size, minf = 8) {
@@ -1057,7 +1119,7 @@ function drawClouds(pal, f) {
       const alt = 1700 + hs(2) * 2600 + (hs(8) < 0.2 ? 3500 : 0);
       const size = 450 + hs(3) * 900;
       const X = ci * 6000 + hs(1) * 6000, Z = (hs(4) - 0.5) * 12000;
-      const dx = X - camX, dy = alt - camY;
+      const dx = (X - camX) * yc + (Z - camZ) * ys, dy = alt - camY;
       const fz = dx * ct + dy * st;
       if (fz < size * 0.4 || fz > 38000) continue;
       list.push([fz, X, alt, Z, size, hs(6)]);
@@ -1147,7 +1209,7 @@ function drawFlight(c, w, h, f, t, view) {
   U = Math.max(0.75, Math.min(H / 380, W / 720));
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
-  camX = f.x; camY = f.h + 5.5;
+  camX = f.x; camY = f.h + 5.5; camZ = f.yPos || 0; camPsi = f.psi || 0; yc = Math.cos(camPsi); ys = Math.sin(camPsi);
   const th = f.theta + (view.bump || 0) * 0.002;
   ct = Math.cos(th); st = Math.sin(th);
   const hz = f.h > 1 ? Math.sqrt(2 * Math.max(f.h, 0) / 6371000) : 0;
@@ -1156,7 +1218,7 @@ function drawFlight(c, w, h, f, t, view) {
 
   // микрокрен и тряска
   const turb = view.turb;
-  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0);
+  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0) - (f.phi || 0);
   let shy = 0;
   if (f.onGround && f.v > 3) shy = Math.sin(t * 38) * Math.min(1, f.v / 60) * 0.9 * U + (view.bump || 0) * 0.15;
   else shy = (view.bump || 0) * 0.15;
@@ -1182,21 +1244,43 @@ function drawFlight(c, w, h, f, t, view) {
 }
 
 function drawCockpit(pal) {
-  const top = ctx.createLinearGradient(0, 0, 0, H * 0.1);
-  top.addColorStop(0, 'rgba(4,6,10,.85)'); top.addColorStop(1, 'rgba(4,6,10,0)');
-  ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.1);
-  const bot = ctx.createLinearGradient(0, H * 0.9, 0, H);
-  bot.addColorStop(0, 'rgba(4,6,10,0)'); bot.addColorStop(1, 'rgba(4,6,10,.8)');
-  ctx.fillStyle = bot; ctx.fillRect(0, H * 0.9, W, H * 0.1);
-  ctx.fillStyle = 'rgba(4,6,10,.9)';
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 0.055, 0); ctx.lineTo(W * 0.01, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * 0.945, 0); ctx.lineTo(W * 0.99, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  const nightK = pal.night;
+  // козырёк и потолок
+  const top = ctx.createLinearGradient(0, 0, 0, H * 0.075);
+  top.addColorStop(0, 'rgba(8,10,14,.95)'); top.addColorStop(1, 'rgba(8,10,14,0)');
+  ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.075);
+  // передний обзор: левая и правая стойки, средняя стойка
+  ctx.fillStyle = 'rgba(10,13,18,.97)';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 0.05, 0); ctx.lineTo(W * 0.022, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * 0.95, 0); ctx.lineTo(W * 0.978, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(10,13,18,.92)';
+  ctx.fillRect(W * 0.5 - 3 * U, 0, 6 * U, H * 0.085);
+  // блики на стойках
+  ctx.strokeStyle = 'rgba(120,140,170,.25)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(W * 0.05, 0); ctx.lineTo(W * 0.022, H); ctx.moveTo(W * 0.95, 0); ctx.lineTo(W * 0.978, H); ctx.stroke();
+  // приборная доска (глярешилд) снизу
+  const dy = H * 0.885;
+  const dash = ctx.createLinearGradient(0, dy, 0, H);
+  dash.addColorStop(0, '#171c26'); dash.addColorStop(0.12, '#0c1017'); dash.addColorStop(1, '#06080c');
+  ctx.fillStyle = dash;
+  ctx.beginPath(); ctx.moveTo(0, H * 0.93); ctx.quadraticCurveTo(W * 0.5, dy - H * 0.03, W, H * 0.93); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(150,170,200,.35)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, H * 0.93); ctx.quadraticCurveTo(W * 0.5, dy - H * 0.03, W, H * 0.93); ctx.stroke();
+  // индикаторные лампочки на панели
+  const cols = ['#3ddc84', '#ffc247', '#5fd4ff', '#ff5a4d'];
+  for (let i = 0; i < 10; i++) { const x = W * (0.3 + i * 0.045); ctx.fillStyle = cols[i % 4]; ctx.globalAlpha = 0.35 + 0.35 * nightK; ctx.beginPath(); ctx.arc(x, H * 0.905 + Math.abs(i - 4.5) * 0.6 * U, 1.6 * U, 0, 6.3); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  // лёгкое отражение стекла
+  const gl = ctx.createLinearGradient(0, 0, W * 0.5, H * 0.6);
+  gl.addColorStop(0, 'rgba(255,255,255,.05)'); gl.addColorStop(0.4, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
 }
 
 function drawHUD(f, t, view, th) {
   const c = f.c;
   const kmh = f.ias * 3.6;
-  // шкала тангажа
+  // шкала тангажа (вращается вместе с горизонтом)
+  ctx.save(); ctx.translate(CX, CY); ctx.rotate(-(f.phi || 0)); ctx.translate(-CX, -CY);
   ctx.save();
   ctx.strokeStyle = 'rgba(160,255,200,.8)'; ctx.lineWidth = 1.3; ctx.fillStyle = 'rgba(160,255,200,.9)';
   ctx.beginPath(); ctx.rect(0, H * 0.14, W, H * 0.64); ctx.clip();
@@ -1220,6 +1304,16 @@ function drawHUD(f, t, view, th) {
     ctx.moveTo(CX - 7 * U, gy); ctx.lineTo(CX - 17 * U, gy); ctx.moveTo(CX + 7 * U, gy); ctx.lineTo(CX + 17 * U, gy); ctx.moveTo(CX, gy - 7 * U); ctx.lineTo(CX, gy - 13 * U);
     ctx.stroke();
   }
+  ctx.restore();
+  // шкала крена
+  { const R = H * 0.27, ph = f.phi || 0;
+    ctx.strokeStyle = 'rgba(160,255,200,.8)'; ctx.lineWidth = 1.4; ctx.beginPath();
+    for (const a of [-45, -30, -20, -10, 0, 10, 20, 30, 45]) { const r = a * DEG, l = (a % 30 === 0 ? 9 : 5) * U; ctx.moveTo(CX + Math.sin(r) * R, CY - Math.cos(r) * R); ctx.lineTo(CX + Math.sin(r) * (R + l), CY - Math.cos(r) * (R + l)); }
+    ctx.stroke();
+    const pr = -ph; ctx.fillStyle = Math.abs(ph) > 30 * DEG ? RED : GREEN; ctx.beginPath();
+    ctx.moveTo(CX + Math.sin(pr) * (R - 2 * U), CY - Math.cos(pr) * (R - 2 * U));
+    ctx.lineTo(CX + Math.sin(pr - 0.06) * (R - 11 * U), CY - Math.cos(pr - 0.06) * (R - 11 * U));
+    ctx.lineTo(CX + Math.sin(pr + 0.06) * (R - 11 * U), CY - Math.cos(pr + 0.06) * (R - 11 * U)); ctx.closePath(); ctx.fill(); }
   // ось самолёта
   ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(CX - 10 * U, CY); ctx.lineTo(CX - 3 * U, CY); ctx.moveTo(CX + 10 * U, CY); ctx.lineTo(CX + 3 * U, CY); ctx.moveTo(CX, CY - 3 * U); ctx.lineTo(CX, CY + 3 * U); ctx.stroke();
@@ -1243,7 +1337,7 @@ function drawHUD(f, t, view, th) {
   txt('м', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   // цель АП и вертикальная скорость
   const vs = f.vs;
-  txt((vs >= 0 ? '+' : '−') + Math.abs(vs).toFixed(1) + ' м/с', ax + 25 * U, CY + H * 0.02 + H * 0.25 + 12 * U, f.warnings.has('sink') ? RED : WHITE, 10 * U, 'center');
+  txt((vs >= 0 ? '+' : '−') + Math.abs(vs).toFixed(1) + ' м/с', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 17 * U, f.warnings.has('sink') ? RED : WHITE, 10 * U, 'center');
   if (c.apOn && !f.apprCap) txt('▸' + Math.round(c.apAlt), ax + 55 * U, CY + H * 0.02 - 8 * U, CYAN, 10 * U, 'left');
   if (f.h < 250) {
     const rc = f.h < 30 ? AMBER : WHITE;
@@ -1262,6 +1356,16 @@ function drawHUD(f, t, view, th) {
     ctx.fillStyle = Math.abs(dev) < 0.5 ? GREEN : AMBER;
     ctx.beginPath(); ctx.moveTo(gx, dy - 8 * U); ctx.lineTo(gx + 7 * U, dy); ctx.lineTo(gx, dy + 8 * U); ctx.lineTo(gx - 7 * U, dy); ctx.closePath(); ctx.fill();
     txt('ГЛС', gx, gy0 - 2.6 * step - 5 * U, CYAN, 9 * U, 'center');
+    // курсовой маяк (боковое отклонение от оси полосы)
+    const ly = gy0 + 2.6 * step + 12 * U;
+    const lat = Math.atan2(f.yPos || 0, Math.max(dd, 300)) / DEG;
+    const ld = clamp(-lat / 0.9, -2.4, 2.4);
+    panel(gx - 2.6 * step, ly - 9 * U, 5.2 * step, 18 * U, 0.38);
+    ctx.fillStyle = 'rgba(230,255,240,.85)';
+    for (let i = -2; i <= 2; i++) { if (i === 0) ctx.fillRect(gx - 1, ly - 7 * U, 2, 14 * U); else { ctx.beginPath(); ctx.arc(gx + i * step, ly, 2.6 * U, 0, 6.3); ctx.fill(); } }
+    ctx.fillStyle = Math.abs(ld) < 0.5 ? GREEN : AMBER;
+    const lx = gx + ld * step; ctx.beginPath(); ctx.moveTo(lx, ly - 8 * U); ctx.lineTo(lx + 7 * U, ly); ctx.lineTo(lx, ly + 8 * U); ctx.lineTo(lx - 7 * U, ly); ctx.closePath(); ctx.fill();
+    txt('КУРС', gx - 2.6 * step - 4 * U, ly + 3 * U, CYAN, 8 * U, 'right');
   }
   // верхняя панель
   const tw = Math.min(W * 0.52, 430 * U), tx = CX - tw / 2, ty = 6 * U, thh = 26 * U;
@@ -1275,7 +1379,8 @@ function drawHUD(f, t, view, th) {
   const fy = ty + thh + 4 * U;
   txt('Топливо ' + Math.round(f.fuel).toLocaleString('ru-RU') + ' кг', 14 * U + W * 0.045, 22 * U, f.warnings.has('lowfuel') ? RED : 'rgba(230,240,255,.9)', 11 * U, 'left', '600');
   txt('Масса ' + Math.round(f.mass / 100) / 10 + ' т', 14 * U + W * 0.045, 36 * U, 'rgba(230,240,255,.7)', 10 * U, 'left', '600');
-  const modes = [['А/П', c.apOn], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
+  { const hd = Math.round(f.heading !== undefined ? f.heading : 0) % 360; txt('Курс ' + String(hd).padStart(3, '0') + '°', 14 * U + W * 0.045, 50 * U, CYAN, 11 * U, 'left', '700'); }
+  const modes = [['А/П', c.apOn], ['НАВ', c.apOn && c.nav], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
   let mx = W - 14 * U - W * 0.045;
   for (let i = modes.length - 1; i >= 0; i--) { txt(modes[i][0], mx, 22 * U, modes[i][1] ? GREEN : 'rgba(200,210,230,.4)', 11 * U, 'right', '800'); mx -= 36 * U; }
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';
@@ -1341,7 +1446,7 @@ return {drawFlight,drawMap};
 })();
 __m.main = (function(){
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
-const { AIRPORTS, AP_BY, PLANES, PL_BY, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } = __m.data;
+const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } = __m.data;
 const { Flight, settle, FLAP_NAMES } = __m.sim;
 const { drawFlight, drawMap } = __m.render;
 
@@ -1517,19 +1622,19 @@ function startFlight(c) {
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ plane: p, from, to, distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
+  flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
     assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1 };
-  stick.value = 0; setKnob(0); thrSet(0, true);
+  stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = '';
   hideModal();
 }
 
 // ---------- ввод: газ и ручка ----------
-const thrEl = $('thr'), stickEl = $('stick'), knob = $('knob');
-const stick = { value: 0, id: null };
+const thrEl = $('thr'), yokeEl = $('yoke'), yokeG = $('yokeG');
+const stick = { value: 0, roll: 0, id: null };
 function thrSet(v, silent) {
   v = Math.max(0, Math.min(1, v));
   if (flight) { flight.c.thr = v; if (!silent) flight.c.atOn = false; }
@@ -1539,12 +1644,16 @@ function thrSet(v, silent) {
 thrEl.addEventListener('pointerdown', e => { thrEl.setPointerCapture(e.pointerId); thrMove(e); });
 thrEl.addEventListener('pointermove', e => { if (thrEl.hasPointerCapture(e.pointerId)) thrMove(e); });
 function thrMove(e) { const r = thrEl.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height); }
-function setKnob(v) { const r = stickEl.getBoundingClientRect(); const travel = r.height / 2 - 20; knob.style.top = `calc(50% - 17px - ${v * travel}px)`; }
-function stickMove(e) { const r = stickEl.getBoundingClientRect(); const v = -((e.clientY - r.top) - r.height / 2) / (r.height / 2 - 20); stick.value = Math.max(-1, Math.min(1, v)); setKnob(stick.value); }
-stickEl.addEventListener('pointerdown', e => { stickEl.setPointerCapture(e.pointerId); stick.id = e.pointerId; stickMove(e); });
-stickEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) stickMove(e); });
-const stickUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; setKnob(0); } };
-stickEl.addEventListener('pointerup', stickUp); stickEl.addEventListener('pointercancel', stickUp);
+function setYoke() { yokeG.setAttribute('transform', `translate(0 ${(-stick.value * 16).toFixed(1)}) rotate(${(stick.roll * 75).toFixed(1)})`); }
+function yokeMove(e) {
+  const r = yokeEl.getBoundingClientRect(), R = r.width * 0.36;
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  stick.roll = Math.max(-1, Math.min(1, dx / R)); stick.value = Math.max(-1, Math.min(1, -dy / R)); setYoke();
+}
+yokeEl.addEventListener('pointerdown', e => { yokeEl.setPointerCapture(e.pointerId); stick.id = e.pointerId; yokeMove(e); });
+yokeEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) yokeMove(e); });
+const yokeUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; stick.roll = 0; setYoke(); } };
+yokeEl.addEventListener('pointerup', yokeUp); yokeEl.addEventListener('pointercancel', yokeUp);
 
 // ---------- кнопки ----------
 function act(a) {
@@ -1561,6 +1670,7 @@ function act(a) {
       else if (!f.onGround) { c.apOn = true; c.atOn = true; if (f.h < 3000 && !c.appr) c.apAlt = f.dist < 60000 ? 1500 : f.recAlt; if (f.dist >= 60000) c.apAlt = f.recAlt; }
       break;
     case 'at': c.atOn = !c.atOn; break;
+    case 'nav': c.nav = !c.nav; break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'appr': if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
@@ -1574,7 +1684,7 @@ function syncButtons() {
   on('bGear', c.gear); $('bGear').textContent = 'ШАССИ ' + (f.gearPos > 0.98 ? '▼' : f.gearPos < 0.02 ? '▲' : '…');
   $('bFlD').textContent = 'ЗАКР − (' + FLAP_NAMES[c.flaps] + ')'; $('bFlU').textContent = 'ЗАКР +';
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
-  on('bAp', c.apOn); on('bAt', c.atOn); on('bAppr', c.appr);
+  on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bAppr', c.appr);
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);
@@ -1592,9 +1702,11 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 function keyboardInput(dt) {
   const f = flight;
-  let ks = 0; if (keys.ArrowUp || keys.KeyW) ks += 1; if (keys.ArrowDown || keys.KeyS) ks -= 1;
-  if (ks !== 0) { stick.value = ks; setKnob(ks); } else if (stick.id === null && Math.abs(stick.value) > 0 && ks === 0 && (keys._kb)) { stick.value = 0; setKnob(0); }
-  keys._kb = ks !== 0;
+  let ks = 0, kr = 0;
+  if (keys.ArrowUp || keys.KeyW) ks += 1; if (keys.ArrowDown || keys.KeyS) ks -= 1;
+  if (keys.ArrowRight || keys.KeyD) kr += 1; if (keys.ArrowLeft) kr -= 1;
+  if (ks !== 0 || kr !== 0) { stick.value = ks; stick.roll = kr; setYoke(); keys._kb = true; }
+  else if (keys._kb && stick.id === null) { stick.value = 0; stick.roll = 0; setYoke(); keys._kb = false; }
   let dthr = 0; if (keys.ShiftLeft || keys.ShiftRight) dthr += 0.4; if (keys.ControlLeft || keys.ControlRight) dthr -= 0.4;
   if (dthr) thrSet(f.c.thr + dthr * dt);
 }
@@ -1665,7 +1777,7 @@ function loop(ts) {
     if (!paused) {
       keyboardInput(dt);
       if (!f.done) {
-        f.c.stick = stick.value;
+        f.c.stick = stick.value; f.c.roll = stick.roll;
         const wasTd = !!f.td, wasAir = f.airborneOnce;
         const w = f.update(dt);
         view.warp = w;

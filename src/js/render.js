@@ -30,15 +30,16 @@ function hash2(i, j, s) {
 }
 
 // ---- состояние камеры ----
-let ctx, W, H, F, CX, CY, camX, camY, ct, st, NEAR = 1.2, U = 1;
+let ctx, W, H, F, CX, CY, camX, camY, camZ = 0, yc = 1, ys = 0, camPsi = 0, ct, st, NEAR = 1.2, U = 1;
 const bF = new Float64Array(40), bU = new Float64Array(40), bZ = new Float64Array(40);
 const oF = new Float64Array(40), oU = new Float64Array(40), oZ = new Float64Array(40);
 const P = new Float64Array(60);
 
 function polyFlat(pts, n, fill) {
   for (let i = 0; i < n; i++) {
-    const dx = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY;
-    bF[i] = dx * ct + dy * st; bU[i] = -dx * st + dy * ct; bZ[i] = pts[3 * i + 2];
+    const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY, dz0 = pts[3 * i + 2] - camZ;
+    const dx = dx0 * yc + dz0 * ys; // вперёд с учётом курса
+    bF[i] = dx * ct + dy * st; bU[i] = -dx * st + dy * ct; bZ[i] = -dx0 * ys + dz0 * yc;
   }
   let m = 0;
   for (let i = 0; i < n; i++) {
@@ -62,10 +63,11 @@ function rect(x0, z0, x1, z1, fill, y = 0) {
   return polyFlat(P, 4, fill);
 }
 function toScreen(X, Y, Z, out) {
-  const dx = X - camX, dy = Y - camY;
+  const dx0 = X - camX, dy = Y - camY, dz0 = Z - camZ;
+  const dx = dx0 * yc + dz0 * ys, rz = -dx0 * ys + dz0 * yc;
   const f = dx * ct + dy * st, u = -dx * st + dy * ct;
   if (f < NEAR) return false;
-  out.x = CX + F * Z / f; out.y = CY - F * u / f; out.f = f; return true;
+  out.x = CX + F * rz / f; out.y = CY - F * u / f; out.f = f; return true;
 }
 const SP = { x: 0, y: 0, f: 0 };
 function box(x0, x1, z0, z1, hgt, cols) {
@@ -83,7 +85,7 @@ function box(x0, x1, z0, z1, hgt, cols) {
   for (let i = 0; i < 5; i++) {
     const n = nrm[i];
     const fx = i === 0 ? x0 : i === 1 ? x1 : cxm, fy = i === 4 ? hgt : hgt / 2, fz = i === 2 ? z0 : i === 3 ? z1 : cz;
-    if (n[0] * (camX - fx) + n[1] * (camY - fy) + n[2] * (0 - fz) <= 0) continue;
+    if (n[0] * (camX - fx) + n[1] * (camY - fy) + n[2] * (camZ - fz) <= 0) continue;
     for (let k = 0; k < 4; k++) { P[3 * k] = faces[i][k][0]; P[3 * k + 1] = faces[i][k][1]; P[3 * k + 2] = faces[i][k][2]; }
     const c = cols[i % cols.length];
     polyFlat(P, 4, shadeCol(c, shade[i]));
@@ -108,7 +110,7 @@ function drawSky(pal, hy, hi, f) {
   const m = H;
   const g = ctx.createLinearGradient(0, hy - H * 1.4, 0, hy);
   g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(hor));
-  ctx.fillStyle = g; ctx.fillRect(-W * 0.3, -H * 0.3, W * 1.6, hy + H * 0.3 + 2);
+  ctx.fillStyle = g; ctx.fillRect(-W, -H * 1.5, W * 3, hy + H * 1.5 + 2);
   // звёзды
   const starA = pal.night > 0.8 ? 1 : clamp(hi * 1.2 - 0.3, 0, 0.8) + pal.night * 0.3;
   if (starA > 0.02) {
@@ -121,7 +123,7 @@ function drawSky(pal, hy, hi, f) {
   }
   // солнце / луна
   const sunEl = pal === PAL[0] ? 38 : pal === PAL[1] ? 2.5 : 28;
-  const sy = CY + F * Math.tan(f.theta - sunEl * DEG), sx = W * 0.72;
+  const sy = CY + F * Math.tan(f.theta - sunEl * DEG), sx = W * 0.72 - F * camPsi;
   if (sy > -F && sy < H + F) {
     if (pal.night < 0.8) {
       const r = (pal === PAL[1] ? 90 : 60) * U;
@@ -144,43 +146,51 @@ function drawMountains(pal, hy, f) {
     const amp = H * (layer ? 0.045 : 0.075), base = layer ? 0.35 : 0.55;
     const col = mixc(mixc(haze, [60, 80, 80], layer ? 0.5 : 0.25), pal.night > 0.5 ? [6, 10, 16] : [30, 50, 50], pal.night * 0.7);
     ctx.fillStyle = rgb(col);
-    ctx.beginPath(); ctx.moveTo(-W * 0.3, hy + 2);
-    for (let x = -W * 0.3; x <= W * 1.3; x += 14) {
-      const k = x / W * 6.28 * (layer ? 2.3 : 1.4);
+    ctx.beginPath(); ctx.moveTo(-W, hy + 2);
+    for (let x = -W; x <= W * 2; x += 14) {
+      const k = (x + F * camPsi) / W * 6.28 * (layer ? 2.3 : 1.4);
       const v = 0.5 + 0.28 * Math.sin(k + layer * 2.1) + 0.2 * Math.sin(k * 2.7 + 1.3 + layer) + 0.12 * Math.sin(k * 6.1 + layer * 4);
       ctx.lineTo(x, hy - amp * v * base * 1.8);
     }
-    ctx.lineTo(W * 1.3, hy + 2); ctx.closePath(); ctx.fill();
+    ctx.lineTo(W * 2, hy + 2); ctx.closePath(); ctx.fill();
   }
 }
 
+const cellI = new Int32Array(2000), cellJ = new Int32Array(2000), cellD = new Float64Array(2000);
 function drawGround(pal, hy, f) {
   ctx.fillStyle = pal.base;
-  ctx.fillRect(-W * 0.3, hy, W * 1.6, H * 1.3 - hy);
+  ctx.fillRect(-W, hy, W * 3, H * 2.2);
   const hh = Math.max(camY, 25);
   const lv = Math.log2(hh / 30), k = Math.floor(lv), fr = lv - k;
   const sA = 60 * Math.pow(2, k), sB = sA * 2;
+  const tanH = Math.hypot(W, H) / 2 / F * 1.1;
   const layer = (s, alpha) => {
     if (alpha < 0.03) return;
     ctx.globalAlpha = alpha;
-    const rows = 20;
-    const i0 = Math.floor(camX / s) + 1;
-    const iseed = Math.round(s);
-    for (let ri = rows; ri >= 0; ri--) {
-      const i = i0 + ri;
-      const xa = i * s, xb = xa + s;
-      const far = (xb - camX);
-      const half = Math.ceil((far * 0.55 * W / F + 40) / s);
-      for (let j = -half; j <= half; j++) {
-        const hv = hash2(i, j, iseed);
-        const col = pal.ground[(hv * 6) | 0];
-        rect(xa, j * s, xb, (j + 1) * s, col);
-        if (pal.night > 0.5 && ri < 11 && hash2(i, j, 77) < 0.06 && camY < 6000) {
-          if (toScreen(xa + s / 2, 0, (j + 0.5) * s, SP) && SP.y > hy) {
-            ctx.fillStyle = hv > 0.5 ? '#ffd890' : '#fff0c0';
-            const r = Math.max(1, Math.min(3, 600 * U / SP.f * 3));
-            ctx.fillRect(SP.x, SP.y, r, r);
-          }
+    const iseed = Math.round(s), R = 20;
+    const ci = Math.floor(camX / s), cj = Math.floor(camZ / s);
+    let n = 0;
+    for (let di = -R; di <= R; di++) {
+      for (let dj = -R; dj <= R; dj++) {
+        const dx = (ci + di + 0.5) * s - camX, dz = (cj + dj + 0.5) * s - camZ;
+        const fw = dx * yc + dz * ys, rt = -dx * ys + dz * yc;
+        if (fw < -s * 1.5 || fw > R * s) continue;
+        if (Math.abs(rt) > fw * tanH + s * 1.8) continue;
+        cellI[n] = ci + di; cellJ[n] = cj + dj; cellD[n] = fw; n++;
+      }
+    }
+    const order = new Array(n);
+    for (let k = 0; k < n; k++) order[k] = k;
+    order.sort((a, b) => cellD[b] - cellD[a]);
+    for (let q = 0; q < n; q++) {
+      const k = order[q], i = cellI[k], j = cellJ[k];
+      const hv = hash2(i, j, iseed);
+      rect(i * s, j * s, (i + 1) * s, (j + 1) * s, pal.ground[(hv * 6) | 0]);
+      if (pal.night > 0.5 && cellD[k] < 11 * s && hash2(i, j, 77) < 0.06 && camY < 6000) {
+        if (toScreen(i * s + s / 2, 0, (j + 0.5) * s, SP) && SP.y > hy) {
+          ctx.fillStyle = hv > 0.5 ? '#ffd890' : '#fff0c0';
+          const r = Math.max(1, Math.min(3, 600 * U / SP.f * 3));
+          ctx.fillRect(SP.x, SP.y, r, r);
         }
       }
     }
@@ -196,7 +206,7 @@ function drawHaze(pal, hy) {
   g.addColorStop(0, rgb(hz, 0.0));
   g.addColorStop(0.12, rgb(hz, 0.92));
   g.addColorStop(1, rgb(hz, 0));
-  ctx.fillStyle = g; ctx.fillRect(-W * 0.3, hy - H * 0.05, W * 1.6, H * 0.4 + 2);
+  ctx.fillStyle = g; ctx.fillRect(-W, hy - H * 0.05, W * 3, H * 0.4 + 2);
 }
 
 function lightDot(x, y, z, col, size, minf = 8) {
@@ -301,7 +311,7 @@ function drawClouds(pal, f) {
       const alt = 1700 + hs(2) * 2600 + (hs(8) < 0.2 ? 3500 : 0);
       const size = 450 + hs(3) * 900;
       const X = ci * 6000 + hs(1) * 6000, Z = (hs(4) - 0.5) * 12000;
-      const dx = X - camX, dy = alt - camY;
+      const dx = (X - camX) * yc + (Z - camZ) * ys, dy = alt - camY;
       const fz = dx * ct + dy * st;
       if (fz < size * 0.4 || fz > 38000) continue;
       list.push([fz, X, alt, Z, size, hs(6)]);
@@ -391,7 +401,7 @@ export function drawFlight(c, w, h, f, t, view) {
   U = Math.max(0.75, Math.min(H / 380, W / 720));
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
-  camX = f.x; camY = f.h + 5.5;
+  camX = f.x; camY = f.h + 5.5; camZ = f.yPos || 0; camPsi = f.psi || 0; yc = Math.cos(camPsi); ys = Math.sin(camPsi);
   const th = f.theta + (view.bump || 0) * 0.002;
   ct = Math.cos(th); st = Math.sin(th);
   const hz = f.h > 1 ? Math.sqrt(2 * Math.max(f.h, 0) / 6371000) : 0;
@@ -400,7 +410,7 @@ export function drawFlight(c, w, h, f, t, view) {
 
   // микрокрен и тряска
   const turb = view.turb;
-  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0);
+  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0) - (f.phi || 0);
   let shy = 0;
   if (f.onGround && f.v > 3) shy = Math.sin(t * 38) * Math.min(1, f.v / 60) * 0.9 * U + (view.bump || 0) * 0.15;
   else shy = (view.bump || 0) * 0.15;
@@ -426,21 +436,43 @@ export function drawFlight(c, w, h, f, t, view) {
 }
 
 function drawCockpit(pal) {
-  const top = ctx.createLinearGradient(0, 0, 0, H * 0.1);
-  top.addColorStop(0, 'rgba(4,6,10,.85)'); top.addColorStop(1, 'rgba(4,6,10,0)');
-  ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.1);
-  const bot = ctx.createLinearGradient(0, H * 0.9, 0, H);
-  bot.addColorStop(0, 'rgba(4,6,10,0)'); bot.addColorStop(1, 'rgba(4,6,10,.8)');
-  ctx.fillStyle = bot; ctx.fillRect(0, H * 0.9, W, H * 0.1);
-  ctx.fillStyle = 'rgba(4,6,10,.9)';
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 0.055, 0); ctx.lineTo(W * 0.01, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * 0.945, 0); ctx.lineTo(W * 0.99, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  const nightK = pal.night;
+  // козырёк и потолок
+  const top = ctx.createLinearGradient(0, 0, 0, H * 0.075);
+  top.addColorStop(0, 'rgba(8,10,14,.95)'); top.addColorStop(1, 'rgba(8,10,14,0)');
+  ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.075);
+  // передний обзор: левая и правая стойки, средняя стойка
+  ctx.fillStyle = 'rgba(10,13,18,.97)';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 0.05, 0); ctx.lineTo(W * 0.022, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * 0.95, 0); ctx.lineTo(W * 0.978, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(10,13,18,.92)';
+  ctx.fillRect(W * 0.5 - 3 * U, 0, 6 * U, H * 0.085);
+  // блики на стойках
+  ctx.strokeStyle = 'rgba(120,140,170,.25)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(W * 0.05, 0); ctx.lineTo(W * 0.022, H); ctx.moveTo(W * 0.95, 0); ctx.lineTo(W * 0.978, H); ctx.stroke();
+  // приборная доска (глярешилд) снизу
+  const dy = H * 0.885;
+  const dash = ctx.createLinearGradient(0, dy, 0, H);
+  dash.addColorStop(0, '#171c26'); dash.addColorStop(0.12, '#0c1017'); dash.addColorStop(1, '#06080c');
+  ctx.fillStyle = dash;
+  ctx.beginPath(); ctx.moveTo(0, H * 0.93); ctx.quadraticCurveTo(W * 0.5, dy - H * 0.03, W, H * 0.93); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(150,170,200,.35)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, H * 0.93); ctx.quadraticCurveTo(W * 0.5, dy - H * 0.03, W, H * 0.93); ctx.stroke();
+  // индикаторные лампочки на панели
+  const cols = ['#3ddc84', '#ffc247', '#5fd4ff', '#ff5a4d'];
+  for (let i = 0; i < 10; i++) { const x = W * (0.3 + i * 0.045); ctx.fillStyle = cols[i % 4]; ctx.globalAlpha = 0.35 + 0.35 * nightK; ctx.beginPath(); ctx.arc(x, H * 0.905 + Math.abs(i - 4.5) * 0.6 * U, 1.6 * U, 0, 6.3); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  // лёгкое отражение стекла
+  const gl = ctx.createLinearGradient(0, 0, W * 0.5, H * 0.6);
+  gl.addColorStop(0, 'rgba(255,255,255,.05)'); gl.addColorStop(0.4, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
 }
 
 function drawHUD(f, t, view, th) {
   const c = f.c;
   const kmh = f.ias * 3.6;
-  // шкала тангажа
+  // шкала тангажа (вращается вместе с горизонтом)
+  ctx.save(); ctx.translate(CX, CY); ctx.rotate(-(f.phi || 0)); ctx.translate(-CX, -CY);
   ctx.save();
   ctx.strokeStyle = 'rgba(160,255,200,.8)'; ctx.lineWidth = 1.3; ctx.fillStyle = 'rgba(160,255,200,.9)';
   ctx.beginPath(); ctx.rect(0, H * 0.14, W, H * 0.64); ctx.clip();
@@ -464,6 +496,16 @@ function drawHUD(f, t, view, th) {
     ctx.moveTo(CX - 7 * U, gy); ctx.lineTo(CX - 17 * U, gy); ctx.moveTo(CX + 7 * U, gy); ctx.lineTo(CX + 17 * U, gy); ctx.moveTo(CX, gy - 7 * U); ctx.lineTo(CX, gy - 13 * U);
     ctx.stroke();
   }
+  ctx.restore();
+  // шкала крена
+  { const R = H * 0.27, ph = f.phi || 0;
+    ctx.strokeStyle = 'rgba(160,255,200,.8)'; ctx.lineWidth = 1.4; ctx.beginPath();
+    for (const a of [-45, -30, -20, -10, 0, 10, 20, 30, 45]) { const r = a * DEG, l = (a % 30 === 0 ? 9 : 5) * U; ctx.moveTo(CX + Math.sin(r) * R, CY - Math.cos(r) * R); ctx.lineTo(CX + Math.sin(r) * (R + l), CY - Math.cos(r) * (R + l)); }
+    ctx.stroke();
+    const pr = -ph; ctx.fillStyle = Math.abs(ph) > 30 * DEG ? RED : GREEN; ctx.beginPath();
+    ctx.moveTo(CX + Math.sin(pr) * (R - 2 * U), CY - Math.cos(pr) * (R - 2 * U));
+    ctx.lineTo(CX + Math.sin(pr - 0.06) * (R - 11 * U), CY - Math.cos(pr - 0.06) * (R - 11 * U));
+    ctx.lineTo(CX + Math.sin(pr + 0.06) * (R - 11 * U), CY - Math.cos(pr + 0.06) * (R - 11 * U)); ctx.closePath(); ctx.fill(); }
   // ось самолёта
   ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(CX - 10 * U, CY); ctx.lineTo(CX - 3 * U, CY); ctx.moveTo(CX + 10 * U, CY); ctx.lineTo(CX + 3 * U, CY); ctx.moveTo(CX, CY - 3 * U); ctx.lineTo(CX, CY + 3 * U); ctx.stroke();
@@ -487,7 +529,7 @@ function drawHUD(f, t, view, th) {
   txt('м', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   // цель АП и вертикальная скорость
   const vs = f.vs;
-  txt((vs >= 0 ? '+' : '−') + Math.abs(vs).toFixed(1) + ' м/с', ax + 25 * U, CY + H * 0.02 + H * 0.25 + 12 * U, f.warnings.has('sink') ? RED : WHITE, 10 * U, 'center');
+  txt((vs >= 0 ? '+' : '−') + Math.abs(vs).toFixed(1) + ' м/с', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 17 * U, f.warnings.has('sink') ? RED : WHITE, 10 * U, 'center');
   if (c.apOn && !f.apprCap) txt('▸' + Math.round(c.apAlt), ax + 55 * U, CY + H * 0.02 - 8 * U, CYAN, 10 * U, 'left');
   if (f.h < 250) {
     const rc = f.h < 30 ? AMBER : WHITE;
@@ -506,6 +548,16 @@ function drawHUD(f, t, view, th) {
     ctx.fillStyle = Math.abs(dev) < 0.5 ? GREEN : AMBER;
     ctx.beginPath(); ctx.moveTo(gx, dy - 8 * U); ctx.lineTo(gx + 7 * U, dy); ctx.lineTo(gx, dy + 8 * U); ctx.lineTo(gx - 7 * U, dy); ctx.closePath(); ctx.fill();
     txt('ГЛС', gx, gy0 - 2.6 * step - 5 * U, CYAN, 9 * U, 'center');
+    // курсовой маяк (боковое отклонение от оси полосы)
+    const ly = gy0 + 2.6 * step + 12 * U;
+    const lat = Math.atan2(f.yPos || 0, Math.max(dd, 300)) / DEG;
+    const ld = clamp(-lat / 0.9, -2.4, 2.4);
+    panel(gx - 2.6 * step, ly - 9 * U, 5.2 * step, 18 * U, 0.38);
+    ctx.fillStyle = 'rgba(230,255,240,.85)';
+    for (let i = -2; i <= 2; i++) { if (i === 0) ctx.fillRect(gx - 1, ly - 7 * U, 2, 14 * U); else { ctx.beginPath(); ctx.arc(gx + i * step, ly, 2.6 * U, 0, 6.3); ctx.fill(); } }
+    ctx.fillStyle = Math.abs(ld) < 0.5 ? GREEN : AMBER;
+    const lx = gx + ld * step; ctx.beginPath(); ctx.moveTo(lx, ly - 8 * U); ctx.lineTo(lx + 7 * U, ly); ctx.lineTo(lx, ly + 8 * U); ctx.lineTo(lx - 7 * U, ly); ctx.closePath(); ctx.fill();
+    txt('КУРС', gx - 2.6 * step - 4 * U, ly + 3 * U, CYAN, 8 * U, 'right');
   }
   // верхняя панель
   const tw = Math.min(W * 0.52, 430 * U), tx = CX - tw / 2, ty = 6 * U, thh = 26 * U;
@@ -519,7 +571,8 @@ function drawHUD(f, t, view, th) {
   const fy = ty + thh + 4 * U;
   txt('Топливо ' + Math.round(f.fuel).toLocaleString('ru-RU') + ' кг', 14 * U + W * 0.045, 22 * U, f.warnings.has('lowfuel') ? RED : 'rgba(230,240,255,.9)', 11 * U, 'left', '600');
   txt('Масса ' + Math.round(f.mass / 100) / 10 + ' т', 14 * U + W * 0.045, 36 * U, 'rgba(230,240,255,.7)', 10 * U, 'left', '600');
-  const modes = [['А/П', c.apOn], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
+  { const hd = Math.round(f.heading !== undefined ? f.heading : 0) % 360; txt('Курс ' + String(hd).padStart(3, '0') + '°', 14 * U + W * 0.045, 50 * U, CYAN, 11 * U, 'left', '700'); }
+  const modes = [['А/П', c.apOn], ['НАВ', c.apOn && c.nav], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
   let mx = W - 14 * U - W * 0.045;
   for (let i = modes.length - 1; i >= 0; i--) { txt(modes[i][0], mx, 22 * U, modes[i][1] ? GREEN : 'rgba(200,210,230,.4)', 11 * U, 'right', '800'); mx -= 36 * U; }
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';

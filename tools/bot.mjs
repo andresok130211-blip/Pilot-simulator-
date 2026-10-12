@@ -1,12 +1,12 @@
 // Автопилот-бот: проверяет, что рейс проходим (взлёт → набор → крейсер → снижение → посадка).
-import { PL_BY, AP_BY, distKm, tripFuel, makeContract, recommendedCruise, PAX_KG } from '../src/js/data.js';
+import { PL_BY, AP_BY, bearing, distKm, tripFuel, makeContract, recommendedCruise, PAX_KG } from '../src/js/data.js';
 import { Flight, settle, DEG } from '../src/js/sim.js';
 
 export function fly(planeId, fromId, toId, opts = {}) {
   const plane = PL_BY[planeId], from = AP_BY[fromId], to = AP_BY[toId];
   const km = distKm(from, to);
   const c0 = makeContract(plane, from, to, () => opts.load ?? 0.9);
-  const f = new Flight({ plane, from, to, distM: km * 1000, pax: c0.pax, fuelKg: c0.fuel, assist: opts.assist || { auto: true, config: true }, recAlt: recommendedCruise(km) });
+  const f = new Flight({ plane, from, to, bearing: bearing(from, to), distM: km * 1000, pax: c0.pax, fuelKg: c0.fuel, assist: opts.assist || { auto: true, config: true }, recAlt: recommendedCruise(km) });
   const c = f.c;
   const dt = 1 / 60;
   let t = 0, phase = 'roll', log = [];
@@ -15,6 +15,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
   let guard = 0;
   let wantWarp = opts.warp ?? 32;
   while (!f.done && t < 14 * 3600 && guard++ < 5e7) {
+    if (opts.y0 && f.h > 300 && !opts._y) { f.yPos = opts.y0; opts._y = 1; }
     // управление
     if (f.onGround && !f.td) {
       if (f.ias >= f.vr) c.stick = Math.max(0, Math.min(1, (12 * DEG - f.theta) * 5));
@@ -53,7 +54,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
 
 if (process.argv[1].endsWith('bot.mjs')) {
   const [pl = 'a320', a = 'SVO', b = 'LED'] = process.argv.slice(2);
-  const { f, r, log, t } = fly(pl, a, b, { assist: { auto: process.env.MANUAL ? false : true, config: process.env.MANUAL ? false : true } });
+  const { f, r, log, t } = fly(pl, a, b, { y0: +process.env.Y0 || 0, assist: { auto: process.env.MANUAL ? false : true, config: process.env.MANUAL ? false : true } });
   if (process.env.V) console.log(log.join('\n'));
   console.log(pl, a, b, 'flight time', (t / 60).toFixed(1), 'min  result', f.result, 'td', f.td && { sink: f.td.sink.toFixed(2), v: (f.td.ias * 3.6).toFixed(0), pitch: f.td.pitch.toFixed(1), past: f.td.past.toFixed(0) }, 'stop at', ((f.x - f.D)).toFixed(0), 'incidents', f.incidents.map(i => i.text), 'net', r.net, 'fuelUsed', r.fuelUsed.toFixed(0));
 }

@@ -67,6 +67,12 @@ export function distKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+export function bearing(a, b) {
+  const t = Math.PI / 180, la = a.lat * t, lb = b.lat * t, dl = (b.lon - a.lon) * t;
+  const y = Math.sin(dl) * Math.cos(lb), x = Math.cos(la) * Math.sin(lb) - Math.sin(la) * Math.cos(lb) * Math.cos(dl);
+  return (Math.atan2(y, x) / t + 360) % 360;
+}
+
 export const PAX_KG = 95; // пассажир с багажом
 export const FUEL_PRICE = 70; // ₽ за кг
 

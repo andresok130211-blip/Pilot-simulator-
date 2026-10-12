@@ -6,16 +6,15 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #ui{position:fixed;inset:0;pointer-events:none;display:none}
 #ui.on{display:block}
 .ctl{pointer-events:auto;touch-action:none}
-#thr,#stick{position:absolute;bottom:12px;width:64px;height:58%;border-radius:16px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#thr{position:absolute;bottom:12px;width:64px;height:58%;border-radius:16px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
 #thr{left:calc(10px + env(safe-area-inset-left))}
-#stick{right:calc(10px + env(safe-area-inset-right))}
+#yoke{position:absolute;right:calc(8px + env(safe-area-inset-right));bottom:10px;width:min(150px,40vh);height:min(150px,40vh);border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,.06));border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#yoke svg{position:absolute;inset:6%;width:88%;height:88%;pointer-events:none}
+#yoke .yl{position:absolute;top:4px;left:0;right:0;text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.8;pointer-events:none}
 #thrfill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
-#thr .lb,#stick .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
+#thr .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
 #thrv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
-#knob{position:absolute;left:6px;right:6px;height:34px;top:calc(50% - 17px);border-radius:10px;background:#e8eefc;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-#stick .mid{position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.35)}
-#stick .arr{position:absolute;left:0;right:0;text-align:center;font-size:12px;opacity:.6}
-#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;width:min(420px,calc(100vw - 180px))}
+#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 300px))}
 #btns button{pointer-events:auto;touch-action:none;height:36px;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:9px;font-size:10.5px;font-weight:800;padding:0 2px;line-height:1.05}
 #btns button.on{background:#1f8f4e;border-color:#7dffb0}
 #btns button.warn{background:#a23232;border-color:#ff9a9a}

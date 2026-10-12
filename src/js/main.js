@@ -1,5 +1,5 @@
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
-import { AIRPORTS, AP_BY, PLANES, PL_BY, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
+import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
 import { Flight, settle, FLAP_NAMES } from './sim.js';
 import { drawFlight, drawMap } from './render.js';
 
@@ -175,19 +175,19 @@ function startFlight(c) {
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ plane: p, from, to, distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
+  flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
     assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1 };
-  stick.value = 0; setKnob(0); thrSet(0, true);
+  stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = '';
   hideModal();
 }
 
 // ---------- ввод: газ и ручка ----------
-const thrEl = $('thr'), stickEl = $('stick'), knob = $('knob');
-const stick = { value: 0, id: null };
+const thrEl = $('thr'), yokeEl = $('yoke'), yokeG = $('yokeG');
+const stick = { value: 0, roll: 0, id: null };
 function thrSet(v, silent) {
   v = Math.max(0, Math.min(1, v));
   if (flight) { flight.c.thr = v; if (!silent) flight.c.atOn = false; }
@@ -197,12 +197,16 @@ function thrSet(v, silent) {
 thrEl.addEventListener('pointerdown', e => { thrEl.setPointerCapture(e.pointerId); thrMove(e); });
 thrEl.addEventListener('pointermove', e => { if (thrEl.hasPointerCapture(e.pointerId)) thrMove(e); });
 function thrMove(e) { const r = thrEl.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height); }
-function setKnob(v) { const r = stickEl.getBoundingClientRect(); const travel = r.height / 2 - 20; knob.style.top = `calc(50% - 17px - ${v * travel}px)`; }
-function stickMove(e) { const r = stickEl.getBoundingClientRect(); const v = -((e.clientY - r.top) - r.height / 2) / (r.height / 2 - 20); stick.value = Math.max(-1, Math.min(1, v)); setKnob(stick.value); }
-stickEl.addEventListener('pointerdown', e => { stickEl.setPointerCapture(e.pointerId); stick.id = e.pointerId; stickMove(e); });
-stickEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) stickMove(e); });
-const stickUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; setKnob(0); } };
-stickEl.addEventListener('pointerup', stickUp); stickEl.addEventListener('pointercancel', stickUp);
+function setYoke() { yokeG.setAttribute('transform', `translate(0 ${(-stick.value * 16).toFixed(1)}) rotate(${(stick.roll * 75).toFixed(1)})`); }
+function yokeMove(e) {
+  const r = yokeEl.getBoundingClientRect(), R = r.width * 0.36;
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  stick.roll = Math.max(-1, Math.min(1, dx / R)); stick.value = Math.max(-1, Math.min(1, -dy / R)); setYoke();
+}
+yokeEl.addEventListener('pointerdown', e => { yokeEl.setPointerCapture(e.pointerId); stick.id = e.pointerId; yokeMove(e); });
+yokeEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) yokeMove(e); });
+const yokeUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; stick.roll = 0; setYoke(); } };
+yokeEl.addEventListener('pointerup', yokeUp); yokeEl.addEventListener('pointercancel', yokeUp);
 
 // ---------- кнопки ----------
 function act(a) {
@@ -219,6 +223,7 @@ function act(a) {
       else if (!f.onGround) { c.apOn = true; c.atOn = true; if (f.h < 3000 && !c.appr) c.apAlt = f.dist < 60000 ? 1500 : f.recAlt; if (f.dist >= 60000) c.apAlt = f.recAlt; }
       break;
     case 'at': c.atOn = !c.atOn; break;
+    case 'nav': c.nav = !c.nav; break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'appr': if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
@@ -232,7 +237,7 @@ function syncButtons() {
   on('bGear', c.gear); $('bGear').textContent = 'ШАССИ ' + (f.gearPos > 0.98 ? '▼' : f.gearPos < 0.02 ? '▲' : '…');
   $('bFlD').textContent = 'ЗАКР − (' + FLAP_NAMES[c.flaps] + ')'; $('bFlU').textContent = 'ЗАКР +';
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
-  on('bAp', c.apOn); on('bAt', c.atOn); on('bAppr', c.appr);
+  on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bAppr', c.appr);
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);
@@ -250,9 +255,11 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 function keyboardInput(dt) {
   const f = flight;
-  let ks = 0; if (keys.ArrowUp || keys.KeyW) ks += 1; if (keys.ArrowDown || keys.KeyS) ks -= 1;
-  if (ks !== 0) { stick.value = ks; setKnob(ks); } else if (stick.id === null && Math.abs(stick.value) > 0 && ks === 0 && (keys._kb)) { stick.value = 0; setKnob(0); }
-  keys._kb = ks !== 0;
+  let ks = 0, kr = 0;
+  if (keys.ArrowUp || keys.KeyW) ks += 1; if (keys.ArrowDown || keys.KeyS) ks -= 1;
+  if (keys.ArrowRight || keys.KeyD) kr += 1; if (keys.ArrowLeft) kr -= 1;
+  if (ks !== 0 || kr !== 0) { stick.value = ks; stick.roll = kr; setYoke(); keys._kb = true; }
+  else if (keys._kb && stick.id === null) { stick.value = 0; stick.roll = 0; setYoke(); keys._kb = false; }
   let dthr = 0; if (keys.ShiftLeft || keys.ShiftRight) dthr += 0.4; if (keys.ControlLeft || keys.ControlRight) dthr -= 0.4;
   if (dthr) thrSet(f.c.thr + dthr * dt);
 }
@@ -323,7 +330,7 @@ function loop(ts) {
     if (!paused) {
       keyboardInput(dt);
       if (!f.done) {
-        f.c.stick = stick.value;
+        f.c.stick = stick.value; f.c.roll = stick.roll;
         const wasTd = !!f.td, wasAir = f.airborneOnce;
         const w = f.update(dt);
         view.warp = w;
