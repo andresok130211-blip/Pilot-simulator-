@@ -224,6 +224,14 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   rect(x0 - 40, 96, x0 + len + 40, 116, pal.apron);
   for (const fx of [0.06, 0.5, 0.93]) rect(x0 + len * fx, 30, x0 + len * fx + 24, 100, pal.apron);
   rect(x0 + len * 0.28, 116, x0 + len * 0.62, 235, pal.apron);
+  {
+    const Y = pal.night > 0.5 ? '#8a7a22' : '#d8b930', gx = x0 + len * 0.45;
+    rect(x0 - 40, 105.6, x0 + len + 40, 106.4, Y);
+    for (const fc of [0.06, 0.5, 0.93]) rect(x0 + len * fc + 11.6, 30, x0 + len * fc + 12.4, 106, Y);
+    rect(gx - 0.4, 106, gx + 0.4, 205, Y);
+    rect(gx - 11, 204.4, gx + 11, 205.4, Y);
+    rect(gx - 11, 204.4, gx - 10.2, 226, Y); rect(gx + 10.2, 204.4, gx + 11, 226, Y);
+  }
   // ВПП с торцевыми "обочинами"
   rect(x0 - 60, -34, x0 + len + 60, 34, mixc2(pal.runway, 1.12));
   rect(x0, -30, x0 + len, 30, pal.runway);
@@ -249,7 +257,7 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   // здания
   const bx = x0 + len * 0.3;
   box(bx, bx + len * 0.22, 250, 300, 22, pal.build);
-  box(bx + 20, bx + len * 0.2, 170, 215, 12, pal.build);
+  box(x0 + len * 0.45 - 2.5, x0 + len * 0.45 + 2.5, 228, 250, 5, ['#8e98ac']);
   box(x0 + len * 0.18, x0 + len * 0.18 + 14, 240, 254, 48, pal.build);
   box(x0 + len * 0.18 - 6, x0 + len * 0.18 + 20, 238, 256, 8, ['#556070']);
   box(x0 + len * 0.7, x0 + len * 0.7 + 90, 280, 340, 18, pal.build);
@@ -401,8 +409,15 @@ export function drawFlight(c, w, h, f, t, view) {
   U = Math.max(0.75, Math.min(H / 380, W / 720));
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
+  const chase = view.cam === 'chase';
   camX = f.x; camY = f.h + 5.5; camZ = f.yPos || 0; camPsi = f.psi || 0; yc = Math.cos(camPsi); ys = Math.sin(camPsi);
-  const th = f.theta + (view.bump || 0) * 0.002;
+  let th = f.theta + (view.bump || 0) * 0.002;
+  if (chase) {
+    // камера сзади-сверху, смотрит на самолёт
+    const span = Math.sqrt(f.p.S * f.p.ar), D = span * 1.45, hc = span * 0.3 + 2;
+    camX = f.x - D * yc; camZ = (f.yPos || 0) - D * ys; camY = f.h + hc;
+    th = -Math.atan((hc - 3) / D) + clamp(f.gamma || 0, -0.3, 0.3) * 0.25 + (view.bump || 0) * 0.001;
+  }
   ct = Math.cos(th); st = Math.sin(th);
   const hz = f.h > 1 ? Math.sqrt(2 * Math.max(f.h, 0) / 6371000) : 0;
   const hy = CY + F * Math.tan(th + hz);
@@ -410,7 +425,7 @@ export function drawFlight(c, w, h, f, t, view) {
 
   // микрокрен и тряска
   const turb = view.turb;
-  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0) - (f.phi || 0);
+  const roll = (0.006 * Math.sin(t * 0.6) + 0.004 * Math.sin(t * 1.7 + 1)) * (1 + turb * 2) + (view.rollKick || 0) - (chase ? 0 : (f.phi || 0));
   let shy = 0;
   if (f.onGround && f.v > 3) shy = Math.sin(t * 38) * Math.min(1, f.v / 60) * 0.9 * U + (view.bump || 0) * 0.15;
   else shy = (view.bump || 0) * 0.15;
@@ -427,11 +442,13 @@ export function drawFlight(c, w, h, f, t, view) {
   drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
   let fog = 0;
   if (view.warp <= 4) fog = drawClouds(pal, f);
+  if (chase) drawAircraft(f, pal, t);
   c.restore();
+  drawGuide(f);
   if (fog > 0) { c.fillStyle = `rgba(235,240,248,${fog * 0.8})`; c.fillRect(0, 0, W, H); }
 
   // кабина: стойки и козырёк
-  drawCockpit(pal);
+  if (!chase) drawCockpit(pal);
   drawHUD(f, t, view, th);
 }
 
@@ -469,8 +486,9 @@ function drawCockpit(pal) {
 }
 
 function drawHUD(f, t, view, th) {
-  const c = f.c;
+  const c = f.c, chase = view.cam === 'chase';
   const kmh = f.ias * 3.6;
+  if (!chase) {
   // шкала тангажа (вращается вместе с горизонтом)
   ctx.save(); ctx.translate(CX, CY); ctx.rotate(-(f.phi || 0)); ctx.translate(-CX, -CY);
   ctx.save();
@@ -510,6 +528,7 @@ function drawHUD(f, t, view, th) {
   ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(CX - 10 * U, CY); ctx.lineTo(CX - 3 * U, CY); ctx.moveTo(CX + 10 * U, CY); ctx.lineTo(CX + 3 * U, CY); ctx.moveTo(CX, CY - 3 * U); ctx.lineTo(CX, CY + 3 * U); ctx.stroke();
 
+  }
   // лента скорости
   const vbugs = [];
   const tgt = f.atTargetIAS() * 3.6;
@@ -590,6 +609,134 @@ function drawHUD(f, t, view, th) {
   if (wl.length && Math.floor(t * 3) % 2 === 0) {
     ctx.font = `800 ${17 * U}px system-ui,sans-serif`;
     for (let i = 0; i < Math.min(2, wl.length); i++) txt(wl[i][0], CX, H * 0.24 + i * 22 * U, wl[i][1], 17 * U, 'center', '800');
+  }
+}
+
+// ---- метка маршрута руления ----
+const wrapA = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+function drawGuide(f) {
+  const g = f.guide;
+  if (!g || !f.onGround || f.done) return;
+  const label = (g.label ? g.label + '  ' : '') + Math.round(g.dist) + ' м';
+  const ok = toScreen(g.x, 14, g.z, SP) && SP.x > 30 && SP.x < W - 30 && SP.y > 40 && SP.y < H - 40;
+  ctx.save();
+  if (ok) {
+    const s = clamp(F * 3.2 / SP.f, 6 * U, 13 * U), x = SP.x, y = SP.y;
+    ctx.fillStyle = '#ffd24a'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y + s); ctx.lineTo(x - s * 0.8, y - s * 0.5); ctx.lineTo(x + s * 0.8, y - s * 0.5); ctx.closePath(); ctx.stroke(); ctx.fill();
+    const w = ctx.measureText(label).width;
+    ctx.font = `700 ${11 * U}px system-ui,sans-serif`;
+    const tw = ctx.measureText(label).width + 12 * U;
+    ctx.fillStyle = 'rgba(6,12,26,.7)'; ctx.fillRect(x - tw / 2, y - s * 0.5 - 20 * U, tw, 17 * U);
+    txt(label, x, y - s * 0.5 - 7 * U, '#ffd24a', 11 * U, 'center', '700');
+  } else {
+    const ang = wrapA(Math.atan2(g.z - camZ, g.x - camX) - camPsi);
+    const right = ang > 0, x = right ? W - 70 * U : 70 * U, y = CY;
+    ctx.fillStyle = '#ffd24a';
+    ctx.beginPath(); if (right) { ctx.moveTo(x + 14 * U, y); ctx.lineTo(x - 6 * U, y - 12 * U); ctx.lineTo(x - 6 * U, y + 12 * U); } else { ctx.moveTo(x - 14 * U, y); ctx.lineTo(x + 6 * U, y - 12 * U); ctx.lineTo(x + 6 * U, y + 12 * U); }
+    ctx.closePath(); ctx.fill();
+    txt(label, x, y + 28 * U, '#ffd24a', 11 * U, 'center', '700');
+  }
+  ctx.restore();
+}
+
+// ---- модель самолёта для вида от третьего лица ----
+const modelCache = {};
+function buildModel(p) {
+  const span = Math.sqrt(p.S * p.ar), L = span * (p.seats >= 300 ? 1.12 : 1.07), r = L * 0.052;
+  const gh = r + 1.5;
+  const faces = [];
+  const add = (pts, col, kind) => faces.push({ pts, col, kind: kind || '' });
+  const st = [[0.5, 0.10, 0.0], [0.46, 0.60, -0.05], [0.40, 0.90, -0.02], [0.30, 1, 0], [-0.16, 1, 0], [-0.33, 0.72, 0.28], [-0.5, 0.16, 0.5]];
+  const rings = st.map(([xf, k, dy]) => { const rr = r * k, cy = dy * r, ring = []; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; ring.push([xf * L, cy + rr * Math.sin(a), rr * Math.cos(a)]); } return ring; });
+  for (let q = 0; q < rings.length - 1; q++) for (let i = 0; i < 8; i++) {
+    const j = (i + 1) % 8;
+    let col = i < 4 ? '#eef2f8' : '#aeb7c8';
+    if (q <= 1 && (i === 1 || i === 2)) col = '#1c2433';
+    else if ((q === 2 || q === 3) && (i === 0 || i === 3)) col = p.color;
+    add([rings[q][i], rings[q][j], rings[q + 1][j], rings[q + 1][i]], col);
+  }
+  const half = span / 2, wy = -0.5 * r;
+  for (const sg of [-1, 1]) {
+    const le = 0.06 * L - 0.5 * half, te = le - 0.07 * L;
+    add([[0.06 * L, wy, sg * r * 0.9], [-0.14 * L, wy, sg * r * 0.9], [te, wy + 0.07 * half, sg * half], [le, wy + 0.07 * half, sg * half]], '#d3d9e6', 'wing');
+    add([[-0.40 * L, 0.2 * r, sg * r * 0.4], [-0.49 * L, 0.25 * r, sg * r * 0.4], [-0.50 * L, 0.3 * r, sg * half * 0.36], [-0.45 * L, 0.3 * r, sg * half * 0.36]], '#cfd5e2', 'wing');
+    // двигатель
+    const ez = sg * span * 0.17, re = L * 0.031, ey = wy - re * 1.1, ex1 = 0.1 * L, ex0 = -0.02 * L;
+    const er = [], er0 = [];
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; er.push([ex1, ey + re * Math.sin(a), ez + re * Math.cos(a)]); er0.push([ex0, ey + re * 0.9 * Math.sin(a), ez + re * 0.9 * Math.cos(a)]); }
+    for (let i = 0; i < 6; i++) { const j = (i + 1) % 6; add([er[i], er[j], er0[j], er0[i]], i < 3 ? '#c4ccdb' : '#8e98ab'); }
+    add(er, '#12161e', 'eng');
+    // ножки шасси и колёса
+    const mz = sg * span * 0.11, mx = -0.05 * L, wh = 1.15;
+    add([[mx - 0.12, -gh + wh, mz], [mx + 0.12, -gh + wh, mz], [mx + 0.12, wy, mz], [mx - 0.12, wy, mz]], '#2b323f', 'gear');
+    add([[mx - 0.65, -gh, mz], [mx + 0.65, -gh, mz], [mx + 0.65, -gh + wh, mz], [mx - 0.65, -gh + wh, mz]], '#0f1218', 'gear');
+  }
+  add([[-0.38 * L, 0.7 * r, 0], [-0.5 * L, 0.7 * r, 0], [-0.535 * L, 0.7 * r + 0.15 * L, 0], [-0.455 * L, 0.7 * r + 0.15 * L, 0]], p.color, 'fin');
+  const nx = 0.33 * L;
+  add([[nx - 0.1, -gh + 0.8, 0], [nx + 0.1, -gh + 0.8, 0], [nx + 0.1, -r * 0.8, 0], [nx - 0.1, -r * 0.8, 0]], '#2b323f', 'gear');
+  add([[nx - 0.55, -gh, 0], [nx + 0.55, -gh, 0], [nx + 0.55, -gh + 0.8, 0], [nx - 0.55, -gh + 0.8, 0]], '#0f1218', 'gear');
+  return { faces, L, r, span, gh, half };
+}
+const MP = [], MQ = [];
+function drawAircraft(f, pal, t) {
+  const p = f.p, M = modelCache[p.id] || (modelCache[p.id] = buildModel(p));
+  const th = f.theta, ph = f.phi || 0, ps = f.psi || 0;
+  const cT = Math.cos(th), sT = Math.sin(th), cP = Math.cos(ph), sP = Math.sin(ph);
+  const X0 = f.x, Z0 = f.yPos || 0, Y0 = f.h + M.gh;
+  const tr = (x, y, z, out) => {
+    const x1 = x * cT - y * sT, y1 = x * sT + y * cT;
+    const y2 = y1 * cP - z * sP, z2 = y1 * sP + z * cP;
+    out[0] = X0 + x1 * yc - z2 * ys; out[1] = Y0 + y2; out[2] = Z0 + x1 * ys + z2 * yc;
+  };
+  const gearDown = f.gearPos > 0.5;
+  // тень на земле
+  const fade = clamp(1 - f.h / 1800, 0, 1);
+  if (fade > 0.02) {
+    const sh = `rgba(0,0,0,${0.3 * fade * (1 - pal.night * 0.6)})`;
+    const gp = (x, z) => { const c1 = Math.cos(ps), s1 = Math.sin(ps); return [X0 + x * c1 - z * s1, 0.07, Z0 + x * s1 + z * c1]; };
+    const poly = pts => { for (let i = 0; i < pts.length; i++) { const g = gp(pts[i][0], pts[i][1]); P[3 * i] = g[0]; P[3 * i + 1] = g[1]; P[3 * i + 2] = g[2]; } polyFlat(P, pts.length, sh); };
+    poly([[M.L / 2, -M.r * 0.5], [M.L / 2, M.r * 0.5], [-M.L / 2, M.r * 0.4], [-M.L / 2, -M.r * 0.4]]);
+    for (const sg of [-1, 1]) {
+      const le = 0.06 * M.L - 0.5 * M.half, te = le - 0.07 * M.L;
+      poly([[0.06 * M.L, sg * M.r], [-0.14 * M.L, sg * M.r], [te, sg * M.half], [le, sg * M.half]]);
+      poly([[-0.40 * M.L, sg * M.r * 0.4], [-0.49 * M.L, sg * M.r * 0.4], [-0.50 * M.L, sg * M.half * 0.36], [-0.45 * M.L, sg * M.half * 0.36]]);
+    }
+  }
+  // грани: преобразование, сортировка по глубине
+  const list = [];
+  const LX = -0.4, LY = 0.85, LZ = 0.35, ln = Math.hypot(LX, LY, LZ);
+  for (const fc of M.faces) {
+    if (fc.kind === 'gear' && !gearDown) continue;
+    const n = fc.pts.length, w = [];
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < n; i++) { const o = [0, 0, 0]; tr(fc.pts[i][0], fc.pts[i][1], fc.pts[i][2], o); w.push(o); cx += o[0]; cy += o[1]; cz += o[2]; }
+    cx /= n; cy /= n; cz /= n;
+    const dx0 = cx - camX, dz0 = cz - camZ, dy = cy - camY;
+    const fw = (dx0 * yc + dz0 * ys) * ct + dy * st;
+    // нормаль
+    const ux = w[1][0] - w[0][0], uy = w[1][1] - w[0][1], uz = w[1][2] - w[0][2], vx = w[2][0] - w[0][0], vy = w[2][1] - w[0][1], vz = w[2][2] - w[0][2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+    if (nx * (camX - cx) + ny * (camY - cy) + nz * (camZ - cz) < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    const dif = Math.max(0, (nx * LX + ny * LY + nz * LZ) / ln);
+    let k = 0.5 + 0.55 * dif;
+    if (pal.night > 0.3) k *= 1 - 0.45 * pal.night;
+    list.push({ w, fw, k: Math.round(k * 20) / 20, col: fc.col });
+  }
+  list.sort((a, b) => b.fw - a.fw);
+  for (const o of list) {
+    const n = o.w.length;
+    for (let i = 0; i < n; i++) { P[3 * i] = o.w[i][0]; P[3 * i + 1] = o.w[i][1]; P[3 * i + 2] = o.w[i][2]; }
+    polyFlat(P, n, shadeCol(o.col, o.k));
+  }
+  // ходовые огни
+  if (pal.night > 0.2 || f.h > 10) {
+    const o = [0, 0, 0], le = 0.06 * M.L - 0.5 * M.half;
+    const lamp = (x, y, z, col, r0) => { tr(x, y, z, o); if (toScreen(o[0], o[1], o[2], SP)) { const g = ctx.createRadialGradient(SP.x, SP.y, 0, SP.x, SP.y, r0 * 3); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(SP.x - r0 * 3, SP.y - r0 * 3, r0 * 6, r0 * 6); } };
+    lamp(le, -0.5 * M.r + 0.07 * M.half, -M.half, 'rgba(255,50,40,.95)', 3.2 * U);
+    lamp(le, -0.5 * M.r + 0.07 * M.half, M.half, 'rgba(60,255,120,.95)', 3.2 * U);
+    if (Math.floor(t * 1.6) % 4 === 0) lamp(-0.5 * M.L, M.r * 0.7, 0, 'rgba(255,255,255,1)', 5 * U);
   }
 }
 

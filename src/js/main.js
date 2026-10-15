@@ -17,7 +17,7 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, hints: true, tod: 'rnd', sound: true, seenHelp: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 if (!PL_BY[save.plane] || !save.owned.includes(save.plane)) { save.plane = save.owned[0] || 'ssj'; }
@@ -100,7 +100,8 @@ function renderHub() {
 function showHelp() {
   showModal(`<h2>Как играть</h2>
   <div class="sub"><b>Слева — газ</b> (ползунок вверх — больше тяги). <b>Справа — ручка</b>: вверх — нос вверх, вниз — нос вниз; отпустили — самолёт сам держит траекторию.<br><br>
-  <b>1. Взлёт.</b> Отпустите ТОРМОЗ, газ на максимум, на скорости VR плавно тяните ручку вверх (тангаж 10–12°). Над землёй уберите ШАССИ.<br>
+  <b>0. Руление.</b> Вы стоите на гейте. Отпустите ТОРМОЗ и поднимите газ до 15–30% (нижняя треть ползунка — скорость руления). Штурвал вправо/влево поворачивает. Следуйте за жёлтой меткой на рулёжную дорожку и на полосу. Кнопка АВТО РУЛ включает автоматическое руление. После посадки сверните на рулёжную дорожку и заруливайте на гейт — рейс засчитывается, когда самолёт встал на стоянку. Кнопка ВИД переключает вид снаружи и из кабины.<br>
+  <b>1. Взлёт.</b> На полосе отпустите ТОРМОЗ, газ на максимум, на скорости VR плавно тяните ручку вверх (тангаж 10–12°). Над землёй уберите ШАССИ.<br>
   <b>2. Полёт.</b> Включите А/П (автопилот), ВЫС ± задаёт высоту. Когда самолёт в крейсере, жмите ×2…×32 — время ускоряется.<br>
   <b>3. Посадка.</b> ПОСАДКА включает заход по глиссаде: выпускайте закрылки и шасси по подсказкам. У земли слегка потяните ручку на себя и сбросьте газ. После касания — ТОРМОЗ.<br><br>
   Чем мягче касание и чище полёт, тем больше платят. Галочки «Помощник» перед рейсом включают автоматику снижения и механизации — а без неё доплата выше.</div>
@@ -126,6 +127,8 @@ function renderSelect() {
     <div class="bar" id="opts" style="${sel ? '' : 'display:none'}">
       <label class="chk"><input type="checkbox" id="oAuto" ${save.assistAuto ? 'checked' : ''}> Помощник: автопилот сам набирает высоту, снижается и ведёт по глиссаде</label>
       <label class="chk"><input type="checkbox" id="oCfg" ${save.assistCfg ? 'checked' : ''}> Помощник: сам выпускает и убирает шасси и закрылки</label>
+      <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
+      <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
       <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
       <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
       <button class="btn go big" id="bGo">Лететь ✈</button>
@@ -143,6 +146,8 @@ function renderSelect() {
   if ($('bGo')) {
     $('oAuto').onchange = e => { save.assistAuto = e.target.checked; persist(); };
     $('oCfg').onchange = e => { save.assistCfg = e.target.checked; persist(); };
+    $('oTaxiOps').onchange = e => { save.taxiOps = e.target.checked; persist(); };
+    $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
     $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
     $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
@@ -176,9 +181,9 @@ function startFlight(c) {
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
   flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
-    assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints }, tod, recAlt: recommendedCruise(c.km) });
+    taxi: save.taxiOps, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
-  view = { bump: 0, turb: 0, rollKick: 0, warp: 1 };
+  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = '';
@@ -224,6 +229,8 @@ function act(a) {
       break;
     case 'at': c.atOn = !c.atOn; break;
     case 'nav': c.nav = !c.nav; break;
+    case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
+    case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'appr': if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
@@ -237,7 +244,8 @@ function syncButtons() {
   on('bGear', c.gear); $('bGear').textContent = 'ШАССИ ' + (f.gearPos > 0.98 ? '▼' : f.gearPos < 0.02 ? '▲' : '…');
   $('bFlD').textContent = 'ЗАКР − (' + FLAP_NAMES[c.flaps] + ')'; $('bFlU').textContent = 'ЗАКР +';
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
-  on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bAppr', c.appr);
+  on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bTaxi', c.taxiAuto && f.onGround); $('bTaxi').disabled = !f.onGround || !f.taxiOps;
+  $('bView').textContent = save.cam === 'chase' ? 'ВИД: СНАРУЖИ' : 'ВИД: КАБИНА'; on('bAppr', c.appr);
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);
@@ -248,7 +256,7 @@ function syncButtons() {
 addEventListener('keydown', e => {
   if (mode !== 'flight' || !flight) return;
   keys[e.code] = true;
-  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at' }[e.code];
+  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi' }[e.code];
   if (m && !e.repeat) act(m);
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });
@@ -333,7 +341,7 @@ function loop(ts) {
         f.c.stick = stick.value; f.c.roll = stick.roll;
         const wasTd = !!f.td, wasAir = f.airborneOnce;
         const w = f.update(dt);
-        view.warp = w;
+        view.warp = w; view.cam = save.cam;
         if (!wasTd && f.td) { view.bump = Math.min(14, 2 + f.td.sink * 3.5); }
         if (!wasAir && f.airborneOnce) view.bump = 1.5;
         view.bump *= Math.pow(0.02, dt);

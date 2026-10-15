@@ -14,7 +14,7 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #thrfill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
 #thr .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
 #thrv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
-#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 300px))}
+#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 300px))}
 #btns button{pointer-events:auto;touch-action:none;height:36px;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:9px;font-size:10.5px;font-weight:800;padding:0 2px;line-height:1.05}
 #btns button.on{background:#1f8f4e;border-color:#7dffb0}
 #btns button.warn{background:#a23232;border-color:#ff9a9a}
@@ -71,3 +71,8 @@ table.res td:last-child{text-align:right;font-weight:700}
 @media (max-width:640px){
   .panel{width:64vw}
 }
+
+#thrmark{position:absolute;left:0;right:0;bottom:35%;border-top:2px dashed rgba(255,255,255,.7);z-index:1;pointer-events:none}
+#thrmark span{position:absolute;left:0;right:0;text-align:center;font-size:7.5px;font-weight:800;opacity:.85}
+#thrmark span:first-child{bottom:2px}
+#thrmark span:last-child{top:2px}

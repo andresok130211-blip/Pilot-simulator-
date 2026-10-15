@@ -11,7 +11,7 @@
 <canvas id="c"></canvas>
 
 <div id="ui">
-  <div id="thr" class="ctl"><div id="thrfill"></div><div class="lb">ГАЗ</div><div id="thrv">0%</div></div>
+  <div id="thr" class="ctl"><div id="thrfill"></div><div id="thrmark"><span>ВЗЛЁТ ▲</span><span>▼ РУЛЕНИЕ</span></div><div class="lb">ГАЗ</div><div id="thrv">0%</div></div>
   <div id="yoke" class="ctl"><svg id="yokeSvg" viewBox="-100 -100 200 200"><g id="yokeG">
     <rect x="-9" y="8" width="18" height="86" rx="8" fill="#2b3242"/>
     <path d="M-80 -52 L-80 -6 Q-80 26 -48 26 L48 26 Q80 26 80 -6 L80 -52" fill="none" stroke="#10141c" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
@@ -31,6 +31,8 @@
     <button id="bAltD" data-act="altd">ВЫС −</button>
     <button id="bAltU" data-act="altu">ВЫС +</button>
     <button id="bAppr" data-act="appr">ПОСАДКА</button>
+    <button id="bTaxi" data-act="taxi">АВТО РУЛ</button>
+    <button id="bView" data-act="view">ВИД</button>
   </div>
   <div id="hint"></div>
   <div id="log"></div>

@@ -6,16 +6,18 @@ export function fly(planeId, fromId, toId, opts = {}) {
   const plane = PL_BY[planeId], from = AP_BY[fromId], to = AP_BY[toId];
   const km = distKm(from, to);
   const c0 = makeContract(plane, from, to, () => opts.load ?? 0.9);
-  const f = new Flight({ plane, from, to, bearing: bearing(from, to), distM: km * 1000, pax: c0.pax, fuelKg: c0.fuel, assist: opts.assist || { auto: true, config: true }, recAlt: recommendedCruise(km) });
+  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: c0.fuel, assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km) });
   const c = f.c;
   const dt = 1 / 60;
   let t = 0, phase = 'roll', log = [];
   const L = (s) => log.push(`t=${t.toFixed(0)} x=${(f.x / 1000).toFixed(1)}km h=${f.h.toFixed(0)} ias=${(f.ias * 3.6).toFixed(0)} ${s}`);
-  c.brake = false; c.thr = 1;
+  const taxi = opts.taxi !== false; let started = !taxi;
+  if (!taxi) { c.brake = false; c.thr = 1; }
   let guard = 0;
   let wantWarp = opts.warp ?? 32;
-  while (!f.done && t < 14 * 3600 && guard++ < 5e7) {
+  while (!f.done && !(opts.stopAtTd && f.td && f.td.onDest && f.v < 24) && t < 14 * 3600 && guard++ < 5e7) {
     if (opts.y0 && f.h > 300 && !opts._y) { f.yPos = opts.y0; opts._y = 1; }
+    if (taxi && !started && f.lined) { c.brake = false; c.thr = 1; started = true; }
     // управление
     if (f.onGround && !f.td) {
       if (f.ias >= f.vr) c.stick = Math.max(0, Math.min(1, (12 * DEG - f.theta) * 5));
@@ -42,7 +44,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       const vsT = f.h > 14 ? -f.v * Math.sin(3 * DEG) - 0.1 * (f.h - (f.dist + 300) * Math.tan(3 * DEG)) : -(0.4 + 0.25 * f.h);
       c.stick = Math.max(-1, Math.min(1, (vsT - f.vs) * 0.35));
     }
-    if (f.td) { c.brake = true; c.thr = 0; c.atOn = false; c.stick = 0; }
+    if (f.td) { if (!taxi || (f.v > 24 && !f.c.taxiAuto)) c.brake = true; c.thr = 0; c.atOn = false; c.stick = 0; }
     c.warp = wantWarp;
     const w = f.effectiveWarp();
     for (let i = 0; i < w && !f.done; i++) { f.step(dt); t += dt; }

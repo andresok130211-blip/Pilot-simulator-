@@ -17,6 +17,26 @@ const IDLE = 0.06;
 const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const FLARE_H = 14;
 
+// Схема аэродрома в системе «ось X вдоль полосы, Z вправо от оси»: рулёжная дорожка z=106,
+// три съезда, перрон и стоянка (гейт) перед терминалом.
+export const TAXI_Z = 106, GATE_Z = 205;
+export const frameOf = (x0, len) => ({ x0, len, gx: x0 + len * 0.45, gz: GATE_Z, tz: TAXI_Z, conn: [0.06, 0.5, 0.93].map(f => x0 + len * f + 12) });
+const seg = (ax, az, bx, bz) => { const d = Math.hypot(bx - ax, bz - az) || 1; return [(bx - ax) / d, (bz - az) / d, d]; };
+// ломаная -> путевые точки со срезанными углами
+function chamfer(poly, R) {
+  const out = [];
+  for (let k = 1; k < poly.length; k++) {
+    const P = poly[k], A = poly[k - 1];
+    if (k < poly.length - 1) {
+      const [ux, uz, d1] = seg(A.x, A.z, P.x, P.z), N = poly[k + 1], [wx, wz, d2] = seg(P.x, P.z, N.x, N.z);
+      const r1 = Math.min(R, d1 * 0.45), r2 = Math.min(R, d2 * 0.45);
+      if (Math.abs(ux * wz - uz * wx) < 0.15) out.push({ x: P.x, z: P.z, v: 11, key: k });
+      else out.push({ x: P.x - ux * r1, z: P.z - uz * r1, v: 4, key: k }, { x: P.x + wx * r2, z: P.z + wz * r2, v: 4, key: k });
+    } else out.push({ x: P.x, z: P.z, v: 0, key: k });
+  }
+  return out;
+}
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerpTab = (tab, f) => {
   const i = Math.min(tab.length - 2, Math.max(0, Math.floor(f)));
@@ -51,7 +71,10 @@ export class Flight {
     this.recAlt = o.recAlt || 9600;
 
     this.yPos = 0; this.psi = 0; this.phi = 0; this.brg = o.bearing || 0; // боковое смещение, курс и крен относительно оси ВПП
+    this.taxiOps = o.taxi !== false; // полный цикл: гейт → рулёжка → ВПП → ... → гейт
+    this.fr0 = frameOf(0, o.from.rwy); this.fr1 = frameOf(this.D, o.to.rwy);
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
+    if (this.taxiOps) { this.x = this.fr0.gx; this.yPos = GATE_Z; this.psi = -Math.PI / 2; } // стоим на гейте носом к рулёжке
     this.thrAct = 0; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
@@ -62,10 +85,79 @@ export class Flight {
     this.stats = { maxG: 1, stallT: 0, overT: 0, gpws: 0, tail: false };
     this.autoDescDone = false; this.autoEngaged = false;
     this.cfgTimer = 0; this.flapMsgT = 0; this.maxV = 0;
+    this.lined = false; this.parked = false; this.guide = null; this.route = null; this.ri = 0; this.routePoly = null; this.autoSteer = 0; this.autoV = 0; this._inEngaged = false; this._routeT = 0; this.inXc = undefined;
     this._cooldown = {};
     this.updateMass();
     this.computeSpeeds();
     this.aero(); // начальные величины
+    if (this.taxiOps) {
+      this.c.taxiAuto = !!this.assist.taxi;
+      this.setRoute(this.buildOutRoute());
+      this.msg('Буксир отцепился. Отпустите тормоз и рулите на полосу');
+    }
+  }
+
+  // ---------- руление ----------
+  setRoute(poly) { this.routePoly = poly; this.route = chamfer(poly, 16); this.ri = 0; }
+  buildOutRoute() {
+    const f = this.fr0, cx = f.conn[0];
+    return [{ x: this.x, z: this.yPos }, { x: f.gx, z: f.tz, label: 'Рулёжная дорожка' }, { x: cx, z: f.tz, label: 'Поворот к полосе' }, { x: cx, z: 0, label: 'Выезд на ВПП' }, { x: cx + 110, z: 0, label: 'Взлётная позиция' }];
+  }
+  buildInRoute() {
+    const f = this.fr1, dir = Math.cos(this.psi) >= 0 ? 1 : -1, need = this.v > 10 ? 130 : 40;
+    const cs = f.conn.slice(); if (dir < 0) cs.reverse();
+    let Xc = this.inXc;
+    if (Xc === undefined || (Xc - this.x) * dir < 15) {
+      Xc = cs.find(c => (c - this.x) * dir > need);
+      if (Xc === undefined) Xc = cs[cs.length - 1];
+      this.inXc = Xc;
+    }
+    return [{ x: this.x, z: this.yPos }, { x: Xc, z: 0, label: 'Съезд с полосы' }, { x: Xc, z: f.tz, label: 'Рулёжная дорожка' }, { x: f.gx, z: f.tz, label: 'Поворот к гейту' }, { x: f.gx, z: f.gz, label: 'ГЕЙТ' }];
+  }
+  onPaved(x = this.x, y = this.yPos) {
+    for (const f of [this.fr0, this.fr1]) {
+      const ax = x - f.x0;
+      if (ax >= -60 && ax <= f.len + 60 && Math.abs(y) <= 40) return true;
+      if (ax >= -40 && ax <= f.len + 40 && y >= 90 && y <= 122) return true;
+      if (y >= 30 && y <= 100) for (const c of f.conn) if (Math.abs(x - c) <= 22) return true;
+      if (ax >= f.len * 0.28 && ax <= f.len * 0.62 && y >= 116 && y <= 235) return true;
+    }
+    return false;
+  }
+  groundNav(dt) {
+    const c = this.c;
+    if (!this.td && !this.airborneOnce) {
+      this.lined = this.onRunway(this.x, this.yPos) && Math.abs(wrapPi(this.psi)) < 12 * DEG && Math.abs(this.yPos) < 20 && this.x > 20;
+      if (this.lined && c.taxiAuto) { c.taxiAuto = false; c.brake = true; c.thr = 0; this.msg('Вы на полосе. Отпустите тормоз и дайте полный газ'); }
+    } else if (this.td && this.td.onDest) {
+      if (!this._inInit) { this._inInit = true; this.ri = 0; this._routeT = 0; }
+      if (this.v < 24 && this.assist.taxi && !this._inEngaged) { this._inEngaged = true; c.taxiAuto = true; }
+      // пока на полосе — подбираем ближайший съезд
+      this._routeT -= dt;
+      if (this._routeT <= 0 && this.ri === 0 && this.onRunway(this.x, this.yPos) && this.v < 30) { this._routeT = 0.5; const ri = this.ri, old = this.inXc; this.setRoute(this.buildInRoute()); if (old === this.inXc) this.ri = ri; }
+      if (!this.parked && Math.abs(this.x - this.fr1.gx) < 12 && Math.abs(this.yPos - GATE_Z) < 12 && this.v < 0.4 && Math.abs(wrapPi(this.psi - Math.PI / 2)) < 0.45) {
+        this.parked = true; this.msg('Самолёт на гейте'); this.finish('ok', ''); return;
+      }
+    }
+    const R = this.route; if (!R) { this.guide = null; return; }
+    const last = R.length - 1;
+    while (this.ri < last && Math.hypot(R[this.ri].x - this.x, R[this.ri].z - this.yPos) < 14) this.ri++;
+    const w = R[this.ri], dist = Math.hypot(w.x - this.x, w.z - this.yPos);
+    const kp = this.routePoly[w.key];
+    this.guide = { x: kp.x, z: kp.z, label: kp.label || '', dist: Math.hypot(kp.x - this.x, kp.z - this.yPos) };
+    if (!c.taxiAuto || (this.td && !this.td.onDest)) return;
+    const e = wrapPi(Math.atan2(w.z - this.yPos, w.x - this.x) - this.psi);
+    this.autoSteer = clamp(e * 2.2, -1, 1);
+    let vt = 11, d = dist;
+    for (let j = this.ri; j <= last; j++) {
+      if (j > this.ri) d += Math.hypot(R[j].x - R[j - 1].x, R[j].z - R[j - 1].z);
+      vt = Math.min(vt, Math.sqrt(R[j].v * R[j].v + 2 * 1.1 * Math.max(0, d - (j === last ? 1.5 : 0))));
+    }
+    if (Math.abs(e) > 0.9) vt = Math.min(vt, 3);
+    if (!this.onPaved()) vt = Math.min(vt, 6);
+    this.autoV = vt;
+    c.thr = 0;
+    c.brake = this.v > vt + 1.5 || (this.ri === last && dist < 3);
   }
 
   updateMass() { this.mass = this.p.oew + this.payload + this.fuel; }
@@ -208,6 +300,8 @@ export class Flight {
     const A = this.A, v = this.v, m = this.mass;
     const ias = this.ias;
     const dist = this.dist;
+    if (this.onGround && this.taxiOps) this.groundNav(dt);
+    if (this.done) return;
 
     // актуаторы
     this.gearPos += clamp((c.gear ? 1 : 0) - this.gearPos, -dt / 7, dt / 7);
@@ -330,17 +424,35 @@ export class Flight {
     const c = this.c, W = this.mass * G;
     const N = Math.max(0, W - this.L);
     const onRwy = this.onRunway(this.x);
-    let mu = onRwy ? 0.02 : 0.15;
-    if (this.gearPos < 0.9) mu = 0.5;
-    if (c.brake) mu += onRwy ? 0.30 : 0.2;
-    let F = T - this.Dr - mu * N;
-    if (this.v < 0.3 && F <= 0) { this.v = 0; }
-    else {
-      this.v += F / this.mass * dt;
-      if (this.v < 0) this.v = 0;
+    const paved = !this.taxiOps || this.onPaved();
+    // режим руления: малая скорость и газ в нижней трети ползунка — ползунок задаёт скорость руления
+    const taxiMode = this.taxiOps && this.v < 24 && c.thr < 0.35;
+    if (taxiMode) {
+      let vt = c.taxiAuto && !(this.td && !this.td.onDest) ? this.autoV : c.thr / 0.35 * 15;
+      if (!paved) vt = Math.min(vt, 6);
+      let a = c.brake ? -2.6 : clamp((vt - this.v) * 0.7, -1.8, 1.0);
+      if (this.gearPos < 0.9) a = Math.min(a, -1);
+      this.v = Math.max(0, this.v + a * dt);
+      if (this.v < 0.05 && vt < 0.2) this.v = 0;
+    } else {
+      let mu = paved ? 0.02 : 0.15;
+      if (this.gearPos < 0.9) mu = 0.5;
+      if (c.brake) mu += onRwy ? 0.30 : 0.2;
+      let F = T - this.Dr - mu * N;
+      if (this.v < 0.3 && F <= 0) { this.v = 0; }
+      else {
+        this.v += F / this.mass * dt;
+        if (this.v < 0) this.v = 0;
+      }
     }
-    const steer = c.roll || 0;
-    if (this.v > 1) {
+    const steer = this.taxiOps && c.taxiAuto && !(this.td && !this.td.onDest) ? this.autoSteer : (c.roll || 0);
+    if (this.taxiOps) {
+      if (this.v > 0.8) {
+        const sc = Math.abs(steer) > 0.04 ? steer : 0;
+        this.psi += sc * Math.min(this.v / 12, 0.7) * (this.v > 30 ? Math.pow(30 / this.v, 2) : 1) * dt;
+        if (!sc && onRwy && this.v > 12 && Math.abs(this.psi) < 0.6) this.psi -= this.psi * 0.6 * dt;
+      }
+    } else if (this.v > 1) {
       if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
       else this.psi -= this.psi * 0.6 * dt;
     }
@@ -348,8 +460,16 @@ export class Flight {
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
     this.gamma = 0; this.h = 0;
+    if (this.taxiOps) {
+      if (!paved && this.v > 8) this.incident('grass', 'Выезд на траву', 3, 30);
+      if (paved && !onRwy && this.v > 20) this.incident('taxispeed', 'Превышение скорости руления', 2, 30);
+      for (const f of [this.fr0, this.fr1]) {
+        const ax = this.x - f.x0;
+        if (this.yPos > 238 && ax > f.len * 0.28 && ax < f.len * 0.65 && this.v > 1) { this.finish('crash', 'Столкновение с терминалом.'); return; }
+      }
+    }
     // отрыв
-    if (!this.td && this.v > 25 && this.L >= W && this.theta > 1.5 * DEG && this.gearPos > 0.5) {
+    if (!this.td && this.v > 25 && this.L >= W && this.theta > 1.5 * DEG && this.gearPos > 0.5 && (!this.taxiOps || onRwy)) {
       this.onGround = false; this.airborneOnce = true; this.gamma = 0.0; this.h = 0.05;
       this.msg('Отрыв! Скорость ' + Math.round(this.ias * 3.6) + ' км/ч');
       return;
@@ -357,13 +477,14 @@ export class Flight {
     // заход в траву
     if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
     if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
-    // автотормоз
-    if (this.td && this.assist.auto && this.v > 8) { c.brake = true; c.thr = 0; c.atOn = false; }
+    // автотормоз после касания
+    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = 0; c.atOn = false; }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
       const onDest = this.x >= this.rwy1.s - 20 && this.x <= this.rwy1.e + 20 && Math.abs(this.yPos) <= 35;
-      if (this.x > this.rwy1.e) this.finish('overrun', 'Самолёт остановился за пределами полосы.');
+      if (this.x > this.rwy1.e && Math.abs(this.yPos) < 50) this.finish('overrun', 'Самолёт остановился за пределами полосы.');
+      else if (this.taxiOps && this.td.onDest) { /* продолжаем руление до гейта */ }
       else if (onDest) this.finish('ok', '');
       else if (this.x <= this.rwy0.e + 20) this.finish('forced', 'Вынужденная посадка в аэропорту вылета. Рейс отменён.');
       else this.finish('forced', 'Остановились вне полосы назначения.');
@@ -456,7 +577,8 @@ export class Flight {
   // ---------- ускорение времени ----------
   allowedWarp() {
     const c = this.c;
-    if (!c.apOn || !c.atOn || this.onGround || this.warnings.size) return 1;
+    if (this.onGround) return this.taxiOps && c.taxiAuto && !this.warnings.size && this.v > 0.5 && !(this.td && !this.td.onDest) ? 4 : 1;
+    if (!c.apOn || !c.atOn || this.warnings.size) return 1;
     if (Math.abs(c.roll || 0) > 0.04 || Math.abs(this.phi) > 6 * DEG) return 1;
     if (!c.nav && Math.abs(this.yPos) > 800) return 1;
     const dist = this.dist;
@@ -488,6 +610,22 @@ export class Flight {
   hint() {
     const c = this.c, dist = this.dist, kmh = x => Math.round(x * 3.6);
     if (this.done) return '';
+    if (this.onGround && this.taxiOps) {
+      const g = this.guide, gs = g ? ' — ' + g.label + ', ' + Math.round(g.dist) + ' м' : '';
+      if (this.td) {
+        if (this.td.onOrig && !this.td.onDest) return '';
+        if (this.v > 24 && !c.brake) return 'Нажмите ТОРМОЗ, газ на минимум';
+        if (this.v > 24) return 'Торможение…';
+        if (c.taxiAuto) return 'Автоматическое руление' + gs;
+        if (this.v < 0.5 && c.brake) return 'Отпустите тормоз, газ 15–30% — рулим к гейту' + gs;
+        return 'Рулите к гейту' + gs + '. Поворот — штурвал влево/вправо';
+      }
+      if (!this.airborneOnce && c.thr < 0.35 && !this.lined && this.v < 26) {
+        if (c.taxiAuto) return 'Автоматическое руление' + gs;
+        if (c.brake && this.v < 1) return 'Отпустите ТОРМОЗ и дайте газ 15–30% — выруливаем' + gs;
+        return 'Рулите на полосу' + gs;
+      }
+    }
     if (this.onGround) {
       if (this.td) {
         if (!c.brake) return 'Нажмите ТОРМОЗ, газ на минимум';
