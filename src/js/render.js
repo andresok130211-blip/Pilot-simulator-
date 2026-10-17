@@ -260,6 +260,12 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   box(x0 + len * 0.45 - 2.5, x0 + len * 0.45 + 2.5, 228, 250, 5, ['#8e98ac']);
   box(x0 + len * 0.18, x0 + len * 0.18 + 14, 240, 254, 48, pal.build);
   box(x0 + len * 0.18 - 6, x0 + len * 0.18 + 20, 238, 256, 8, ['#556070']);
+  if (isDest && f && f.rwyBlocked && !f.td) {
+    const tx = x0 + len * 0.38;
+    box(tx, tx + 11, -3.2, 3.2, 3.4, ['#ffcc00', '#d9a400', '#b88a00']);
+    box(tx + 2, tx + 5, -1.3, 1.3, 5.2, ['#fff4b0']);
+    if (Math.floor(f.time * 3) % 2 === 0) box(tx + 3, tx + 4, -0.5, 0.5, 6.4, ['#ff3b30']);
+  }
   box(x0 + len * 0.7, x0 + len * 0.7 + 90, 280, 340, 18, pal.build);
   box(x0 + len * 0.78, x0 + len * 0.78 + 70, 150, 190, 10, pal.build);
   // припаркованные самолёты (упрощённые коробки)
@@ -485,6 +491,7 @@ function drawCockpit(pal) {
   ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
 }
 
+const FLN = ['0', '1', '2', '3', 'ПОЛН'];
 function drawHUD(f, t, view, th) {
   const c = f.c, chase = view.cam === 'chase';
   const kmh = f.ias * 3.6;
@@ -596,6 +603,25 @@ function drawHUD(f, t, view, th) {
   for (let i = modes.length - 1; i >= 0; i--) { txt(modes[i][0], mx, 22 * U, modes[i][1] ? GREEN : 'rgba(200,210,230,.4)', 11 * U, 'right', '800'); mx -= 36 * U; }
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';
   if (warpTxt) txt('УСКОРЕНИЕ ' + warpTxt, W - 14 * U - W * 0.045, 36 * U, AMBER, 10 * U, 'right', '800');
+  // состояние двигателей
+  if (f.eng[0] < 1 || f.eng[1] < 1) {
+    const col = i => f.eng[i] > 0.99 ? GREEN : f.eng[i] > 0.01 ? AMBER : RED;
+    txt('ДВ1', 14 * U + W * 0.045, 64 * U, col(0), 10 * U, 'left', '800');
+    txt('ДВ2', 14 * U + W * 0.045 + 34 * U, 64 * U, col(1), 10 * U, 'left', '800');
+  }
+  if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
+  // аварийные сообщения (ЧП)
+  if (f.alerts.size && !f.done) {
+    const al = [...f.alerts].slice(0, 3), flash = Math.floor(t * 2.5) % 2 === 0;
+    for (let i = 0; i < al.length; i++) {
+      const w2 = ctx.measureText(al[i]).width;
+      ctx.font = `800 ${15 * U}px system-ui,sans-serif`;
+      const bw = ctx.measureText(al[i]).width + 22 * U;
+      ctx.fillStyle = flash ? 'rgba(200,20,20,.88)' : 'rgba(90,10,10,.8)';
+      ctx.fillRect(CX - bw / 2, H * 0.16 + i * 26 * U, bw, 22 * U);
+      txt(al[i], CX, H * 0.16 + i * 26 * U + 16 * U, '#fff', 15 * U, 'center', '800');
+    }
+  }
   // предупреждения
   const ws = f.warnings; let wl = [];
   if (ws.has('pullup')) wl.push(['ВЫТЯГИВАЙТЕ!', RED]);
@@ -729,6 +755,29 @@ function drawAircraft(f, pal, t) {
     const n = o.w.length;
     for (let i = 0; i < n; i++) { P[3 * i] = o.w[i][0]; P[3 * i + 1] = o.w[i][1]; P[3 * i + 2] = o.w[i][2]; }
     polyFlat(P, n, shadeCol(o.col, o.k));
+  }
+  // пожар двигателя: пламя и дым
+  if (f.fire && !f.fire.ext) {
+    const sg = f.fire.side === 0 ? -1 : 1, o = [0, 0, 0], span = M.span, re = M.L * 0.031, wy = -0.5 * M.r;
+    for (let k = 0; k < 7; k++) {
+      const back = k * M.L * 0.035 + Math.sin(t * 17 + k) * M.L * 0.01;
+      tr(-0.03 * M.L - back, wy - re * 1.1 + Math.sin(t * 23 + k * 2) * re * 0.4, sg * span * 0.17, o);
+      if (toScreen(o[0], o[1], o[2], SP)) {
+        const r0 = Math.max(3 * U, F * re * (1.6 - k * 0.12) / SP.f);
+        const g = ctx.createRadialGradient(SP.x, SP.y, 0, SP.x, SP.y, r0);
+        g.addColorStop(0, k < 3 ? 'rgba(255,230,120,.95)' : 'rgba(255,120,30,.8)'); g.addColorStop(1, 'rgba(120,20,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(SP.x - r0, SP.y - r0, r0 * 2, r0 * 2);
+      }
+    }
+    for (let k = 0; k < 6; k++) {
+      tr(-0.25 * M.L - k * M.L * 0.07, wy + k * re * 0.4, sg * span * 0.17, o);
+      if (toScreen(o[0], o[1], o[2], SP)) {
+        const r0 = Math.max(4 * U, F * re * (2 + k * 0.5) / SP.f);
+        const g = ctx.createRadialGradient(SP.x, SP.y, 0, SP.x, SP.y, r0);
+        g.addColorStop(0, 'rgba(40,40,40,.5)'); g.addColorStop(1, 'rgba(40,40,40,0)');
+        ctx.fillStyle = g; ctx.fillRect(SP.x - r0, SP.y - r0, r0 * 2, r0 * 2);
+      }
+    }
   }
   // ходовые огни
   if (pal.night > 0.2 || f.h > 10) {

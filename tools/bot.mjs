@@ -6,7 +6,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
   const plane = PL_BY[planeId], from = AP_BY[fromId], to = AP_BY[toId];
   const km = distKm(from, to);
   const c0 = makeContract(plane, from, to, () => opts.load ?? 0.9);
-  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: c0.fuel, assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km) });
+  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: Math.min(plane.fuelCap, c0.fuel + (opts.emerg || opts.force ? plane.burnHr * 0.25 : 0)), assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km), force: opts.force, emerg: opts.emerg || 0, rnd: opts.rnd });
   const c = f.c;
   const dt = 1 / 60;
   let t = 0, phase = 'roll', log = [];
@@ -45,6 +45,31 @@ export function fly(planeId, fromId, toId, opts = {}) {
       c.stick = Math.max(-1, Math.min(1, (vsT - f.vs) * 0.35));
     }
     if (f.td) { if (!taxi || (f.v > 24 && !f.c.taxiAuto)) c.brake = true; c.thr = 0; c.atOn = false; c.stick = 0; }
+    // ---- реакции на ЧП ----
+    const ev = f.ev && f.ev.id, R = opts.react !== false;
+    if (R && ev) {
+      if (ev === 'fire' && !f.fire.ext && f.time - f.ev.t0 > (opts.delay ?? 6)) f.extinguish();
+      if (ev === 'hyd' && !f.altGear && f.time - f.ev.t0 > (opts.delay ?? 6)) f.altGearExt();
+      if (ev === 'decomp' && !f.emDescent && f.time - f.ev.t0 > (opts.delay ?? 6)) f.emergDescent();
+      if (ev === 'runway' && !f.ga && f.canGoAround()) f.goAround();
+      if (ev === 'engRoll' && !f.airborneOnce && opts.reject && f.ias < f.v1) { c.thr = 0; c.brake = true; }
+    }
+    if (f.onGround && f.v > 5 && f.eng.some(x => x < 1)) c.roll = Math.max(-1, Math.min(1, -f.yPos * 0.06 - f.psi * 3));
+    else if (f.onGround && !f.td) c.roll = 0;
+    if (opts._locked && f.apLock <= 0 && f.atLock <= 0 && !f.assist.auto && !f.td) { opts._locked = false; c.apOn = true; c.atOn = true; c.nav = true; }
+    if (f.apLock > 0 || f.atLock > 0) opts._locked = true;
+    if (f.apLock > 0 && !f.onGround) {
+      const tgt = Math.min(c.apAlt, f.dist < f.todDist() ? 1500 : 1e9);
+      const vsT = Math.max(-8, Math.min(8, (tgt - f.h) * 0.05));
+      c.stick = Math.max(-1, Math.min(1, (vsT - f.vs) * 0.3));
+      c.roll = Math.max(-1, Math.min(1, (-f.yPos * 0.002 - f.psi) * 2));
+      if (f.dist < 46000 && f.h < 3200) { c.atOn = false; }
+    } else if (!f.onGround && f.airborneOnce && !f.td && !f.ga && f.atLock <= 0) c.roll = 0;
+    if (f.atLock > 0 && !f.onGround) {
+      const tgt = f.atTargetIAS();
+      c.thr = Math.max(0, Math.min(1, c.thr + (tgt - f.ias) * 0.0006));
+    }
+    if (f.ga && f.apLock <= 0) { c.stick = 0; c.roll = 0; }
     c.warp = wantWarp;
     const w = f.effectiveWarp();
     for (let i = 0; i < w && !f.done; i++) { f.step(dt); t += dt; }

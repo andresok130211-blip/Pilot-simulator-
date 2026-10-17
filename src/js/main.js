@@ -1,6 +1,7 @@
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
 import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
 import { Flight, settle, FLAP_NAMES } from './sim.js';
+import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { drawFlight, drawMap } from './render.js';
 
 const $ = id => document.getElementById(id);
@@ -17,10 +18,13 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, xp: 0, evOk: 0, evLate: 0, evFail: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 if (!PL_BY[save.plane] || !save.owned.includes(save.plane)) { save.plane = save.owned[0] || 'ssj'; }
+const RANKS = [['Курсант', 0], ['Второй пилот', 500], ['Пилот', 1500], ['Командир', 3500], ['Капитан-инструктор', 7000], ['Легенда авиации', 15000]];
+function rankOf(xp) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (xp >= RANKS[k][1]) i = k; const nx = RANKS[i + 1]; return { name: RANKS[i][0], i, next: nx ? nx[0] : null, from: RANKS[i][1], to: nx ? nx[1] : RANKS[i][1], pct: nx ? (xp - RANKS[i][1]) / (nx[1] - RANKS[i][1]) : 1 }; }
+const EMERG_NAMES = ['выкл', 'редко', 'иногда', 'часто'];
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { } };
 
 // ---------- состояние ----------
@@ -58,7 +62,8 @@ function audioTick(f) {
   const on = save.sound && mode === 'flight' && !paused;
   engGain.gain.value = on ? 0.03 + 0.07 * f.thrAct : 0;
   eng.frequency.value = 55 + 90 * f.thrAct;
-  if (on && f.warnings.size && tNow - beepT > 0.6 && (f.warnings.has('stall') || f.warnings.has('pullup') || f.warnings.has('gear') || f.warnings.has('sink'))) { beepT = tNow; beep(f.warnings.has('pullup') ? 1100 : 780, 0.18); }
+  if (on && f.alerts && f.alerts.size && tNow - beepT > 0.9) { beepT = tNow; beep(950, 0.12); setTimeout(() => beep(650, 0.12), 150); }
+  else if (on && f.warnings.size && tNow - beepT > 0.6 && (f.warnings.has('stall') || f.warnings.has('pullup') || f.warnings.has('gear') || f.warnings.has('sink'))) { beepT = tNow; beep(f.warnings.has('pullup') ? 1100 : 780, 0.18); }
 }
 
 // ---------- модальное окно ----------
@@ -73,23 +78,26 @@ function renderMenu() {
   mode = 'menu'; ui.classList.remove('on'); menu.classList.add('on');
   if (screen === 'hub') renderHub();
   else if (screen === 'select') renderSelect();
+  else if (screen === 'drill') renderDrill();
   else renderHangar();
 }
 
 function renderHub() {
-  const ap = apLoc(), p = plane();
+  const ap = apLoc(), p = plane(), rk = rankOf(save.xp);
   menu.innerHTML = `<div class="panel">
     <h1>✈ Pilot Sim</h1>
     <div class="sub">Вы — пилот пассажирского лайнера. Берите рейсы, взлетайте, ведите самолёт и мягко садитесь. Деньги тратьте на самолёты побольше.</div>
     <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', ap.city + ' (' + ap.id + ')')}${stat('🛩', p.short)}</div>
+    <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
-    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
+    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
     <div class="sub" style="margin-top:14px;opacity:.6">Данные сохраняются на устройстве. ${save.flights ? '<a href="#" id="bReset" style="color:#ff9a9a">Сбросить прогресс</a>' : ''}</div>
   </div>`;
   $('bFly').onclick = () => { audioInit(); setScreen('select'); };
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
+  $('bDrill').onclick = () => setScreen('drill');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
   const r = $('bReset');
   if (r) r.onclick = e => { e.preventDefault(); showModal(`<h2>Сбросить прогресс?</h2><div class="sub">Деньги, самолёты и статистика будут удалены.</div><div class="mrow"><button class="btn g" id="mNo">Отмена</button><button class="btn" style="background:#a23232" id="mYes">Сбросить</button></div>`);
@@ -104,6 +112,7 @@ function showHelp() {
   <b>1. Взлёт.</b> На полосе отпустите ТОРМОЗ, газ на максимум, на скорости VR плавно тяните ручку вверх (тангаж 10–12°). Над землёй уберите ШАССИ.<br>
   <b>2. Полёт.</b> Включите А/П (автопилот), ВЫС ± задаёт высоту. Когда самолёт в крейсере, жмите ×2…×32 — время ускоряется.<br>
   <b>3. Посадка.</b> ПОСАДКА включает заход по глиссаде: выпускайте закрылки и шасси по подсказкам. У земли слегка потяните ручку на себя и сбросьте газ. После касания — ТОРМОЗ.<br><br>
+  <b>ЧП.</b> В полёте случаются отказы: двигатель, пожар, птицы, гидравлика, разгерметизация, отказ автопилота и автомата тяги, техника на полосе. Справа вверху — чек-лист действий, внизу красные кнопки (ТУШЕНИЕ, ЗАПАС. ШАССИ, АВАР. СНИЖ., УХОД). Правильные действия дают премию и опыт — растёт ваш ранг. Ускорение времени при ЧП выключено. Потренироваться можно в «Тренажёре ЧП».<br><br>
   Чем мягче касание и чище полёт, тем больше платят. Галочки «Помощник» перед рейсом включают автоматику снижения и механизации — а без неё доплата выше.</div>
   <div class="mrow"><button class="btn" id="mOk">Понятно</button></div>`);
   $('mOk').onclick = hideModal;
@@ -130,11 +139,13 @@ function renderSelect() {
       <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
       <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
       <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
+      <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
       <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
       <button class="btn go big" id="bGo">Лететь ✈</button>
     </div>
   </div>`;
   $('oTod') && ($('oTod').value = String(save.tod));
+  $('oEm') && ($('oEm').value = String(save.emerg));
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { save.plane = b.dataset.pl; persist(); sel = null; renderSelect(); });
   menu.querySelectorAll('[data-to]').forEach(el => el.onclick = () => {
@@ -150,6 +161,7 @@ function renderSelect() {
     $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
     $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
     $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
+    $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
   }
 }
@@ -174,15 +186,32 @@ function renderHangar() {
   });
 }
 
+function renderDrill() {
+  menu.innerHTML = `<div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Тренажёр ЧП</h1><button class="btn g" id="bBack">‹ Назад</button></div>
+    <div class="sub">Выберите аварийную ситуацию — она случится в нужный момент короткого рейса. Деньги и опыт в тренировке не начисляются. Самолёт: ${plane().short}.</div>
+    ${EVENT_IDS.map(id => `<div class="card" data-ev="${id}"><div><div class="t">${EVENT_DEFS[id].short}</div><div class="d">${EVENT_DEFS[id].desc}</div></div><div class="r">▶</div></div>`).join('')}
+  </div>`;
+  $('bBack').onclick = () => setScreen('hub');
+  menu.querySelectorAll('[data-ev]').forEach(el => el.onclick = () => {
+    const ap = apLoc(), p = plane();
+    const list = contractsFor(p, ap.id, 777 + ap.id.charCodeAt(0));
+    const c = list.find(x => x.km >= 500) || list[list.length - 1];
+    if (!c) { showModal('<h2>Нет рейсов</h2><div class="sub">Смените самолёт или аэропорт.</div><div class="mrow"><button class="btn" id="mOk">Ок</button></div>'); $('mOk').onclick = hideModal; return; }
+    startFlight(c, el.dataset.ev);
+  });
+}
+
 // ---------- запуск рейса ----------
-function startFlight(c) {
+function startFlight(c, drill) {
   audioInit();
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: c.fuel,
-    taxi: save.taxiOps, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+  flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : save.emerg, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
+  if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
@@ -223,20 +252,25 @@ function act(a) {
     case 'fl+': f.setFlaps(c.flaps + 1); break;
     case 'brake': c.brake = !c.brake; break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; if (c.warp === 1 && f.allowedWarp() === 1 && i === 0) f.msg('Ускорение доступно в крейсерском полёте на автопилоте'); break; }
+    case 'ext': f.extinguish(); break;
+    case 'altgear': f.altGearExt(); break;
+    case 'emdesc': f.emergDescent(); break;
+    case 'ga': f.goAround(); break;
     case 'ap':
+      if (f.apLock > 0) { f.msg('Автопилот неисправен — пилотируйте вручную'); break; }
       if (c.apOn) { c.apOn = false; c.appr = false; f.apprCap = false; c.atOn = false; }
       else if (!f.onGround) { c.apOn = true; c.atOn = true; if (f.h < 3000 && !c.appr) c.apAlt = f.dist < 60000 ? 1500 : f.recAlt; if (f.dist >= 60000) c.apAlt = f.recAlt; }
       break;
-    case 'at': c.atOn = !c.atOn; break;
+    case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': c.nav = !c.nav; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
-    case 'appr': if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
+    case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
   }
 }
-ui.querySelectorAll('#btns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
+ui.querySelectorAll('#btns button, #ebtns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
 
 function syncButtons() {
   const f = flight, c = f.c;
@@ -249,6 +283,15 @@ function syncButtons() {
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);
+  const ev = f.evView(), evp = $('evp');
+  if (ev) { evp.style.display = 'block'; const hh = `<b>⚠ ${ev.title}</b>` + ev.steps.map(st => `<div class="${st.done ? 'ok' : 'no'}">${st.done ? '✓' : '•'} ${st.t}</div>`).join(''); if (hh !== evp._h) { evp._h = hh; evp.innerHTML = hh; } }
+  else { evp.style.display = 'none'; evp._h = ''; }
+  const sh = (id, v) => $(id).classList.toggle('show', !!v);
+  sh('eExt', f.fire && !f.fire.ext);
+  sh('eGear', f.hyd && !f.altGear);
+  sh('eDesc', f.decomp && f.ev && f.ev.id === 'decomp' && !f.emDescent);
+  sh('eGa', f.canGoAround() && (f.rwyBlocked || f.dist < 9000));
+  $('hint').classList.toggle('alert', !!f.ev);
   if (c.atOn) { $('thrfill').style.height = (c.thr * 100) + '%'; $('thrv').textContent = Math.round(c.thr * 100) + '%'; }
 }
 
@@ -287,15 +330,21 @@ function showResult() {
   const f = flight, r = settle(f, contract);
   const to = f.toAp;
   // применяем итоги
-  save.money = Math.max(0, save.money + r.net);
-  if (r.kind !== 'abort') save.flights++;
-  if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = to.id; }
-  if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
-  persist();
-  const ttl = { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Рейс отменён' }[r.kind];
+  const drill = !!f.drill;
+  const rkBefore = rankOf(save.xp).i;
+  if (!drill) {
+    save.money = Math.max(0, save.money + r.net);
+    if (r.kind !== 'abort') save.flights++;
+    if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = to.id; }
+    if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
+    save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
+    persist();
+  }
+  const rkAfter = rankOf(save.xp);
+  const ttl = drill ? 'Тренировка окончена' : { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Рейс отменён' }[r.kind];
   const row = (a, v, cls) => `<tr><td>${a}</td><td class="${cls || ''}">${v}</td></tr>`;
   let rows = '';
-  if (r.kind !== 'abort') {
+  if (r.kind !== 'abort' && !drill) {
     if (r.kind === 'ok') rows += row('Скорость снижения при касании', r.sink.toFixed(2) + ' м/с');
     if (r.revenue) rows += row('Выручка', '+' + fmtRub(r.revenue), 'pos');
     if (r.kind === 'ok' && r.bonus) rows += row('Бонус за ручное управление', '+' + Math.round(r.bonus * 100) + '%', 'pos');
@@ -306,18 +355,24 @@ function showResult() {
     if (r.repair) rows += row('Ремонт самолёта', '−' + fmtRub(r.repair), 'neg');
     rows += row('<b>Итого</b>', (r.net >= 0 ? '+' : '−') + fmtRub(Math.abs(r.net)), r.net >= 0 ? 'pos' : 'neg');
   }
+  if (r.kind === 'abort' && r.evPrem && !drill) rows += row('Премия за верное решение при ЧП', '+' + fmtRub(r.evPrem), 'pos');
+  if (r.kind === 'ok' && r.evBonus > 0 && !drill) rows += row('Премия за действия при ЧП', '+' + Math.round(r.evBonus * 100) + '%', 'pos');
+  const evTxt = { ok: '✓ отлично', late: '⚠ с опозданием', fail: '✕ провал' };
+  const evRows = r.evLog.map(e => `<div class="evrow"><span>${e.title}</span><span class="${e.outcome}">${evTxt[e.outcome]}</span></div>`).join('');
   const inc = f.incidents.map(i => i.text);
   menu.innerHTML = `<div class="panel wide">
     <h1>${ttl}</h1>
     ${r.kind === 'ok' ? `<div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</div>` : ''}
     ${r.reason ? `<div class="sub">${r.reason}</div>` : ''}
     ${inc.length ? `<div class="sub">Замечания: ${[...new Set(inc)].join(', ')}</div>` : ''}
+    ${evRows ? `<div class="sub" style="margin-bottom:2px"><b>Аварийные ситуации:</b></div>${evRows}` : ''}
     <table class="res">${rows}</table>
-    <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', apLoc().city)}</div>
-    <div class="mrow"><button class="btn go" id="bAgain">Следующий рейс</button><button class="btn g" id="bHub">В меню</button></div>
+    ${drill ? '' : `<div class="sub">+${r.xp} XP · ${rkAfter.name}${rkAfter.i > rkBefore ? ' — <b style="color:#7dffb0">НОВЫЙ РАНГ!</b>' : ''}</div>`}
+    ${drill ? '' : `<div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', apLoc().city)}</div>`}
+    <div class="mrow"><button class="btn go" id="bAgain">${drill ? 'Ещё тренировка' : 'Следующий рейс'}</button><button class="btn g" id="bHub">В меню</button></div>
   </div>`;
   mode = 'menu'; ui.classList.remove('on'); menu.classList.add('on');
-  $('bAgain').onclick = () => setScreen('select');
+  $('bAgain').onclick = () => setScreen(drill ? 'drill' : 'select');
   $('bHub').onclick = () => setScreen('hub');
   flight = null;
 }
@@ -356,6 +411,8 @@ function loop(ts) {
     syncButtons(); updateLog(); audioTick(f);
     const h = $('hint'), t = f.assist.hints && !f.done ? f.hint() : '';
     h.style.display = t ? 'block' : 'none'; if (t) h.textContent = t;
+    const fd = $('fade');
+    if (f.fade > 0) { fd.style.display = 'flex'; fd.style.opacity = Math.min(1, f.fade * 2); fd.textContent = f.fadeText; } else if (fd.style.display !== 'none') fd.style.display = 'none';
     if (f.done && f.result && f.result.kind !== 'ok') { ctx.fillStyle = 'rgba(160,0,0,.25)'; ctx.fillRect(0, 0, W, H); }
   } else {
     const pick = sel ? sel.to : null;

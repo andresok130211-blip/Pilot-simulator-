@@ -1,6 +1,7 @@
 // Физика полёта: продольная модель материальной точки с аэродинамикой, тягой, топливом.
 // Вся логика без графики — её можно гонять в node (см. tools/bot.mjs).
 import { PAX_KG, FUEL_PRICE } from './data.js';
+import { EVENT_DEFS, planEvents, evWhen } from './events.js';
 
 export const DEG = Math.PI / 180;
 export const G = 9.80665;
@@ -53,6 +54,8 @@ export const clmaxCfg = f => CL0 + FLAP_DCL[f] + CLA * FLAP_AS[f];
 export const stallIAS = (m, f, S) => Math.sqrt(2 * m * G / (1.225 * S * clmaxCfg(f)));
 export const glideH = (distToTouch) => Math.max(0, distToTouch) * GS_TAN;
 
+const c0apOn = f => f.c.apOn;
+
 export class Flight {
   constructor(o) {
     this.p = o.plane;
@@ -87,9 +90,15 @@ export class Flight {
     this.cfgTimer = 0; this.flapMsgT = 0; this.maxV = 0;
     this.lined = false; this.parked = false; this.guide = null; this.route = null; this.ri = 0; this.routePoly = null; this.autoSteer = 0; this.autoV = 0; this._inEngaged = false; this._routeT = 0; this.inXc = undefined;
     this._cooldown = {};
+    // аварийные ситуации
+    this.eng = [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
+    this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
+    this.rnd = o.rnd || Math.random;
     this.updateMass();
     this.computeSpeeds();
     this.aero(); // начальные величины
+    this.evq = planEvents(this, o.emerg ?? 0, o.force, this.rnd, !!o.force);
     if (this.taxiOps) {
       this.c.taxiAuto = !!this.assist.taxi;
       this.setRoute(this.buildOutRoute());
@@ -180,6 +189,9 @@ export class Flight {
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
   get mach() { return this.v / atmos(this.h + this.elev).a; }
+  get ceilLim() { return this.eng[0] + this.eng[1] < 1.5 ? Math.round(this.p.ceiling * 0.6 / 100) * 100 : this.p.ceiling; }
+  get engCount() { return (this.eng[0] > 0.01 ? 1 : 0) + (this.eng[1] > 0.01 ? 1 : 0); }
+  minSpd() { return 1.22 * stallIAS(this.mass, this.c.flaps, this.p.S) + 4; }
   get flapIdx() { return Math.round(this.flapAct); }
 
   aero() {
@@ -200,7 +212,7 @@ export class Flight {
       + this.K * CL * CL + (M > p.cruiseM - 0.01 ? 12 * (M - p.cruiseM + 0.01) ** 2 : 0);
     this.q = q; this.alpha = alpha; this.alphaS = as; this.CL = CL; this.CD = CD;
     this.L = q * p.S * CL; this.Dr = q * p.S * CD;
-    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) : 0;
+    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 : 0;
     this.stallWarn = !this.onGround && alpha > as - 2.2 * DEG;
     this.stalled = !this.onGround && alpha > as;
     this.clmaxNow = CL0 + dcl + CLA * as;
@@ -210,6 +222,7 @@ export class Flight {
   setFlaps(n) {
     const c = this.c;
     n = clamp(n, 0, 4);
+    if (this.hyd && n !== c.flaps) { if (this.time - this.flapMsgT > 3) { this.msg('Закрылки заклинило — гидравлика отказала'); this.flapMsgT = this.time; } return false; }
     if (n > c.flaps) {
       const lim = this.p.flapLim[n];
       if (this.ias > lim) {
@@ -222,6 +235,8 @@ export class Flight {
   setGear(down) {
     const c = this.c;
     if (down === c.gear) return true;
+    if (down && this.hyd && !this.altGear) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не выпускается — нажмите ЗАПАС. ШАССИ'); this.flapMsgT = this.time; } return false; }
+    if (!down && this.altGear) { this.msg('Шасси зафиксировано вручную — убрать нельзя'); return false; }
     if (!down) { if (this.onGround) return false; }
     else if (this.ias > this.p.gearLim) { this.msg('Шасси: слишком быстро (≤ ' + Math.round(this.p.gearLim * 3.6) + ' км/ч)'); return false; }
     c.gear = down; return true;
@@ -237,7 +252,8 @@ export class Flight {
     const p = this.p, c = this.c, A = this.A;
     const f = c.flaps;
     const m = this.mass;
-    if (c.gear && f >= 3) return 1.24 * stallIAS(m, f, p.S) + 3;
+    if (c.gear && (f >= 3 || (this.hyd && this.dist < 60000))) return (this.hyd ? 1.3 : 1.24) * stallIAS(m, f, p.S) + 3;
+    if (this.emDescent) return Math.min(160, p.flapLim[0] - 8);
     let sched = this.h < 3000 ? 128 : 154;
     const machIAS = p.cruiseM * A.a * Math.sqrt(A.sigma);
     sched = Math.min(sched, machIAS);
@@ -261,17 +277,18 @@ export class Flight {
       this.dev = dev;
     } else {
       const err = c.apAlt - this.h;
-      vsCmd = clamp(0.12 * err, -10, 13);
+      vsCmd = clamp(0.12 * err, this.emDescent ? -26 : -10, 13);
       if (vsCmd > 0) {
         const vsCap = (this.Tavail - this.Dr) * v / (this.mass * G);
         vsCmd = Math.min(vsCmd, Math.max(0, 0.85 * vsCap));
         const vmin = 1.18 * stallIAS(this.mass, c.flaps, this.p.S);
         vsCmd = Math.min(vsCmd, Math.max(0, (this.ias - vmin) * 0.6));
-        if (this.h + this.elev > this.p.ceiling - 200) vsCmd = Math.min(vsCmd, 0);
+        if (this.h + this.elev > this.ceilLim - 200) vsCmd = Math.min(vsCmd, 0);
       } else if (vsCmd < 0) {
         const tIdle = this.Tavail * IDLE;
         const vsIdle = (tIdle - this.Dr) * v / (this.mass * G);
-        if (this.ias > this.atTargetIAS() + 3) vsCmd = Math.max(vsCmd, vsIdle * 0.85);
+        if (this.emDescent) vsCmd = Math.max(vsCmd, -26 + Math.max(0, this.ias * 1 - 150));
+        else if (this.ias > this.atTargetIAS() + 3) vsCmd = Math.max(vsCmd, vsIdle * 0.85);
       }
     }
     // сглаживание
@@ -302,9 +319,11 @@ export class Flight {
     const dist = this.dist;
     if (this.onGround && this.taxiOps) this.groundNav(dt);
     if (this.done) return;
+    this.evStep(dt);
+    if (this.done) return;
 
     // актуаторы
-    this.gearPos += clamp((c.gear ? 1 : 0) - this.gearPos, -dt / 7, dt / 7);
+    this.gearPos += clamp((c.gear ? 1 : 0) - this.gearPos, -dt / 7, dt / (this.altGear && this.gearPos < 0.98 ? 22 : 7));
     this.flapAct += clamp(c.flaps - this.flapAct, -dt * 0.35, dt * 0.35);
 
     // помощник: автоматика конфигурации и снижения
@@ -413,6 +432,7 @@ export class Flight {
     this.fuel = Math.max(0, this.fuel - flow * dt);
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
+    this.asym = this.eng[1] - this.eng[0];
     if (this.onGround) this.stepGround(dt, T);
     else this.stepAir(dt, T);
 
@@ -456,6 +476,7 @@ export class Flight {
       if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
       else this.psi -= this.psi * 0.6 * dt;
     }
+    if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * this.thrAct * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
     this.psi = wrapPi(this.psi);
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
@@ -503,7 +524,7 @@ export class Flight {
     const al = this.alpha, ca = Math.cos(al), sa = Math.sin(al);
     const dv = ((T * ca - this.Dr) / m - G * Math.sin(this.gamma)) * dt;
     const dg = ((this.L * Math.cos(this.phi) + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
-    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt);
+    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * this.thrAct * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
     this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
@@ -529,6 +550,7 @@ export class Flight {
     const onOrig = tdx >= this.rwy0.s && tdx <= this.rwy0.e && lat <= 32;
     const ias = this.ias;
     if (this.gearPos < 0.85) { this.finish('crash', 'Посадка с невыпущенным шасси.'); return; }
+    if (this.rwyBlocked && onDest) { this.finish('crash', 'Столкновение с техникой на полосе при посадке.'); return; }
     if (!onDest && !onOrig && this.v > 35) {
       this.finish('crash', lat > 32 ? 'Приземление рядом с полосой: слишком большое боковое отклонение.' : tdx < this.rwy1.s ? 'Недолёт: самолёт приземлился до полосы.' : 'Приземление за пределами полосы.');
       return;
@@ -561,7 +583,7 @@ export class Flight {
     set('sink', !this.onGround && this.h < 300 && sinkRate < -9 && this.dist < 30000);
     set('pullup', !this.onGround && this.h < 80 && sinkRate < -11);
     set('gear', !this.onGround && this.h < 250 && this.dist < 8000 && this.dist > 0 && !this.c.gear);
-    set('flaps', !this.onGround && this.h < 250 && this.dist < 6000 && this.dist > 0 && this.c.flaps < 3 && this.c.gear);
+    set('flaps', !this.onGround && this.h < 250 && this.dist < 6000 && this.dist > 0 && this.c.flaps < 3 && this.c.gear && !this.hyd);
     set('lowfuel', this.fuel < this.p.burnHr * 0.3 && this.fuel > 0);
     if (w.has('sink') || w.has('pullup')) { this.stats.gpws += dt; this.incident('sink', 'Опасная скорость снижения', 3, 30); }
     if (this.fuel <= 0 && this.Tavail === 0) set('fuel0', true);
@@ -571,12 +593,14 @@ export class Flight {
     if (this.done) return;
     this.done = true;
     this.result = { kind, reason };
+    this.closeEvents(kind);
     this.c.brake = true;
   }
 
   // ---------- ускорение времени ----------
   allowedWarp() {
     const c = this.c;
+    if (this.ev || this.fade > 0 || this.ga || this.rwyBlocked) return 1;
     if (this.onGround) return this.taxiOps && c.taxiAuto && !this.warnings.size && this.v > 0.5 && !(this.td && !this.td.onDest) ? 4 : 1;
     if (!c.apOn || !c.atOn || this.warnings.size) return 1;
     if (Math.abs(c.roll || 0) > 0.04 || Math.abs(this.phi) > 6 * DEG) return 1;
@@ -606,10 +630,108 @@ export class Flight {
     return w;
   }
 
+  // ---------- аварийные ситуации ----------
+  startEvent(id, o) {
+    const d = EVENT_DEFS[id];
+    const ev = { id, t0: this.time, okT: 0 };
+    this.ev = ev;
+    d.start(this, ev, o);
+    return ev;
+  }
+  resolveEvent(ev, outcome, text) {
+    if (!ev || ev.done) return;
+    ev.done = true;
+    this.evLog.push({ id: ev.id, outcome, title: EVENT_DEFS[ev.id].short });
+    if (this.ev === ev) this.ev = null;
+    if (text) this.msg(text);
+  }
+  closeEvents(kind) {
+    const ev = this.ev; if (!ev) return;
+    let out = kind === 'crash' || kind === 'overrun' ? 'fail' : 'late';
+    if (ev.id === 'engRoll' && kind === 'abort') out = 'ok';
+    if (ev.id === 'runway' && this.gaCount === 0 && kind === 'ok') out = 'fail';
+    this.resolveEvent(ev, out, '');
+  }
+  evStep(dt) {
+    if (this.fade > 0) this.fade = Math.max(0, this.fade - dt * 0.5);
+    const c = this.c;
+    if (this.apLock > 0) { this.apLock -= dt; c.apOn = false; c.appr = false; this.apprCap = false; if (this.apLock <= 0 && this.assist.auto) { c.apOn = true; c.atOn = c.atOn || this.atLock <= 0; } }
+    if (this.atLock > 0) { this.atLock -= dt; c.atOn = false; if (this.atLock <= 0 && this.assist.auto) c.atOn = true; }
+    if (this.engCount < 2 && c.apOn && c.apAlt > this.ceilLim - 250) c.apAlt = this.ceilLim - 250;
+    if (this.ga) this.gaStep(dt);
+    if (this.ev) EVENT_DEFS[this.ev.id].tick(this, this.ev, dt);
+    else if (!this.done && this.evq) { for (const q of this.evq) if (!q.fired && evWhen(this, q)) { q.fired = true; this.startEvent(q.id, q.o); break; } }
+    const a = this.alerts; a.clear();
+    if (this.fire && !this.fire.ext) a.add('ПОЖАР ДВИГАТЕЛЯ №' + (this.fire.side + 1));
+    if (this.decomp && this.ev && this.ev.id === 'decomp') a.add('РАЗГЕРМЕТИЗАЦИЯ');
+    if (this.rwyBlocked && !this.td) a.add('ПОЛОСА ЗАНЯТА — УХОД!');
+    if (this.hyd) a.add('ОТКАЗ ГИДРАВЛИКИ');
+    if (this.apLock > 0) a.add('ОТКАЗ АВТОПИЛОТА');
+    if (this.atLock > 0) a.add('ОТКАЗ АВТОМАТА ТЯГИ');
+    if (this.engCount < 2 && !(this.fire && !this.fire.ext)) a.add(this.engCount ? 'ДВИГАТЕЛЬ ' + (this.eng[0] < 0.01 ? 1 : 2) + ' — ОТКАЗ' : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ');
+  }
+  evHint() {
+    if (!this.ev || this.done) return '';
+    const st = EVENT_DEFS[this.ev.id].steps(this, this.ev).filter(s => !s.opt && !s.done);
+    return st.length ? '⚠ ' + st[0].t : '';
+  }
+  evView() {
+    if (!this.ev) return null;
+    const d = EVENT_DEFS[this.ev.id];
+    return { title: d.title, steps: d.steps(this, this.ev) };
+  }
+  extinguish() {
+    const fr = this.fire; if (!fr || fr.ext) return;
+    fr.ext = true; fr.extAt = this.time; this.eng[fr.side] = 0;
+    this.msg('Двигатель №' + (fr.side + 1) + ' остановлен, огнетушитель сработал');
+  }
+  altGearExt() {
+    if (!this.hyd || this.altGear) return;
+    this.altGear = true; this.c.gear = true; this.msg('Запасная выпуска шасси: ~20 секунд');
+  }
+  emergDescent() {
+    if (this.emDescent || !this.decomp) return;
+    this.emDescent = true; const c = this.c;
+    if (this.apLock <= 0) c.apOn = true;
+    c.apAlt = 3000; c.appr = false; c.brake = true; c.atOn = this.atLock <= 0;
+    this.msg('Аварийное снижение до 3000 м');
+  }
+  canGoAround() { return !this.onGround && !this.ga && this.airborneOnce && this.dist < 20000 && this.dist > -300 && this.h < 1500 && !this.td; }
+  goAround() {
+    if (!this.canGoAround()) return;
+    const c = this.c;
+    this.ga = true; this.gaT0 = this.time;
+    c.thr = 1; c.atOn = false; c.appr = false; this.apprCap = false; c.brake = false;
+    if (this.apLock <= 0) { c.apOn = true; c.nav = true; } else this.gHold = 7 * DEG;
+    c.apAlt = 1500;
+    if (c.flaps > 2) this.setFlaps(2);
+    this.msg('УХОД НА ВТОРОЙ КРУГ!');
+  }
+  gaStep(dt) {
+    const c = this.c;
+    c.appr = false; this.apprCap = false; c.brake = false;
+    if (this.apLock <= 0 && !c.apOn) c.apOn = true;
+    if (this.h > 25 && this.vs > 0 && c.gear && !this.altGear) this.setGear(false);
+    if (this.h > 250 && this.atLock <= 0) c.atOn = true; else if (this.h <= 250) { c.thr = 1; c.atOn = false; }
+    if (this.apLock > 0 && c.apAlt && this.h > 1000) this.gHold = 0;
+    if (this.h > 1350 || this.time - this.gaT0 > 150) this.circuit();
+  }
+  circuit() {
+    const c = this.c;
+    this.ga = false; this.gaCount++; this.rwyBlocked = false;
+    this.x = this.D - 36000; this.yPos = 0; this.psi = 0; this.phi = 0; this.h = 1500; this.gamma = 0; this.gHold = null; this.vsCmdS = 0;
+    this.fuel = Math.max(0, this.fuel - this.p.burnHr * 0.06);
+    this.fade = 1; this.fadeText = 'Заход по кругу…';
+    c.flaps = this.hyd ? c.flaps : 1; this.flapAct = c.flaps;
+    c.apAlt = APPR_ALT; if (this.apLock <= 0) { c.apOn = true; c.appr = true; c.nav = true; } c.atOn = this.atLock <= 0; this.autoDescDone = true;
+    this.msg('Повторный заход');
+  }
+
   // ---------- подсказки ----------
   hint() {
     const c = this.c, dist = this.dist, kmh = x => Math.round(x * 3.6);
     if (this.done) return '';
+    const eh = this.evHint(); if (eh) return eh;
     if (this.onGround && this.taxiOps) {
       const g = this.guide, gs = g ? ' — ' + g.label + ', ' + Math.round(g.dist) + ' м' : '';
       if (this.td) {
@@ -690,7 +812,10 @@ export function settle(f, contract) {
     let bonus = 0;
     if (!f.assist.auto) bonus += 0.25;
     if (!f.assist.config) bonus += 0.10;
-    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus));
+    const evOk = f.evLog.filter(e => e.outcome === 'ok').length, evLate = f.evLog.filter(e => e.outcome === 'late').length;
+    const evB = Math.min(0.35, evOk * 0.12 + evLate * 0.04);
+    out.evBonus = evB;
+    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB));
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
   } else if (res.kind === 'crash') {
     repair = Math.round(p.value * 0.15);
@@ -699,8 +824,12 @@ export function settle(f, contract) {
   } else if (res.kind === 'forced' || res.kind === 'missed') {
     revenue = 0;
   }
+  out.evLog = f.evLog;
+  const evOkN = f.evLog.filter(e => e.outcome === 'ok').length, evLateN = f.evLog.filter(e => e.outcome === 'late').length, evFailN = f.evLog.filter(e => e.outcome === 'fail').length;
+  out.evOk = evOkN; out.evLate = evLateN; out.evFail = evFailN;
+  out.xp = res.kind === 'ok' ? Math.round(20 + out.stars * 12 + 80 * evOkN + 25 * evLateN + Math.min(60, km / 15)) : (res.kind === 'abort' && evOkN ? 60 : 0);
   out.revenue = revenue; out.fuelCost = fuelCost; out.ops = ops; out.fee = fee; out.repair = repair;
-  if (res.kind === 'abort') { out.fuelCost = 0; out.ops = 0; out.fee = 0; out.net = 0; }
+  if (res.kind === 'abort') { out.fuelCost = 0; out.ops = 0; out.fee = 0; out.net = evOkN ? Math.round(contract.revenue * 0.08) : 0; out.evPrem = out.net; }
   else if (res.kind === 'crash') { out.ops = 0; out.fee = 0; out.fuelCost = 0; out.net = -repair; }
   else out.net = revenue - fuelCost - ops - fee - repair;
   return out;
