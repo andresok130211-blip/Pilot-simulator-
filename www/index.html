@@ -1663,7 +1663,7 @@ function toScreen(X, Y, Z, out) {
   out.x = CX + F * rz / f; out.y = CY - F * u / f; out.f = f; return true;
 }
 const SP = { x: 0, y: 0, f: 0 };
-function box(x0, x1, z0, z1, hgt, cols) {
+function box(x0, x1, z0, z1, hgt, cols, tex) {
   // грани: ближняя по x, верх, боковые
   const faces = [
     [[x0, 0, z0], [x0, 0, z1], [x0, hgt, z1], [x0, hgt, z0]], // перед (x0)
@@ -1682,6 +1682,21 @@ function box(x0, x1, z0, z1, hgt, cols) {
     for (let k = 0; k < 4; k++) { P[3 * k] = faces[i][k][0]; P[3 * k + 1] = faces[i][k][1]; P[3 * k + 2] = faces[i][k][2]; }
     const c = cols[i % cols.length];
     polyFlat(P, 4, shadeCol(c, shade[i]));
+    if (tex && i < 4 && Math.abs(camX - cxm) < 2600 + (x1 - x0) * 0.5) {
+      const alongX = i >= 2, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1, ins = (a1 - a0) * 0.07, ff = i === 0 ? x0 - 0.06 : i === 1 ? x1 + 0.06 : i === 2 ? z0 - 0.06 : z1 + 0.06;
+      for (let rr = 0; rr < tex.rows; rr++) {
+        const h0 = hgt * (rr + 0.3) / tex.rows, h1 = hgt * (rr + 0.64) / tex.rows;
+        if (alongX) { P[0] = a0 + ins; P[1] = h0; P[2] = ff; P[3] = a1 - ins; P[4] = h0; P[5] = ff; P[6] = a1 - ins; P[7] = h1; P[8] = ff; P[9] = a0 + ins; P[10] = h1; P[11] = ff; }
+        else { P[0] = ff; P[1] = h0; P[2] = a0 + ins; P[3] = ff; P[4] = h0; P[5] = a1 - ins; P[6] = ff; P[7] = h1; P[8] = a1 - ins; P[9] = ff; P[10] = h1; P[11] = a0 + ins; }
+        polyFlat(P, 4, tex.col);
+      }
+      if (tex.rows > 2) { // тёмный цоколь
+        const h1 = Math.min(3, hgt * 0.2);
+        if (alongX) { P[0] = a0; P[1] = 0; P[2] = ff; P[3] = a1; P[4] = 0; P[5] = ff; P[6] = a1; P[7] = h1; P[8] = ff; P[9] = a0; P[10] = h1; P[11] = ff; }
+        else { P[0] = ff; P[1] = 0; P[2] = a0; P[3] = ff; P[4] = 0; P[5] = a1; P[6] = ff; P[7] = h1; P[8] = a1; P[9] = ff; P[10] = h1; P[11] = a0; }
+        polyFlat(P, 4, 'rgba(10,14,24,.38)');
+      }
+    }
   }
 }
 const shadeCache = new Map();
@@ -1847,7 +1862,7 @@ function drawTerrain(pal, hy, f) {
       let r, g, bl;
       toWorld(f.tf, x0 + s / 2, z0 + s / 2, _wp);
       const hv = worldHash(Math.floor(x0 / s), Math.floor(z0 / s), 5 + li);
-      let town = 0;
+      let town = 0, fieldK = 0, lowF = false, forestK = 0;
       if (water) {
         const sh = 0.94 + hv * 0.12;
         r = 40 * sh; g = 88 * sh; bl = 126 * sh;
@@ -1858,10 +1873,10 @@ function drawTerrain(pal, hy, f) {
         const slope = Math.hypot(dxs, dzs);
         const f1 = fbm(_wp.x / 3200, _wp.z / 3200, 3, 61), f2 = fbm(_wp.x / 1500 + 7, _wp.z / 1500, 2, 67);
         r = 104 + 40 * f1; g = 134 + 22 * f1; bl = 62 + 14 * f1;
-        const ky = sstep(0.52, 0.66, f2); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
+        const ky = sstep(0.52, 0.66, f2); fieldK = Math.max(ky, 1 - sstep(0.2, 0.34, f2)); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
         const kp = sstep(0.28, 0.2, f2); r += (124 - r) * kp * 0.4; g += (108 - g) * kp * 0.4; bl += (66 - bl) * kp * 0.4;
-        const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6;
-        if (wet > 0.52 && avg < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, avg)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; }
+        const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6; lowF = lowFlat;
+        if (wet > 0.52 && avg < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, avg)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; forestK = kf; }
         if (avg < 6 && avg > 0.5) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
         const kr = Math.max(sstep(430, 760, avg), sstep(0.35, 0.7, slope));
         if (kr > 0) { r += (118 - r) * kr; g += (110 - g) * kr; bl += (100 - bl) * kr; }
@@ -1889,6 +1904,25 @@ function drawTerrain(pal, hy, f) {
       P[0] = x0; P[1] = y00; P[2] = z0; P[3] = x1; P[4] = y10; P[5] = z0; P[6] = x1; P[7] = y11; P[8] = z1; P[9] = x0; P[10] = y01; P[11] = z1;
       seam = true; const okp = polyFlat(P, 4, `rgb(${r | 0},${g | 0},${bl | 0})`); seam = false;
       if (!okp) continue;
+      // ---- текстура поверхности: борозды, дороги, блики на воде, подлесок ----
+      if (li <= 1 && fw < (li ? 8000 : 2800)) {
+        const xi = Math.floor(x0 / s), zi = Math.floor(z0 / s), yv = avg + 0.2;
+        const dk = `rgb(${(r * 0.9) | 0},${(g * 0.9) | 0},${(bl * 0.9) | 0})`, lt = `rgb(${Math.min(255, r * 1.08) | 0},${Math.min(255, g * 1.08) | 0},${Math.min(255, bl * 1.06) | 0})`;
+        if (water) {
+          if (hv > 0.35) { const gl = night > 0.5 ? 'rgba(120,150,200,.22)' : 'rgba(235,245,255,.2)'; for (let u = 0; u < 3; u++) { const zz = z0 + s * (0.15 + 0.3 * u + 0.1 * worldHash(xi, zi, 70 + u)), xx = x0 + s * (0.1 + 0.3 * worldHash(xi, zi, 80 + u)); rect(xx, zz, xx + s * 0.35, zz + Math.max(0.5, s * 0.012), gl, 0.1); } }
+        } else if (!town) {
+          if (fieldK > 0.28 && forestK < 0.3 && avg < 600) {
+            const hz2 = worldHash(xi, zi, 7) > 0.5, n = li ? 4 : 8;
+            for (let u = 0; u < n; u++) { const t0 = (u + 0.1) / n, t1 = (u + 0.52) / n; const c2 = u & 1 ? dk : lt; if (hz2) rect(x0, z0 + s * t0, x1, z0 + s * t1, c2, yv); else rect(x0 + s * t0, z0, x0 + s * t1, z1, c2, yv); }
+          } else if (forestK > 0.3 && li === 0 && fw < 1800) {
+            for (let u = 0; u < 5; u++) { const tx = x0 + worldHash(xi, zi, 90 + u) * s, tz = z0 + worldHash(xi, zi, 95 + u) * s; rect(tx, tz, tx + 12 + 14 * worldHash(xi, zi, 100 + u), tz + 10 + 12 * worldHash(xi, zi, 105 + u), dk, avg + 0.3); }
+          }
+          // дороги: прямые по рядам клеток
+          const rw = li ? 15 : 5, rc = `rgb(${(r * 0.55 + 120 * 0.45) | 0},${(g * 0.55 + 118 * 0.45) | 0},${(bl * 0.55 + 112 * 0.45) | 0})`;
+          if (worldHash(0, zi, 13 + li) < 0.1 && avg < 500) rect(x0, z0 + s * 0.5 - rw / 2, x1, z0 + s * 0.5 + rw / 2, rc, yv + 0.05);
+          if (worldHash(xi, 0, 31 + li) < 0.1 && avg < 500) rect(x0 + s * 0.5 - rw / 2, z0, x0 + s * 0.5 + rw / 2, z1, rc, yv + 0.05);
+        }
+      }
       // детали вблизи: деревья, дома, огни
       if (li === 0 && fw < 2300 && camY < 900 && !water) {
         const cx = x0 + s / 2, cz = z0 + s / 2;
@@ -1931,9 +1965,14 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   if (x0 + len + 600 < camX - 200 || x0 - far > camX) return;
   const night = pal.night;
   // руление и перрон
+  const wcol = night > 0.5 ? '#d9b266' : night > 0.1 ? '#5a4a52' : '#2f3d57';
   rect(x0 - 40, 96, x0 + len + 40, 116, pal.apron);
   for (const fx of [0.06, 0.5, 0.93]) rect(x0 + len * fx, 30, x0 + len * fx + 24, 100, pal.apron);
   rect(x0 + len * 0.28, 116, x0 + len * 0.62, 235, pal.apron);
+  { // швы бетонных плит на перроне
+    const a0 = x0 + len * 0.28, a1 = x0 + len * 0.62, sh = shadeCol(pal.apron, 0.8);
+    if (camX > a0 - 2500 && camX < a1 + 2500) { for (let xs = a0 + 14; xs < a1; xs += 14) if (Math.abs(xs - camX) < 1500) rect(xs, 116, xs + 0.25, 235, sh, 0.02); for (let zs = 130; zs < 235; zs += 14) rect(a0, zs, a1, zs + 0.25, sh, 0.02); }
+  }
   {
     const Y = pal.night > 0.5 ? '#8a7a22' : '#d8b930', gx = x0 + len * 0.45;
     rect(x0 - 40, 105.6, x0 + len + 40, 106.4, Y);
@@ -1941,6 +1980,14 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
     rect(gx - 0.4, 106, gx + 0.4, 205, Y);
     rect(gx - 11, 204.4, gx + 11, 205.4, Y);
     rect(gx - 11, 204.4, gx - 10.2, 226, Y); rect(gx + 10.2, 204.4, gx + 11, 226, Y);
+  }
+  // газон вдоль полосы с «покосом»
+  {
+    const gc = pal.ground[0], camRel0 = camX - x0, k0 = Math.max(0, Math.floor((camRel0 - 1400) / 28)), k1 = Math.min(Math.floor((len + 120) / 28), Math.floor((camRel0 + 4500) / 28));
+    for (let k = k0; k <= k1; k++) {
+      const xs = x0 - 60 + k * 28, c2 = shadeCol(gc, k & 1 ? 0.9 : 1.06);
+      rect(xs, 34, xs + 28, 150, c2, 0.01); rect(xs, -150, xs + 28, -34, c2, 0.01);
+    }
   }
   // ВПП с торцевыми "обочинами"
   rect(x0 - 60, -34, x0 + len + 60, 34, mixc2(pal.runway, 1.12));
@@ -1954,6 +2001,21 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
     const xs = x0 + 30 + k * 60;
     rect(xs, -0.5, xs + 30, 0.5, m);
   }
+  // фактура асфальта: заплатки, швы, следы резины
+  {
+    const cr = camX - x0, a0 = Math.max(0, Math.floor((cr - 500) / 45)), a1 = Math.min(Math.floor(len / 45) - 1, Math.floor((cr + 3200) / 45));
+    for (let k = a0; k <= a1; k++) {
+      const h1 = hash2(k, 3, 55), h2 = hash2(k, 4, 55), h3 = hash2(k, 5, 55);
+      const xs = x0 + k * 45;
+      if (h1 < 0.55) rect(xs + h2 * 20, -28 + h3 * 50, xs + h2 * 20 + 14 + 22 * h3, -28 + h3 * 50 + 3 + 6 * h1, shadeCol(pal.runway, h1 < 0.28 ? 0.9 : 1.1), 0.02);
+      rect(xs, -30, xs + 0.35, 30, shadeCol(pal.runway, 0.82), 0.02);
+    }
+    for (const base of [x0, x0 + len - 520]) for (const side of [-1, 1]) for (let t = 0; t < 2; t++) {
+      const zz = side * (3.5 + t * 3.1), xs = base + 250 + t * 30;
+      if (xs < camX - 300 || xs > camX + 2400) continue;
+      rect(xs, zz - 0.8, xs + 230 - t * 60, zz + 0.8, shadeCol(pal.runway, 0.72), 0.03);
+    }
+  }
   // боковые линии
   rect(x0 + 6, -29, x0 + len - 6, -28.4, m); rect(x0 + 6, 28.4, x0 + len - 6, 29, m);
   // порог
@@ -1966,9 +2028,9 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   rect(x0 + 300, -12, x0 + 345, -8, m); rect(x0 + 300, 8, x0 + 345, 12, m);
   // здания
   const bx = x0 + len * 0.3;
-  box(bx, bx + len * 0.22, 250, 300, 22, pal.build);
+  box(bx, bx + len * 0.22, 250, 300, 22, pal.build, { rows: 5, col: wcol });
   box(x0 + len * 0.45 - 2.5, x0 + len * 0.45 + 2.5, 228, 250, 5, ['#8e98ac']);
-  box(x0 + len * 0.18, x0 + len * 0.18 + 14, 240, 254, 48, pal.build);
+  box(x0 + len * 0.18, x0 + len * 0.18 + 14, 240, 254, 48, pal.build, { rows: 10, col: wcol });
   box(x0 + len * 0.18 - 6, x0 + len * 0.18 + 20, 238, 256, 8, ['#556070']);
   if (isDest && f && f.rwyBlocked && !f.td) {
     const tx = x0 + len * 0.38;
@@ -1976,10 +2038,16 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
     box(tx + 2, tx + 5, -1.3, 1.3, 5.2, ['#fff4b0']);
     if (Math.floor(f.time * 3) % 2 === 0) box(tx + 3, tx + 4, -0.5, 0.5, 6.4, ['#ff3b30']);
   }
-  box(x0 + len * 0.7, x0 + len * 0.7 + 90, 280, 340, 18, pal.build);
-  box(x0 + len * 0.78, x0 + len * 0.78 + 70, 150, 190, 10, pal.build);
+  box(x0 + len * 0.7, x0 + len * 0.7 + 90, 280, 340, 18, pal.build, { rows: 4, col: wcol });
+  box(x0 + len * 0.78, x0 + len * 0.78 + 70, 150, 190, 10, pal.build, { rows: 2, col: wcol });
   // припаркованные самолёты (упрощённые коробки)
-  for (let i = 0; i < 5; i++) box(bx + 40 + i * 70, bx + 40 + i * 70 + 36, 128, 136, 7, ['#dfe4ee', '#c9d0de']);
+  for (let i = 0; i < 5; i++) {
+    const px = bx + 40 + i * 70, tail = ['#c0392b', '#1d4f91', '#2e7d32', '#f0a500', '#6a1b9a'][i];
+    box(px, px + 36, 128, 134, 7, ['#dfe4ee', '#c9d0de']);          // фюзеляж
+    box(px + 12, px + 22, 112, 150, 0.9, ['#cfd5e2']);               // крыло
+    box(px + 1, px + 6, 130, 132, 14, [tail]);                       // киль
+    if (Math.abs(px - camX) < 1500) box(px + 1, px + 31, 127.9, 128.0, 5.2, ['#2d3a52']);
+  }
 }
 function mixc2(hex, k) { return shadeCol(hex, k); }
 
@@ -2052,11 +2120,15 @@ function drawClouds(pal, f) {
     if (SP.x < -R * 2 || SP.x > W + R * 2 || SP.y < -R || SP.y > H + R) continue;
     const fadeFar = clamp((38000 - c[0]) / 12000, 0, 1);
     ctx.globalAlpha = A * fadeFar;
-    ctx.fillStyle = rgb(dark);
-    ctx.beginPath(); ctx.ellipse(SP.x, SP.y + R * 0.12, R * 1.05, R * 0.34, 0, 0, 6.3); ctx.fill();
-    ctx.fillStyle = rgb(lite);
-    const sc = [[0, 0, 1, 0.38], [-0.55, -0.1, 0.62, 0.3], [0.55, -0.08, 0.66, 0.3], [-0.2, -0.22, 0.6, 0.34], [0.25, -0.26, 0.5, 0.3]];
-    for (const s of sc) { ctx.beginPath(); ctx.ellipse(SP.x + s[0] * R, SP.y + s[1] * R, R * s[2], R * s[3], 0, 0, 6.3); ctx.fill(); }
+    const puff = (px, py, rx, ry, c0, c1) => {
+      ctx.save(); ctx.translate(px, py); ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(0, -rx * 0.18, 0, 0, 0, rx);
+      g.addColorStop(0, rgb(c0)); g.addColorStop(0.55, rgb(c1, 0.95)); g.addColorStop(1, rgb(c1, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rx, 0, 6.3); ctx.fill(); ctx.restore();
+    };
+    puff(SP.x, SP.y + R * 0.14, R * 1.1, R * 0.36, dark, dark);
+    const sc = [[0, 0, 1, 0.4], [-0.55, -0.1, 0.64, 0.32], [0.55, -0.08, 0.68, 0.32], [-0.2, -0.26, 0.62, 0.36], [0.25, -0.3, 0.52, 0.32], [0.05, -0.44, 0.36, 0.24]];
+    for (const q of sc) puff(SP.x + q[0] * R, SP.y + q[1] * R, R * q[2], R * q[3], lite, mixc(lite, dark, 0.35));
     ctx.globalAlpha = 1;
     if (Math.abs(c[2] - camY) < c[4] * 0.35 && c[0] < c[4] * 1.1) fog = Math.max(fog, 0.75);
   }
@@ -2408,6 +2480,14 @@ function buildModel(p) {
     else if ((q === 2 || q === 3) && (i === 0 || i === 3)) col = p.color;
     add([rings[q][i], rings[q][j], rings[q + 1][j], rings[q + 1][i]], col);
   }
+  // иллюминаторы, полоса ливреи, двери
+  for (const sg of [-1, 1]) {
+    const zf = sg * r * 0.9239 * 1.006;
+    const nW = Math.max(8, Math.round(L * 0.44 / 1.05));
+    for (let k = 0; k < nW; k++) { const xw = L * 0.265 - k * (L * 0.425 / nW); add([[xw, r * 0.1, zf], [xw - 0.5, r * 0.1, zf], [xw - 0.5, r * 0.26, zf], [xw, r * 0.26, zf]], '#1b2638', 'win'); }
+    add([[L * 0.29, -r * 0.26, zf], [-L * 0.15, -r * 0.26, zf], [-L * 0.15, -r * 0.13, zf], [L * 0.29, -r * 0.13, zf]], p.color, 'strip');
+    add([[L * 0.22, -r * 0.2, zf], [L * 0.22 - 1.1, -r * 0.2, zf], [L * 0.22 - 1.1, r * 0.34, zf], [L * 0.22, r * 0.34, zf]], '#c3cad8', 'door');
+  }
   const half = span / 2, wy = -0.5 * r;
   for (const sg of [-1, 1]) {
     const le = 0.06 * L - 0.5 * half, te = le - 0.07 * L;
@@ -2474,7 +2554,7 @@ function drawAircraft(f, pal, t) {
     const dif = Math.max(0, (nx * LX + ny * LY + nz * LZ) / ln);
     let k = 0.5 + 0.55 * dif;
     if (pal.night > 0.3) k *= 1 - 0.45 * pal.night;
-    list.push({ w, fw, k: Math.round(k * 20) / 20, col: fc.col });
+    list.push({ w, fw: fw - (fc.kind === 'win' || fc.kind === 'strip' || fc.kind === 'door' ? 1.2 : 0), k: Math.round(k * 20) / 20, col: fc.col });
   }
   list.sort((a, b) => b.fw - a.fw);
   for (const o of list) {
