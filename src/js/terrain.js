@@ -68,6 +68,7 @@ export function heightW(world, wx, wz) {
   const flat = sstep(8000, 26000, dMin), mt = sstep(30000, 85000, dMin);
   if (flat <= 0) return 0;
   const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
+  if (flat > 0.7 && mt < 0.3 && Math.abs(fbm(wx / 24000, wz / 24000, 3, 200) - 0.5) < 0.0085) return -400; // реки
   const hill = (n1 - 0.38) * 520;
   let r = 0;
   if (mt > 0) {

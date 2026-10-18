@@ -659,6 +659,7 @@ function heightW(world, wx, wz) {
   const flat = sstep(8000, 26000, dMin), mt = sstep(30000, 85000, dMin);
   if (flat <= 0) return 0;
   const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
+  if (flat > 0.7 && mt < 0.3 && Math.abs(fbm(wx / 24000, wz / 24000, 3, 200) - 0.5) < 0.0085) return -400; // реки
   const hill = (n1 - 0.38) * 520;
   let r = 0;
   if (mt > 0) {
@@ -1626,10 +1627,11 @@ const bF = new Float64Array(40), bU = new Float64Array(40), bZ = new Float64Arra
 const oF = new Float64Array(40), oU = new Float64Array(40), oZ = new Float64Array(40);
 const P = new Float64Array(60);
 
-let seam = false;
+let seam = false, yOff = 0;
+const boxAt = (yb, ...a) => { yOff = yb; box(...a); yOff = 0; };
 function polyFlat(pts, n, fill) {
   for (let i = 0; i < n; i++) {
-    const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY, dz0 = pts[3 * i + 2] - camZ;
+    const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] + yOff - camY, dz0 = pts[3 * i + 2] - camZ;
     const dx = dx0 * yc + dz0 * ys; // вперёд с учётом курса
     bF[i] = dx * ct + dy * st; bU[i] = -dx * st + dy * ct; bZ[i] = -dx0 * ys + dz0 * yc;
   }
@@ -1677,7 +1679,7 @@ function box(x0, x1, z0, z1, hgt, cols, tex) {
   const shade = [0.78, 0.9, 1.0, 0.7, 1.12];
   for (let i = 0; i < 5; i++) {
     const n = nrm[i];
-    const fx = i === 0 ? x0 : i === 1 ? x1 : cxm, fy = i === 4 ? hgt : hgt / 2, fz = i === 2 ? z0 : i === 3 ? z1 : cz;
+    const fx = i === 0 ? x0 : i === 1 ? x1 : cxm, fy = (i === 4 ? hgt : hgt / 2) + yOff, fz = i === 2 ? z0 : i === 3 ? z1 : cz;
     if (n[0] * (camX - fx) + n[1] * (camY - fy) + n[2] * (camZ - fz) <= 0) continue;
     for (let k = 0; k < 4; k++) { P[3 * k] = faces[i][k][0]; P[3 * k + 1] = faces[i][k][1]; P[3 * k + 2] = faces[i][k][2]; }
     const c = cols[i % cols.length];
@@ -1747,6 +1749,26 @@ function drawSky(pal, hy, hi, f) {
       ctx.fillStyle = rgb(top); ctx.beginPath(); ctx.arc(sx + 4 * U, sy - 2 * U, 8 * U, 0, 6.3); ctx.fill();
     }
   }
+}
+function drawSkyDetail(pal, hy) {
+  if (pal.night > 0.85) return;
+  ctx.save();
+  const a0 = pal.night > 0.1 ? 0.12 : 0.2;
+  // перистые облака: параллакс по курсу
+  for (let i = 0; i < 12; i++) {
+    const wx = ((hash2(i, 1, 17) * 3 * W - F * camPsi * 0.7) % (3 * W) + 3 * W) % (3 * W) - W * 0.8, wy = hy - (0.16 + 0.62 * hash2(i, 2, 17)) * Math.max(40, hy), rw = (120 + 340 * hash2(i, 3, 17)) * U, rh = (3 + 5 * hash2(i, 4, 17)) * U;
+    const g = ctx.createRadialGradient(wx, wy, 0, wx, wy, rw);
+    g.addColorStop(0, `rgba(255,255,255,${a0})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save(); ctx.translate(wx, wy); ctx.rotate(-0.08 + 0.12 * hash2(i, 5, 17)); ctx.scale(1, rh / rw); ctx.translate(-wx, -wy);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(wx, wy, rw, 0, 6.3); ctx.fill(); ctx.restore();
+  }
+  // далёкие кучевые у горизонта
+  for (let i = 0; i < 26; i++) {
+    const wx = ((hash2(i, 6, 17) * 3 * W - F * camPsi) % (3 * W) + 3 * W) % (3 * W) - W, rr = (10 + 26 * hash2(i, 7, 17)) * U;
+    ctx.fillStyle = `rgba(255,255,255,${0.2 + 0.18 * hash2(i, 8, 17)})`;
+    ctx.beginPath(); ctx.ellipse(wx, hy - rr * 0.18, rr * 1.7, rr * 0.4, 0, 0, 6.3); ctx.ellipse(wx + rr * 0.5, hy - rr * 0.38, rr * 0.9, rr * 0.38, 0, 0, 6.3); ctx.fill();
+  }
+  ctx.restore();
 }
 function drawMountains(pal, hy, f) {
   const haze = pal.haze;
@@ -1904,6 +1926,13 @@ function drawTerrain(pal, hy, f) {
       P[0] = x0; P[1] = y00; P[2] = z0; P[3] = x1; P[4] = y10; P[5] = z0; P[6] = x1; P[7] = y11; P[8] = z1; P[9] = x0; P[10] = y01; P[11] = z1;
       seam = true; const okp = polyFlat(P, 4, `rgb(${r | 0},${g | 0},${bl | 0})`); seam = false;
       if (!okp) continue;
+      // ---- микродетали вблизи: рябь травы, живые изгороди, фермы, дома с крышами ----
+      if (li === 0 && fw < 1100 && camY < 600 && !water) {
+        const xi = Math.floor(x0 / s), zi = Math.floor(z0 / s), yv = avg + 0.15;
+        for (let u = 0; u < 4; u++) { const jx = (u & 1) * s / 2, jz = (u >> 1) * s / 2, kk = 0.94 + 0.12 * worldHash(xi * 2 + (u & 1), zi * 2 + (u >> 1), 120); rect(x0 + jx, z0 + jz, x0 + jx + s / 2, z0 + jz + s / 2, `rgb(${Math.min(255, r * kk) | 0},${Math.min(255, g * kk) | 0},${Math.min(255, bl * kk) | 0})`, yv); }
+        if (fieldK > 0.28 && worldHash(xi, zi, 130) < 0.7) { const hc = `rgb(${(r * 0.6) | 0},${(g * 0.68) | 0},${(bl * 0.6) | 0})`; rect(x0, z0, x1, z0 + 1.6, hc, yv + 0.1); rect(x0, z0, x0 + 1.6, z1, hc, yv + 0.1); }
+        if (!town && lowF && worldHash(xi, zi, 140) < 0.06) { const fx = x0 + s * 0.3, fz = z0 + s * 0.3; boxAt(avg, fx, fx + 16, fz, fz + 9, 5, ['#c9b79a', '#a69273', '#b8a583']); boxAt(avg + 5, fx - 0.5, fx + 16.5, fz - 0.5, fz + 9.5, 1.6, ['#8c3b2c', '#7a3326']); boxAt(avg, fx + 22, fx + 38, fz + 3, fz + 11, 7, ['#9a3b2f', '#822f26']); }
+      }
       // ---- текстура поверхности: борозды, дороги, блики на воде, подлесок ----
       if (li <= 1 && fw < (li ? 8000 : 2800)) {
         const xi = Math.floor(x0 / s), zi = Math.floor(z0 / s), yv = avg + 0.2;
@@ -1927,7 +1956,8 @@ function drawTerrain(pal, hy, f) {
       if (li === 0 && fw < 2300 && camY < 900 && !water) {
         const cx = x0 + s / 2, cz = z0 + s / 2;
         if (town) {
-          if (hv < 0.6) box(cx - 25, cx + 25, cz - 20, cz + 20, 8 + hv * 20, [pal.build[(hv * 3) | 0], pal.build[1], '#8b7f78']);
+          if (hv < 0.6) { const bh = 8 + hv * 20, bw = 22 + hv * 10; boxAt(avg, cx - bw, cx + bw, cz - bw * 0.8, cz + bw * 0.8, bh, [pal.build[(hv * 3) | 0], pal.build[1], '#8b7f78'], bh > 14 ? { rows: Math.round(bh / 4), col: night > 0.5 ? '#d9b266' : '#33425c' } : null); boxAt(avg + bh, cx - bw - 1, cx + bw + 1, cz - bw * 0.8 - 1, cz + bw * 0.8 + 1, 1.2, ['#6a625f']); }
+          for (let u = 0; u < 5; u++) { const hx = x0 + worldHash(a, b, 150 + u) * (s - 24), hz = z0 + worldHash(a, b, 160 + u) * (s - 18), hh = 5 + 4 * worldHash(a, b, 170 + u); boxAt(avg, hx, hx + 12 + 8 * worldHash(a, b, 175 + u), hz, hz + 9, hh, ['#d7cdbf', '#b9ad9d', '#cfc4b4']); boxAt(avg + hh, hx - 0.8, hx + 13 + 8 * worldHash(a, b, 175 + u), hz - 0.8, hz + 9.8, 2.2, [u & 1 ? '#8c3b2c' : '#5d6674']); }
           if (night > 0.5 && toScreen(cx, avg + 6, cz, SP)) { ctx.fillStyle = '#ffd890'; ctx.fillRect(SP.x, SP.y, 2, 2); }
         } else if (g < r + 2 * (r - bl) * 0 + 0 && false) { /* зарезервировано */ }
         else if (hv > 0.35 && (g * 1.0 < 120 && r < 90)) {
@@ -2040,6 +2070,38 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
   }
   box(x0 + len * 0.7, x0 + len * 0.7 + 90, 280, 340, 18, pal.build, { rows: 4, col: wcol });
   box(x0 + len * 0.78, x0 + len * 0.78 + 70, 150, 190, 10, pal.build, { rows: 2, col: wcol });
+  // ---- детали аэродрома (только вблизи) ----
+  if (camX > x0 - 3500 && camX < x0 + len + 3500) {
+    const cl = ['#c9ced9', '#aab2c2'], rf = ['#7b8394', '#6a7284'];
+    // диспетчерская вышка: ствол, кабина со стеклом, крыша, антенна
+    const tx = x0 + len * 0.12;
+    box(tx, tx + 9, 246, 255, 36, ['#bfc5d2', '#a4acbb']);
+    boxAt(36, tx - 4, tx + 13, 242, 259, 8, ['#2f4a63', '#27405a', '#35526d'], { rows: 1, col: night > 0.5 ? '#ffe9a8' : '#9fc3e6' });
+    boxAt(44, tx - 5, tx + 14, 241, 260, 1.4, ['#8a92a3']);
+    boxAt(45.4, tx + 4, tx + 5, 249.5, 250.5, 9, ['#c0392b', '#e8e8e8']);
+    // ангары
+    for (let i = 0; i < 2; i++) { const hx = x0 + len * (0.82 + i * 0.07); boxAt(0, hx, hx + 46, 160, 215, 11, rf, { rows: 1, col: '#5c6678' }); boxAt(11, hx + 1, hx + 45, 162, 213, 2.2, ['#8a93a5']); }
+    // топливозаправщик и багажные тележки на перроне
+    const gx = x0 + len * 0.45;
+    box(gx + 60, gx + 70, 150, 154, 3, ['#e0e4ec', '#c64a3a']); box(gx + 71, gx + 74, 150.5, 153.5, 2.2, ['#c64a3a']);
+    for (let i = 0; i < 4; i++) box(gx - 70 + i * 4.2, gx - 68 + i * 4.2, 170, 171.6, 1.5, ['#d6b84a', '#8a8f9b']);
+    box(gx + 20, gx + 24, 190, 192, 1.8, ['#f2c14e']);
+    // дорожные знаки на рулёжке и указатель
+    for (const c of [0.06, 0.5, 0.93]) { const sx2 = x0 + len * c + 12; box(sx2 - 1.2, sx2 + 1.2, 117, 117.4, 1.6, ['#f2c14e']); box(sx2 - 1.2, sx2 + 1.2, 84, 84.4, 1.6, ['#d13a2a']); }
+    // ветроуказатель
+    const wx = x0 + 400, wz = -75; box(wx - 0.15, wx + 0.15, wz - 0.15, wz + 0.15, 7, ['#d9dce3']);
+    const wd = Math.sin(camPsi * 0 + 1.2) * 1.4; box(wx, wx + 4.2, wz + wd - 0.9, wz + wd + 0.9, 1.4, ['#f15a24', '#ffffff']);
+    // курсовой радиомаяк за концом полосы, забор, лес по периметру
+    box(x0 + len + 280, x0 + len + 292, -4, 4, 3, ['#8a91a0']);
+    for (let i = 0; i < 40; i++) { const fx2 = x0 - 200 + i * (len + 400) / 40; if (Math.abs(fx2 - camX) < 2500) { box(fx2, fx2 + 1, 300, 300.3, 2.2, ['#6c7384']); box(fx2, fx2 + 1, -160, -159.7, 2.2, ['#6c7384']); } }
+    for (let i = 0; i < 70; i++) {
+      const fx3 = x0 - 300 + hash2(i, 1, 303) * (len + 600), fz3 = (hash2(i, 2, 303) < 0.5 ? -1 : 1) * (190 + hash2(i, 3, 303) * 260) + (hash2(i, 2, 303) < 0.5 ? 0 : 60);
+      if (Math.abs(fx3 - camX) > 2200) continue;
+      const th = 8 + hash2(i, 4, 303) * 8; boxAt(0, fx3, fx3 + 1, fz3, fz3 + 1, th * 0.3, ['#4a3a2a']); boxAt(th * 0.3, fx3 - 2.5, fx3 + 3.5, fz3 - 3, fz3 + 4, th * 0.8, ['#2f6a37', '#285c30']);
+    }
+    // дневные огневые планки подхода
+    if (night < 0.3) for (let i = 1; i <= 12; i++) rect(x0 - i * 45 - 0.4, -6, x0 - i * 45 + 0.4, 6, '#b9bdc6');
+  }
   // припаркованные самолёты (упрощённые коробки)
   for (let i = 0; i < 5; i++) {
     const px = bx + 40 + i * 70, tail = ['#c0392b', '#1d4f91', '#2e7d32', '#f0a500', '#6a1b9a'][i];
@@ -2222,6 +2284,7 @@ function drawFlight(c, w, h, f, t, view) {
 
   drawSky(pal, hy, hi, { theta: th });
   drawMountains(pal, hy);
+  drawSkyDetail(pal, hy);
   drawTerrain(pal, hy, f);
   // прочие аэродромы (запасные и соседние)
   for (let i = 0; i < f.world.length; i++) {
@@ -2251,11 +2314,11 @@ function drawFlight(c, w, h, f, t, view) {
   if (fog > 0) { c.fillStyle = `rgba(235,240,248,${fog * 0.8})`; c.fillRect(0, 0, W, H); }
 
   // кабина: стойки и козырёк
-  if (!chase) drawCockpit(pal);
+  if (!chase) drawCockpit(pal, f);
   drawHUD(f, t, view, th);
 }
 
-function drawCockpit(pal) {
+function drawCockpit(pal, f) {
   const nightK = pal.night;
   // козырёк и потолок
   const top = ctx.createLinearGradient(0, 0, 0, H * 0.075);
