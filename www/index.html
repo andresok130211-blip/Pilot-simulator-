@@ -2468,46 +2468,103 @@ function drawGuide(f) {
 const modelCache = {};
 function buildModel(p) {
   const span = Math.sqrt(p.S * p.ar), L = span * (p.seats >= 300 ? 1.12 : 1.07), r = L * 0.052;
-  const gh = r + 1.5;
+  const gh = r + 1.5, half = span / 2, wy = -0.55 * r;
   const faces = [];
-  const add = (pts, col, kind) => faces.push({ pts, col, kind: kind || '' });
-  const st = [[0.5, 0.10, 0.0], [0.46, 0.60, -0.05], [0.40, 0.90, -0.02], [0.30, 1, 0], [-0.16, 1, 0], [-0.33, 0.72, 0.28], [-0.5, 0.16, 0.5]];
-  const rings = st.map(([xf, k, dy]) => { const rr = r * k, cy = dy * r, ring = []; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; ring.push([xf * L, cy + rr * Math.sin(a), rr * Math.cos(a)]); } return ring; });
-  for (let q = 0; q < rings.length - 1; q++) for (let i = 0; i < 8; i++) {
-    const j = (i + 1) % 8;
-    let col = i < 4 ? '#eef2f8' : '#aeb7c8';
-    if (q <= 1 && (i === 1 || i === 2)) col = '#1c2433';
-    else if ((q === 2 || q === 3) && (i === 0 || i === 3)) col = p.color;
-    add([rings[q][i], rings[q][j], rings[q + 1][j], rings[q + 1][i]], col);
+  const add = (pts, col, kind, ex) => { const o = { pts, col, kind: kind || '' }; if (ex) Object.assign(o, ex); faces.push(o); };
+  const decal = (pts, col, kind, sg) => {
+    let cx = 0, cy = 0, cz = 0; for (const q of pts) { cx += q[0]; cy += q[1]; cz += q[2]; }
+    const n = pts.length; add(pts, col, kind, { decal: true, c0: [cx / n, cy / n, cz / n], out: [0, 0, sg] });
+  };
+  // ---- фюзеляж: 12-гранные шпангоуты ----
+  const N = 12;
+  const st = [[0.5, 0.07, -0.06], [0.485, 0.34, -0.05], [0.45, 0.62, -0.04], [0.40, 0.82, -0.025], [0.33, 0.95, -0.01], [0.27, 1, 0], [-0.16, 1, 0], [-0.26, 0.9, 0.1], [-0.36, 0.66, 0.26], [-0.45, 0.36, 0.42], [-0.5, 0.14, 0.5]];
+  const rings = st.map(([xf, k, dy]) => { const rr = r * k, cy = dy * r, ring = []; for (let i = 0; i < N; i++) { const a = (i + 0.5) * 2 * Math.PI / N; ring.push([xf * L, cy + rr * Math.sin(a), rr * Math.cos(a)]); } return ring; });
+  for (let q = 0; q < rings.length - 1; q++) for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N, ang = ((i + 1) * 30) % 360;
+    let col = ang > 0 && ang < 180 ? '#f2f5fa' : ang === 0 || ang === 180 ? '#e4e9f1' : '#b4bccb';
+    if (q >= 7 && (ang >= 0 && ang <= 180)) col = p.color;                       // хвостовая часть в цвет ливреи
+    if (q <= 1) col = ang > 90 && ang < 270 ? '#3b4252' : '#3b4252';             // радиопрозрачный обтекатель
+    if (q === 2 && (i === 1 || i === 2 || i === 3)) col = '#141c2a';              // лобовые стёкла
+    if (q === 3 && i === 2) col = '#141c2a';
+    add([rings[q][i], rings[q][j], rings[q + 1][j], rings[q + 1][i]], col, '', { tone: q % 2 ? 0.975 : 1.025 });
   }
-  // иллюминаторы, полоса ливреи, двери
+  const zS = Math.cos(Math.PI / N) * r * 1.008, sd = Math.sin(Math.PI / N) * r;
   for (const sg of [-1, 1]) {
-    const zf = sg * r * 0.9239 * 1.006;
-    const nW = Math.max(8, Math.round(L * 0.44 / 1.05));
-    for (let k = 0; k < nW; k++) { const xw = L * 0.265 - k * (L * 0.425 / nW); add([[xw, r * 0.1, zf], [xw - 0.5, r * 0.1, zf], [xw - 0.5, r * 0.26, zf], [xw, r * 0.26, zf]], '#1b2638', 'win'); }
-    add([[L * 0.29, -r * 0.26, zf], [-L * 0.15, -r * 0.26, zf], [-L * 0.15, -r * 0.13, zf], [L * 0.29, -r * 0.13, zf]], p.color, 'strip');
-    add([[L * 0.22, -r * 0.2, zf], [L * 0.22 - 1.1, -r * 0.2, zf], [L * 0.22 - 1.1, r * 0.34, zf], [L * 0.22, r * 0.34, zf]], '#c3cad8', 'door');
+    const zf = sg * zS;
+    // иллюминаторы
+    const nW = Math.max(14, Math.round(L * 0.4 / 0.62));
+    for (let k = 0; k < nW; k++) { const xw = L * 0.245 - k * (L * 0.385 / nW); decal([[xw, sd * 0.1, zf], [xw - 0.24, sd * 0.1, zf], [xw - 0.24, sd * 0.78, zf], [xw, sd * 0.78, zf]], '#18222f', 'win', sg); }
+    // полоса ливреи и нижний кант
+    decal([[L * 0.27, -sd * 0.86, zf], [-L * 0.2, -sd * 0.7, zf], [-L * 0.2, -sd * 0.3, zf], [L * 0.27, -sd * 0.42, zf]], p.color, 'strip', sg);
+    // двери и аварийные люки
+    for (const xd of [L * 0.205, L * 0.04, -L * 0.1]) decal([[xd, -sd * 0.7, zf], [xd - 0.95, -sd * 0.7, zf], [xd - 0.95, sd * 0.95, zf], [xd, sd * 0.95, zf]], '#d3d9e5', 'door', sg);
+    // кабина экипажа: боковые стёкла
+    decal([[L * 0.372, sd * 0.1, zf * 0.985], [L * 0.322, sd * 0.1, zf * 0.985], [L * 0.322, sd * 0.78, zf * 0.985], [L * 0.372, sd * 0.78, zf * 0.985]], '#10161f', 'win', sg);
+    // технологические панели и антенны на брюхе
+    decal([[L * 0.1, -sd * 0.95, zf], [-L * 0.02, -sd * 0.95, zf], [-L * 0.02, -sd * 0.7, zf], [L * 0.1, -sd * 0.7, zf]], '#9aa3b4', 'panel', sg);
   }
-  const half = span / 2, wy = -0.5 * r;
+  // ---- крыло: сегменты, предкрылки, закрылки (опускаются), элерон, законцовка ----
+  const leR = 0.06 * L, teR = -0.14 * L, leT = leR - 0.5 * half, teT = leT - 0.07 * L, y1 = wy + 0.075 * half;
+  const WP = (t, u, sg) => { const le = leR + (leT - leR) * t, te = teR + (teT - teR) * t; return [le + (te - le) * u, wy + (y1 - wy) * t, sg * (r * 0.95 + (half - r * 0.95) * t)]; };
+  const quad = (t0, t1, u0, u1, sg, col, kind, ex) => add([WP(t0, u0, sg), WP(t1, u0, sg), WP(t1, u1, sg), WP(t0, u1, sg)], col, kind || 'wing', ex);
   for (const sg of [-1, 1]) {
-    const le = 0.06 * L - 0.5 * half, te = le - 0.07 * L;
-    add([[0.06 * L, wy, sg * r * 0.9], [-0.14 * L, wy, sg * r * 0.9], [te, wy + 0.07 * half, sg * half], [le, wy + 0.07 * half, sg * half]], '#d3d9e6', 'wing');
-    add([[-0.40 * L, 0.2 * r, sg * r * 0.4], [-0.49 * L, 0.25 * r, sg * r * 0.4], [-0.50 * L, 0.3 * r, sg * half * 0.36], [-0.45 * L, 0.3 * r, sg * half * 0.36]], '#cfd5e2', 'wing');
-    // двигатель
-    const ez = sg * span * 0.17, re = L * 0.031, ey = wy - re * 1.1, ex1 = 0.1 * L, ex0 = -0.02 * L;
-    const er = [], er0 = [];
-    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; er.push([ex1, ey + re * Math.sin(a), ez + re * Math.cos(a)]); er0.push([ex0, ey + re * 0.9 * Math.sin(a), ez + re * 0.9 * Math.cos(a)]); }
-    for (let i = 0; i < 6; i++) { const j = (i + 1) % 6; add([er[i], er[j], er0[j], er0[i]], i < 3 ? '#c4ccdb' : '#8e98ab'); }
-    add(er, '#12161e', 'eng');
-    // ножки шасси и колёса
+    quad(0, 0.12, 0, 1, sg, '#d9dfea');
+    quad(0.12, 0.92, 0.0, 0.12, sg, '#b9c1d0');                                      // предкрылки
+    const seg = [[0.12, 0.27], [0.27, 0.42], [0.42, 0.62], [0.62, 0.92]];
+    seg.forEach(([a, b], i) => quad(a, b, 0.12, i < 3 ? 0.74 : 0.78, sg, i & 1 ? '#d2d8e5' : '#dce2ed'));
+    // закрылки: 4-я координата — доля отклонения
+    for (const [a, b] of [[0.12, 0.42], [0.44, 0.62]]) add([[...WP(a, 0.74, sg), 0], [...WP(b, 0.74, sg), 0], [...WP(b, 1, sg), 1], [...WP(a, 1, sg), 1]], '#c3cad8', 'wing', { dyn: true });
+    quad(0.64, 0.92, 0.78, 1, sg, '#c9d0dd');                                        // элерон
+    quad(0.92, 1, 0, 1, sg, '#d6dce8');
+    // законцовка-«акула»
+    const a = WP(1, 0, sg), b = WP(1, 1, sg), hh = L * 0.065;
+    add([a, b, [b[0] - L * 0.01, b[1] + hh, b[2]], [a[0] - L * 0.045, a[1] + hh, a[2]]], p.color, 'wing');
+    // горизонтальный стабилизатор + руль высоты
+    const hs = (t, u) => [-0.40 * L + (-0.49 * L + 0.40 * L) * 0, 0, 0];
+    const sx0 = -0.40 * L, sx1 = -0.49 * L, tx0 = -0.455 * L, tx1 = -0.505 * L, sz0 = sg * r * 0.4, sz1 = sg * half * 0.36;
+    const lp = (u, t) => [(sx0 + (tx0 - sx0) * t) + ((sx1 + (tx1 - sx1) * t) - (sx0 + (tx0 - sx0) * t)) * u, 0.2 * r + 0.1 * r * t, sz0 + (sz1 - sz0) * t];
+    add([lp(0, 0), lp(0, 1), lp(0.62, 1), lp(0.62, 0)], '#d3d9e6', 'wing');
+    add([lp(0.62, 0), lp(0.62, 1), lp(1, 1), lp(1, 0)], '#bfc7d6', 'wing');
+    // двигатель с пилоном
+    const tE = 0.4, ez = sg * (r * 0.95 + (half - r * 0.95) * tE) * 0.92, re = L * 0.034, yW = wy + (y1 - wy) * tE, ey = yW - re * 1.08;
+    const ex1 = 0.125 * L, ex2 = 0.07 * L, ex3 = -0.01 * L, ex0 = -0.035 * L;
+    const prof = [[ex1, 0.96], [ex2, 1.03], [ex3, 1.0], [ex0, 0.8]], M2 = 10;
+    const nr = prof.map(([x, k]) => { const ring = []; for (let i = 0; i < M2; i++) { const a2 = (i + 0.5) * 2 * Math.PI / M2; ring.push([x, ey + re * k * Math.sin(a2), ez + re * k * Math.cos(a2)]); } return ring; });
+    for (let q = 0; q < nr.length - 1; q++) for (let i = 0; i < M2; i++) { const j = (i + 1) % M2, up = Math.sin((i + 1) * 2 * Math.PI / M2) > 0; add([nr[q][i], nr[q][j], nr[q + 1][j], nr[q + 1][i]], q === 0 ? p.color : up ? '#d7dce7' : '#a2abbc', 'nac', { tone: 1 + 0.02 * (i % 2) }); }
+    add(nr[0], '#0d1015', 'eng');
+    const ex = ex0 - 0.04 * L, cone = []; for (let i = 0; i < M2; i++) { const a2 = (i + 0.5) * 2 * Math.PI / M2; cone.push([ex, ey + re * 0.32 * Math.sin(a2), ez + re * 0.32 * Math.cos(a2)]); }
+    for (let i = 0; i < M2; i++) { const j = (i + 1) % M2; add([nr[3][i], nr[3][j], cone[j], cone[i]], '#3a404c', 'nac'); }
+    add(cone, '#14171c', 'nac');
+    add([[ex1 - 0.01 * L, yW, ez], [ex3 - 0.02 * L, yW, ez], [ex3, ey + re * 0.75, ez], [ex2, ey + re * 0.85, ez]], '#c6cdda', 'wing');
+    // подпалины от выхлопа на крыле
+    const sx = WP(tE, 0.8, sg);
+    decal([[ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.55], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.4], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.4], [ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.55]], 'rgba(40,40,48,.5)', 'soot', 0);
+    // шасси
     const mz = sg * span * 0.11, mx = -0.05 * L, wh = 1.15;
     add([[mx - 0.12, -gh + wh, mz], [mx + 0.12, -gh + wh, mz], [mx + 0.12, wy, mz], [mx - 0.12, wy, mz]], '#2b323f', 'gear');
-    add([[mx - 0.65, -gh, mz], [mx + 0.65, -gh, mz], [mx + 0.65, -gh + wh, mz], [mx - 0.65, -gh + wh, mz]], '#0f1218', 'gear');
+    for (const dz of [-0.32, 0.32]) {
+      add([[mx - 0.65, -gh, mz + dz], [mx + 0.65, -gh, mz + dz], [mx + 0.65, -gh + wh, mz + dz], [mx - 0.65, -gh + wh, mz + dz]], '#0f1218', 'gear');
+      add([[mx - 0.25, -gh + 0.3, mz + dz * 1.04], [mx + 0.25, -gh + 0.3, mz + dz * 1.04], [mx + 0.25, -gh + 0.85, mz + dz * 1.04], [mx - 0.25, -gh + 0.85, mz + dz * 1.04]], '#8e97a8', 'gear');
+    }
   }
-  add([[-0.38 * L, 0.7 * r, 0], [-0.5 * L, 0.7 * r, 0], [-0.535 * L, 0.7 * r + 0.15 * L, 0], [-0.455 * L, 0.7 * r + 0.15 * L, 0]], p.color, 'fin');
+  // ---- киль: стреловидный, логотип и полоса ----
+  const fb = 0.7 * r, fh = L * 0.17;
+  const fz = (y, sg) => sg * (0.34 - 0.3 * (y - fb) / fh);
+  for (const sg of [-1, 1]) {
+    add([[-0.37 * L, fb, fz(fb, sg) * 1], [-0.5 * L, fb, fz(fb, sg)], [-0.545 * L, fb + fh, fz(fb + fh, sg)], [-0.465 * L, fb + fh, fz(fb + fh, sg)]], p.color, 'fin');
+  }
+  for (const sg of [-1, 1]) {
+    const Z = (y) => fz(y, sg) + sg * 0.012, y1f = fb + fh * 0.5, y2f = fb + fh * 0.83;
+    decal([[-0.405 * L, y1f, Z(y1f)], [-0.445 * L, y1f, Z(y1f)], [-0.485 * L, y2f, Z(y2f)], [-0.46 * L, y2f, Z(y2f)]], '#f3f5fa', 'logo', sg);
+    const yl = fb + fh * 0.3, lc = [-0.438 * L, yl, Z(yl)], rr2 = L * 0.018, pts = [];
+    for (let i = 0; i < 10; i++) { const a2 = i * 2 * Math.PI / 10; pts.push([lc[0] + rr2 * Math.cos(a2) * 1.3, lc[1] + rr2 * Math.sin(a2), lc[2]]); }
+    decal(pts, '#f3f5fa', 'logo', sg);
+  }
+  add([[-0.37 * L, fb, -0.34], [-0.5 * L, fb, -0.34], [-0.5 * L, fb, 0.34], [-0.37 * L, fb, 0.34]], p.color, 'fin');
+  // носовая стойка
   const nx = 0.33 * L;
   add([[nx - 0.1, -gh + 0.8, 0], [nx + 0.1, -gh + 0.8, 0], [nx + 0.1, -r * 0.8, 0], [nx - 0.1, -r * 0.8, 0]], '#2b323f', 'gear');
-  add([[nx - 0.55, -gh, 0], [nx + 0.55, -gh, 0], [nx + 0.55, -gh + 0.8, 0], [nx - 0.55, -gh + 0.8, 0]], '#0f1218', 'gear');
+  for (const dz of [-0.22, 0.22]) add([[nx - 0.55, -gh, dz], [nx + 0.55, -gh, dz], [nx + 0.55, -gh + 0.8, dz], [nx - 0.55, -gh + 0.8, dz]], '#0f1218', 'gear');
   return { faces, L, r, span, gh, half };
 }
 const MP = [], MQ = [];
@@ -2538,11 +2595,17 @@ function drawAircraft(f, pal, t) {
   // грани: преобразование, сортировка по глубине
   const list = [];
   const LX = -0.4, LY = 0.85, LZ = 0.35, ln = Math.hypot(LX, LY, LZ);
+  const dr = (f.flapAct || 0) * 0.011 * M.L;
+  const oo = [0, 0, 0], o2 = [0, 0, 0];
   for (const fc of M.faces) {
     if (fc.kind === 'gear' && !gearDown) continue;
+    if (fc.decal && fc.out[2] !== 0) { // накладки видны только со своей стороны
+      tr(fc.c0[0], fc.c0[1], fc.c0[2], oo); tr(fc.c0[0], fc.c0[1], fc.c0[2] + fc.out[2], o2);
+      if ((o2[0] - oo[0]) * (camX - oo[0]) + (o2[1] - oo[1]) * (camY - oo[1]) + (o2[2] - oo[2]) * (camZ - oo[2]) < 0) continue;
+    }
     const n = fc.pts.length, w = [];
     let cx = 0, cy = 0, cz = 0;
-    for (let i = 0; i < n; i++) { const o = [0, 0, 0]; tr(fc.pts[i][0], fc.pts[i][1], fc.pts[i][2], o); w.push(o); cx += o[0]; cy += o[1]; cz += o[2]; }
+    for (let i = 0; i < n; i++) { const o = [0, 0, 0], q = fc.pts[i]; tr(q[0], q[1] - (fc.dyn ? q[3] * dr : 0), q[2], o); w.push(o); cx += o[0]; cy += o[1]; cz += o[2]; }
     cx /= n; cy /= n; cz /= n;
     const dx0 = cx - camX, dz0 = cz - camZ, dy = cy - camY;
     const fw = (dx0 * yc + dz0 * ys) * ct + dy * st;
@@ -2550,17 +2613,23 @@ function drawAircraft(f, pal, t) {
     const ux = w[1][0] - w[0][0], uy = w[1][1] - w[0][1], uz = w[1][2] - w[0][2], vx = w[2][0] - w[0][0], vy = w[2][1] - w[0][1], vz = w[2][2] - w[0][2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
-    if (nx * (camX - cx) + ny * (camY - cy) + nz * (camZ - cz) < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    const vxc = camX - cx, vyc = camY - cy, vzc = camZ - cz;
+    if (nx * vxc + ny * vyc + nz * vzc < 0) { nx = -nx; ny = -ny; nz = -nz; }
     const dif = Math.max(0, (nx * LX + ny * LY + nz * LZ) / ln);
-    let k = 0.5 + 0.55 * dif;
+    let k = 0.46 + 0.52 * dif;
+    if (!fc.decal) { // блик металла
+      const vl = Math.hypot(vxc, vyc, vzc) || 1, hx = LX / ln + vxc / vl, hy = LY / ln + vyc / vl, hz = LZ / ln + vzc / vl, hl = Math.hypot(hx, hy, hz) || 1;
+      k += 0.3 * Math.pow(Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), 22);
+      k *= fc.tone || 1;
+    }
     if (pal.night > 0.3) k *= 1 - 0.45 * pal.night;
-    list.push({ w, fw: fw - (fc.kind === 'win' || fc.kind === 'strip' || fc.kind === 'door' ? 1.2 : 0), k: Math.round(k * 20) / 20, col: fc.col });
+    list.push({ w, fw: fw - (fc.decal ? 1.5 : 0), k: Math.round(k * 40) / 40, col: fc.col, decal: !!fc.decal });
   }
   list.sort((a, b) => b.fw - a.fw);
   for (const o of list) {
     const n = o.w.length;
     for (let i = 0; i < n; i++) { P[3 * i] = o.w[i][0]; P[3 * i + 1] = o.w[i][1]; P[3 * i + 2] = o.w[i][2]; }
-    polyFlat(P, n, shadeCol(o.col, o.k));
+    seam = !o.decal; polyFlat(P, n, o.col[0] === 'r' ? o.col : shadeCol(o.col, o.k)); seam = false;
   }
   // пожар двигателя: пламя и дым
   if (f.fire && !f.fire.ext) {
