@@ -1,6 +1,7 @@
 // Отрисовка: вид из кабины (псевдо-3D), HUD, карта для меню.
 import { DEG, GS_TAN, GS_DEG, AIM_OFFSET, FLAP_NAMES, stallIAS, APPR_ALT } from './sim.js';
 import { AIRPORTS, AP_BY } from './data.js';
+import { heightW, toWorld, toLocal, wetAt, sstep, worldHash, fbm } from './terrain.js';
 
 const PAL = [
   { // день
@@ -35,6 +36,7 @@ const bF = new Float64Array(40), bU = new Float64Array(40), bZ = new Float64Arra
 const oF = new Float64Array(40), oU = new Float64Array(40), oZ = new Float64Array(40);
 const P = new Float64Array(60);
 
+let seam = false;
 function polyFlat(pts, n, fill) {
   for (let i = 0; i < n; i++) {
     const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY, dz0 = pts[3 * i + 2] - camZ;
@@ -56,6 +58,7 @@ function polyFlat(pts, n, fill) {
   }
   ctx.closePath();
   ctx.fillStyle = fill; ctx.fill();
+  if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 1; ctx.stroke(); }
   return true;
 }
 function rect(x0, z0, x1, z1, fill, y = 0) {
@@ -198,6 +201,123 @@ function drawGround(pal, hy, f) {
   };
   layer(sB, 1);
   layer(sA, 1 - fr);
+}
+
+// ---- ландшафт: сетки разной детализации вокруг камеры, от дальней к ближней ----
+const LVN = 16, LVS = [150, 450, 1350, 4050];
+const HV = new Float32Array((2 * LVN + 2) * (2 * LVN + 2));
+const tA = new Int16Array(1100), tB = new Int16Array(1100), tD = new Float64Array(1100), tOrd = new Array(1100);
+const FIELD = [[132, 152, 72], [152, 144, 80], [112, 140, 66], [98, 128, 60], [162, 152, 102], [128, 114, 72], [140, 156, 84], [120, 134, 70]];
+const _wp = { x: 0, z: 0 };
+let apLocal = [];
+const SUN = (() => { const l = Math.hypot(-0.45, 0.8, 0.35); return [-0.45 / l, 0.8 / l, 0.35 / l]; })();
+function drawTerrain(pal, hy, f) {
+  const hz = pal.haze, night = pal.night;
+  const tint = night > 0.6 ? [0.075, 0.1, 0.17] : night > 0.1 ? [0.92, 0.72, 0.64] : [1, 1, 1];
+  const fogMix = (c, k) => [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k];
+  const bc = fogMix([94 * tint[0], 134 * tint[1], 70 * tint[2]], 0.82);
+  ctx.fillStyle = rgb(bc); ctx.fillRect(-W, hy - 1, W * 3, H * 2.2);
+  // местные координаты аэродромов
+  apLocal.length = 0;
+  for (const a of f.world) { toLocal(f.tf, a.wx, a.wz, _wp); apLocal.push(_wp.x, _wp.z); }
+  const tanH = Math.hypot(W, H) / 2 / F * 1.15;
+  const D0 = 52000 + 5 * Math.max(0, camY);
+  const drawn = [false, false, false, false];
+  for (let li = 0; li < 4; li++) drawn[li] = !((li === 0 && camY > 6000) || (li === 1 && camY > 16000));
+  for (let li = 3; li >= 0; li--) {
+    if (!drawn[li]) continue;
+    const s = LVS[li], n = LVN, N = 2 * n + 2, ci = Math.floor(camX / s), cj = Math.floor(camZ / s);
+    HV.fill(NaN, 0, N * N);
+    const getH = (a, b) => {
+      const k = a * N + b; let v = HV[k];
+      if (v !== v) { toWorld(f.tf, (ci + a - n) * s, (cj + b - n) * s, _wp); v = heightW(f.world, _wp.x, _wp.z); HV[k] = v; }
+      return v;
+    };
+    let m = 0;
+    const inner = li > 0 && drawn[li - 1] ? LVS[li - 1] * n - s * 0.6 : -1;
+    for (let a = 0; a < 2 * n; a++) {
+      for (let b = 0; b < 2 * n; b++) {
+        const dx = (ci + a - n + 0.5) * s - camX, dz = (cj + b - n + 0.5) * s - camZ;
+        if (inner > 0 && Math.abs(dx) < inner && Math.abs(dz) < inner) continue;
+        const fw = dx * yc + dz * ys, rt = -dx * ys + dz * yc;
+        if (fw < -s * 1.6 || Math.abs(rt) > Math.max(fw, 0) * tanH + s * 1.9) continue;
+        tA[m] = a; tB[m] = b; tD[m] = fw; tOrd[m] = m; m++;
+      }
+    }
+    tOrd.length = m; tOrd.sort((p, q) => tD[q] - tD[p]);
+    const patch = Math.max(s, 700);
+    for (let q = 0; q < m; q++) {
+      const k = tOrd[q], a = tA[k], b = tB[k];
+      const h00 = getH(a, b), h10 = getH(a + 1, b), h11 = getH(a + 1, b + 1), h01 = getH(a, b + 1);
+      const avg = (h00 + h10 + h11 + h01) / 4;
+      const x0 = (ci + a - n) * s, z0 = (cj + b - n) * s, x1 = x0 + s, z1 = z0 + s;
+      const water = avg < 0.5;
+      const y00 = water ? 0 : Math.max(0, h00), y10 = water ? 0 : Math.max(0, h10), y11 = water ? 0 : Math.max(0, h11), y01 = water ? 0 : Math.max(0, h01);
+      const fw = tD[k];
+      let r, g, bl;
+      toWorld(f.tf, x0 + s / 2, z0 + s / 2, _wp);
+      const hv = worldHash(Math.floor(x0 / s), Math.floor(z0 / s), 5 + li);
+      let town = 0;
+      if (water) {
+        const sh = 0.94 + hv * 0.12;
+        r = 40 * sh; g = 88 * sh; bl = 126 * sh;
+        if (fw < 60000) { const kk = 0.25 * (1 - fw / 60000); r += (hz[0] - r) * kk; g += (hz[1] - g) * kk; bl += (hz[2] - bl) * kk; }
+      } else {
+        const wet = wetAt(_wp.x, _wp.z);
+        const dxs = (h10 + h11 - h00 - h01) / (2 * s), dzs = (h01 + h11 - h00 - h10) / (2 * s);
+        const slope = Math.hypot(dxs, dzs);
+        const f1 = fbm(_wp.x / 3200, _wp.z / 3200, 3, 61), f2 = fbm(_wp.x / 1500 + 7, _wp.z / 1500, 2, 67);
+        r = 104 + 40 * f1; g = 134 + 22 * f1; bl = 62 + 14 * f1;
+        const ky = sstep(0.52, 0.66, f2); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
+        const kp = sstep(0.28, 0.2, f2); r += (124 - r) * kp * 0.4; g += (108 - g) * kp * 0.4; bl += (66 - bl) * kp * 0.4;
+        const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6;
+        if (wet > 0.52 && avg < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, avg)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; }
+        if (avg < 6 && avg > 0.5) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
+        const kr = Math.max(sstep(430, 760, avg), sstep(0.35, 0.7, slope));
+        if (kr > 0) { r += (118 - r) * kr; g += (110 - g) * kr; bl += (100 - bl) * kr; }
+        const ks = sstep(820, 980, avg - slope * 120);
+        if (ks > 0) { r += (240 - r) * ks; g += (243 - g) * ks; bl += (248 - bl) * ks; }
+        const sh = 0.975 + hv * 0.05; r *= sh; g *= sh; bl *= sh;
+        // освещение по склону
+        const ex = dxs * 2.6, ez = dzs * 2.6, nl = Math.hypot(ex, 1, ez), dif = Math.max(0, (-ex * SUN[0] + SUN[1] - ez * SUN[2]) / nl);
+        const lk = 0.34 + 0.8 * dif; r *= lk; g *= lk; bl *= lk;
+        // города
+        if (lowFlat && li <= 2 && li >= 0) {
+          let tw = false; const ts = 450;
+          if (li <= 1) tw = worldHash(Math.floor((x0 + s / 2) / ts), Math.floor((z0 + s / 2) / ts), 99) < 0.014;
+          else { const bi = Math.floor(x0 / ts), bj = Math.floor(z0 / ts); for (let u = 0; u < 3 && !tw; u++) for (let v = 0; v < 3; v++) if (worldHash(bi + u, bj + v, 99) < 0.014) { tw = true; break; } }
+          if (tw) {
+            let near = true; const cx = x0 + s / 2, cz = z0 + s / 2;
+            for (let i = 0; i < apLocal.length; i += 2) if (Math.hypot(apLocal[i] - cx, apLocal[i + 1] - cz) < 5200) { near = false; break; }
+            if (near) { town = 1; r = r * 0.45 + 150 * lk * 0.55; g = g * 0.45 + 146 * lk * 0.55; bl = bl * 0.45 + 140 * lk * 0.55; }
+          }
+        }
+      }
+      r *= tint[0]; g *= tint[1]; bl *= tint[2];
+      const fg = Math.min(0.94, 1 - Math.exp(-fw / D0));
+      r += (hz[0] - r) * fg; g += (hz[1] - g) * fg; bl += (hz[2] - bl) * fg;
+      P[0] = x0; P[1] = y00; P[2] = z0; P[3] = x1; P[4] = y10; P[5] = z0; P[6] = x1; P[7] = y11; P[8] = z1; P[9] = x0; P[10] = y01; P[11] = z1;
+      seam = true; const okp = polyFlat(P, 4, `rgb(${r | 0},${g | 0},${bl | 0})`); seam = false;
+      if (!okp) continue;
+      // детали вблизи: деревья, дома, огни
+      if (li === 0 && fw < 2300 && camY < 900 && !water) {
+        const cx = x0 + s / 2, cz = z0 + s / 2;
+        if (town) {
+          if (hv < 0.6) box(cx - 25, cx + 25, cz - 20, cz + 20, 8 + hv * 20, [pal.build[(hv * 3) | 0], pal.build[1], '#8b7f78']);
+          if (night > 0.5 && toScreen(cx, avg + 6, cz, SP)) { ctx.fillStyle = '#ffd890'; ctx.fillRect(SP.x, SP.y, 2, 2); }
+        } else if (g < r + 2 * (r - bl) * 0 + 0 && false) { /* зарезервировано */ }
+        else if (hv > 0.35 && (g * 1.0 < 120 && r < 90)) {
+          for (let t = 0; t < 3; t++) {
+            const tx = x0 + worldHash(a, b, 21 + t) * s, tz = z0 + worldHash(a, b, 31 + t) * s, ty = avg;
+            if (toScreen(tx, ty + 14, tz, SP)) { const sx = SP.x, sy = SP.y; if (toScreen(tx, ty, tz, SP)) { const w2 = Math.max(1.2, 7 * F / SP.f); ctx.fillStyle = `rgb(${(26 * tint[0] + hz[0] * fg * 0.6) | 0},${(66 * tint[1] + hz[1] * fg * 0.6) | 0},${(34 * tint[2] + hz[2] * fg * 0.6) | 0})`; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(SP.x + w2, SP.y); ctx.lineTo(SP.x - w2, SP.y); ctx.closePath(); ctx.fill(); } }
+          }
+        }
+      } else if (town && night > 0.5 && fw < 25000 && toScreen(x0 + s / 2, avg + 3, z0 + s / 2, SP)) {
+        ctx.fillStyle = '#ffcf7a'; const rr = Math.max(1.2, Math.min(5, 300 * F / SP.f / 12));
+        for (let t = 0; t < 4; t++) ctx.fillRect(SP.x + (worldHash(a, b, 41 + t) - 0.5) * s * F / SP.f * 0.7, SP.y + (worldHash(a, b, 51 + t) - 0.5) * 3, rr, rr * 0.8);
+      }
+    }
+  }
 }
 
 function drawHaze(pal, hy) {
@@ -440,12 +560,27 @@ export function drawFlight(c, w, h, f, t, view) {
 
   drawSky(pal, hy, hi, { theta: th });
   drawMountains(pal, hy);
-  drawGround(pal, hy, f);
+  drawTerrain(pal, hy, f);
+  // прочие аэродромы (запасные и соседние)
+  for (let i = 0; i < f.world.length; i++) {
+    const a = f.world[i];
+    if (a.id === f.toAp.id || (a.id === f.fromAp.id && f.rwy0.s > -1e6)) continue;
+    const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
+    if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); camZ = sz;
+  }
   drawAirport(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, f.fromAp, false, f);
   drawAirport(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, f.toAp, true, f);
   drawHaze(pal, hy);
   drawLights(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, false);
   drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
+  if (pal.night > 0.3) for (let i = 0; i < f.world.length; i++) {
+    const a = f.world[i];
+    if (a.id === f.toAp.id || a.id === f.fromAp.id) continue;
+    const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
+    if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    const sz = camZ; camZ -= lz; drawLights(pal, lx - a.len / 2, a.len, false); camZ = sz;
+  }
   let fog = 0;
   if (view.warp <= 4) fog = drawClouds(pal, f);
   if (chase) drawAircraft(f, pal, t);
@@ -627,6 +762,7 @@ function drawHUD(f, t, view, th) {
   if (ws.has('pullup')) wl.push(['ВЫТЯГИВАЙТЕ!', RED]);
   else if (ws.has('gear')) wl.push(['ВЫПУСТИТЕ ШАССИ!', RED]);
   else if (ws.has('sink')) wl.push(['СЛИШКОМ БЫСТРО СНИЖАЕМСЯ', RED]);
+  if (ws.has('terrain')) wl.push(['ЗЕМЛЯ ВПЕРЕДИ! НАБЕРИТЕ ВЫСОТУ', RED]);
   if (ws.has('stall')) wl.push(['МАЛАЯ СКОРОСТЬ!', RED]);
   if (ws.has('over')) wl.push(['ПРЕВЫШЕНИЕ СКОРОСТИ', AMBER]);
   if (ws.has('flaps') && !ws.has('gear')) wl.push(['ЗАКРЫЛКИ!', AMBER]);

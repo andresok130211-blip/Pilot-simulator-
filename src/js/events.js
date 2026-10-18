@@ -96,7 +96,7 @@ export const EVENT_DEFS = {
       f.msg('ОТКАЗ ДВИГАТЕЛЯ №' + (ev.side + 1) + '!');
     },
     steps(f, ev) {
-      return [...engOutSteps(f)];
+      return [...engOutSteps(f), { t: 'ЗАПАСНОЙ — можно сесть на ближайшем аэродроме: ' + f.altText(), done: f.diverted, opt: true }];
     },
     tick(f, ev, dt) {
       if (settled(f, ev, dt, 5)) f.resolveEvent(ev, f.time - ev.t0 > 150 ? 'late' : 'ok', 'Самолёт стабилизирован на одном двигателе');
@@ -117,7 +117,7 @@ export const EVENT_DEFS = {
       const fr = f.fire;
       const left = Math.max(0, Math.ceil(35 - (f.time - fr.t0)));
       const s = [{ t: fr.ext ? 'Двигатель №' + (fr.side + 1) + ' выключен, огонь потушен' : 'ТУШЕНИЕ — нажмите кнопку (осталось ' + left + ' с)', done: fr.ext }];
-      if (fr.ext) { s.push(...engOutSteps(f)); }
+      if (fr.ext) { s.push(...engOutSteps(f)); s.push({ t: 'ЗАПАСНОЙ — можно сесть на ближайшем аэродроме: ' + f.altText(), done: f.diverted, opt: true }); }
       return s;
     },
     tick(f, ev, dt) {

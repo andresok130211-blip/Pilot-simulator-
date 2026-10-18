@@ -2,6 +2,7 @@
 // Вся логика без графики — её можно гонять в node (см. tools/bot.mjs).
 import { PAX_KG, FUEL_PRICE } from './data.js';
 import { EVENT_DEFS, planEvents, evWhen } from './events.js';
+import { buildWorld, terrainAt, toWorld, toLocal } from './terrain.js';
 
 export const DEG = Math.PI / 180;
 export const G = 9.80665;
@@ -95,6 +96,10 @@ export class Flight {
     this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
+    this.origTo = o.to; this.divTo = null; this.tfA = 0;
+    this.tf = { a: 0, c: 1, s: 0, ox: 0, oz: 0 };
+    this.world = buildWorld(o.from, o.to, o.distM, o.plane);
+    this._tw = 0;
     this.updateMass();
     this.computeSpeeds();
     this.aero(); // начальные величины
@@ -184,7 +189,8 @@ export class Flight {
 
   // ---------- вспомогательные расчёты ----------
   get dist() { return this.D - this.x; } // до порога вдоль оси
-  get heading() { return (((this.brg + this.psi / DEG) % 360) + 360) % 360; }
+  get heading() { return (((this.brg + (this.tf.a + this.psi) / DEG) % 360) + 360) % 360; }
+  get locAfter() { return this.toAp.gen ? this.origTo.id : this.toAp.id; }
   get range() { return Math.hypot(this.D - this.x, this.yPos); }
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
@@ -278,6 +284,10 @@ export class Flight {
     } else {
       const err = c.apAlt - this.h;
       vsCmd = clamp(0.12 * err, this.emDescent ? -26 : -10, 13);
+      if (c.appr && !this.apprCap && this.dist < 40000 && this.dist > 3500 && this.h < 3200 && c.apAlt <= APPR_ALT + 50 && Math.abs(this.yPos) < 500) {
+        const gsH = glideH(this.D + AIM_OFFSET - this.x);
+        if (this.h > gsH + 40) vsCmd = Math.min(vsCmd, clamp(0.08 * (gsH - 25 - this.h), -8, 0));
+      }
       if (vsCmd > 0) {
         const vsCap = (this.Tavail - this.Dr) * v / (this.mass * G);
         vsCmd = Math.min(vsCmd, Math.max(0, 0.85 * vsCap));
@@ -420,7 +430,7 @@ export class Flight {
         const aim = this.D + AIM_OFFSET - this.x;
         let psiC;
         if (dist > 30000) psiC = Math.atan2(-this.yPos, aim);
-        else psiC = clamp(-this.yPos * 0.0015, -20 * DEG, 20 * DEG);
+        else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * 0.0015, -lim, lim); }
         phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
       }
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
@@ -534,6 +544,7 @@ export class Flight {
     const n = this.L / (m * G);
     this.nz = n;
     if (n > this.stats.maxG) this.stats.maxG = n;
+    if (this.h < 1500 && this.h > 0.5 && this.airborneOnce && terrainAt(this, this.x, this.yPos) > this.h + 3) { this.finish('crash', 'Столкновение с землёй: самолёт врезался в гору.'); return; }
     if (this.h <= 0 && this.gamma <= 0.02) this.touchdown();
     else if (this.h < 0) this.h = 0;
     // пролетели
@@ -584,6 +595,16 @@ export class Flight {
     set('pullup', !this.onGround && this.h < 80 && sinkRate < -11);
     set('gear', !this.onGround && this.h < 250 && this.dist < 8000 && this.dist > 0 && !this.c.gear);
     set('flaps', !this.onGround && this.h < 250 && this.dist < 6000 && this.dist > 0 && this.c.flaps < 3 && this.c.gear && !this.hyd);
+    this._tw -= dt;
+    if (this._tw <= 0) {
+      this._tw = 0.5; let th = false;
+      if (!this.onGround && this.airborneOnce && this.h < 1800 && !this.ga) {
+        const cp = Math.cos(this.psi), sp = Math.sin(this.psi);
+        for (const k of [1200, 2600, 4500]) { if (terrainAt(this, this.x + k * cp, this.yPos + k * sp) > this.h - 120 + (this.vs < -2 ? -this.vs * k / Math.max(this.v, 60) * 0.5 : 0)) { th = true; break; } }
+      }
+      this._terrWarn = th;
+    }
+    set('terrain', this._terrWarn);
     set('lowfuel', this.fuel < this.p.burnHr * 0.3 && this.fuel > 0);
     if (w.has('sink') || w.has('pullup')) { this.stats.gpws += dt; this.incident('sink', 'Опасная скорость снижения', 3, 30); }
     if (this.fuel <= 0 && this.Tavail === 0) set('fuel0', true);
@@ -649,6 +670,7 @@ export class Flight {
     const ev = this.ev; if (!ev) return;
     let out = kind === 'crash' || kind === 'overrun' ? 'fail' : 'late';
     if (ev.id === 'engRoll' && kind === 'abort') out = 'ok';
+    if (this.diverted && kind === 'ok' && ev.id !== 'runway') out = 'ok';
     if (ev.id === 'runway' && this.gaCount === 0 && kind === 'ok') out = 'fail';
     this.resolveEvent(ev, out, '');
   }
@@ -669,6 +691,45 @@ export class Flight {
     if (this.apLock > 0) a.add('ОТКАЗ АВТОПИЛОТА');
     if (this.atLock > 0) a.add('ОТКАЗ АВТОМАТА ТЯГИ');
     if (this.engCount < 2 && !(this.fire && !this.fire.ext)) a.add(this.engCount ? 'ДВИГАТЕЛЬ ' + (this.eng[0] < 0.01 ? 1 : 2) + ' — ОТКАЗ' : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ');
+  }
+  // ---------- запасные аэродромы ----------
+  altList() {
+    const out = [], p = this.p;
+    for (const w of this.world) {
+      if (w.id === this.toAp.id && !this.diverted) continue;
+      if (this.diverted && w.id === this.divTo) continue;
+      const l = toLocal(this.tf, w.wx, w.wz, { x: 0, z: 0 });
+      const dx = l.x - this.x, dz = l.z - this.yPos, d = Math.hypot(dx, dz);
+      if (d > 520000) continue;
+      const rel0 = Math.abs(wrapPi(Math.atan2(dz, dx) - this.psi));
+      const need = 8000 + 0.8 * (Math.max(0, this.h - 3000) / 9 * 190 + 81000 * Math.min(1, this.h / 3000)) + (rel0 > 1.4 ? 50000 : rel0 > 0.7 ? 15000 : 0);
+      let ok = true, why = '';
+      if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
+      else if (d < need) { ok = false; why = 'слишком близко/высоко'; }
+      else if (this.onGround || this.ga) { ok = false; why = ''; }
+      out.push({ w, d, ok, why, lx: l.x, lz: l.z, rel: Math.atan2(dz, dx) - this.psi, label: w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')' });
+    }
+    out.sort((a, b) => (b.ok - a.ok) || (a.d - b.d));
+    return out;
+  }
+  altText() { const a = this.altList().find(x => x.ok); return a ? a.label + ' — ' + Math.round(a.d / 1000) + ' км' : 'недоступен'; }
+  divertTo(w) {
+    const c = this.c;
+    if (this.onGround || this.done) return false;
+    const p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+    const dx = w.wx - p.x, dz = w.wz - p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx);
+    const hdgW = this.tf.a + this.psi;
+    this.tf = { a, c: Math.cos(a), s: Math.sin(a), ox: p.x, oz: p.z };
+    this.psi = wrapPi(hdgW - a); this.x = 0; this.yPos = 0;
+    this.D = d; this.toAp = w.ap; this.rwy1 = { s: d, e: d + w.len }; this.fr1 = frameOf(d, w.len);
+    this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
+    this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
+    c.appr = false; this.apprCap = false; this.autoDescDone = false; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
+    if (this.ga) this.ga = false;
+    if (this.apLock <= 0 && (this.assist.auto || c.apOn)) { c.apOn = true; c.nav = true; }
+    this.fade = 0.8; this.fadeText = 'Курс на запасной аэродром ' + (w.gen ? w.ap.city.replace('Запасной аэродром', 'Запасной') : w.ap.id);
+    this.msg('Следуем на ' + (w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')') + ', ' + Math.round(d / 1000) + ' км');
+    return true;
   }
   evHint() {
     if (!this.ev || this.done) return '';
@@ -815,7 +876,8 @@ export function settle(f, contract) {
     const evOk = f.evLog.filter(e => e.outcome === 'ok').length, evLate = f.evLog.filter(e => e.outcome === 'late').length;
     const evB = Math.min(0.35, evOk * 0.12 + evLate * 0.04);
     out.evBonus = evB;
-    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB));
+    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB) * (f.diverted ? 0.4 : 1));
+    out.diverted = !!f.diverted;
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
   } else if (res.kind === 'crash') {
     repair = Math.round(p.value * 0.15);

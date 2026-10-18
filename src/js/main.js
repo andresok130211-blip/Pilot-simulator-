@@ -215,7 +215,7 @@ function startFlight(c, drill) {
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
-  mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = '';
+  mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = ''; toggleAlt(false);
   hideModal();
 }
 
@@ -242,6 +242,23 @@ yokeEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) yoke
 const yokeUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; stick.roll = 0; setYoke(); } };
 yokeEl.addEventListener('pointerup', yokeUp); yokeEl.addEventListener('pointercancel', yokeUp);
 
+// ---------- запасные аэродромы ----------
+let altOpen = false, altT = 0;
+function toggleAlt(force) {
+  altOpen = force !== undefined ? force : !altOpen;
+  $('altp').classList.toggle('on', altOpen);
+  if (altOpen) { altT = 0; renderAlt(); }
+}
+function renderAlt() {
+  const f = flight; if (!f) return;
+  const list = f.altList().slice(0, 5), box = $('altp');
+  const arrow = a => { let d = ((a % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; return `<span style="display:inline-block;transform:rotate(${(d * 180 / Math.PI).toFixed(0)}deg)">➤</span>`; };
+  const desc = f.ev ? '<div class="d" style="margin-bottom:4px;color:#ffb3ab">Аварийная ситуация — можно сесть на ближайшем подходящем аэродроме (рейс будет оплачен частично).</div>' : '';
+  box.innerHTML = `<h3>Запасные аэродромы</h3>${desc}` + (list.length ? list.map((o, i) => `<div class="it ${o.ok ? 'ok' : 'no'}" data-i="${i}"><div class="ar">${arrow(o.rel)}</div><div><div class="t">${o.label}</div><div class="d">${Math.round(o.d / 1000)} км · ВПП ${o.w.len} м${o.ok ? '' : ' · ' + (o.why || 'сейчас недоступен')}</div></div></div>`).join('') : '<div class="d">Поблизости аэродромов нет.</div>') + '<button class="cl" id="altX">Закрыть</button>';
+  box.querySelectorAll('.it.ok').forEach(el => el.onclick = () => { const o = list[+el.dataset.i]; if (o && f.divertTo(o.w)) toggleAlt(false); });
+  $('altX').onclick = () => toggleAlt(false);
+}
+
 // ---------- кнопки ----------
 function act(a) {
   if (!flight || flight.done) return;
@@ -252,6 +269,7 @@ function act(a) {
     case 'fl+': f.setFlaps(c.flaps + 1); break;
     case 'brake': c.brake = !c.brake; break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; if (c.warp === 1 && f.allowedWarp() === 1 && i === 0) f.msg('Ускорение доступно в крейсерском полёте на автопилоте'); break; }
+    case 'altp': toggleAlt(); break;
     case 'ext': f.extinguish(); break;
     case 'altgear': f.altGearExt(); break;
     case 'emdesc': f.emergDescent(); break;
@@ -290,6 +308,9 @@ function syncButtons() {
   sh('eExt', f.fire && !f.fire.ext);
   sh('eGear', f.hyd && !f.altGear);
   sh('eDesc', f.decomp && f.ev && f.ev.id === 'decomp' && !f.emDescent);
+  sh('eAlt', !f.onGround && f.airborneOnce && !f.td);
+  $('eAlt').classList.toggle('urgent', !!f.ev && f.ev.id !== 'runway' && f.ev.id !== 'apFail' && f.ev.id !== 'atFail');
+  if (altOpen) { altT -= 0.016; if (altT <= 0) { altT = 0.7; renderAlt(); } if (f.onGround || f.done) toggleAlt(false); }
   sh('eGa', f.canGoAround() && (f.rwyBlocked || f.dist < 9000));
   $('hint').classList.toggle('alert', !!f.ev);
   if (c.atOn) { $('thrfill').style.height = (c.thr * 100) + '%'; $('thrv').textContent = Math.round(c.thr * 100) + '%'; }
@@ -335,7 +356,7 @@ function showResult() {
   if (!drill) {
     save.money = Math.max(0, save.money + r.net);
     if (r.kind !== 'abort') save.flights++;
-    if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = to.id; }
+    if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = f.locAfter; }
     if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
     save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
     persist();

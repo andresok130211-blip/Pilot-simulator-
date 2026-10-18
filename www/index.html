@@ -101,6 +101,18 @@ table.res td:last-child{text-align:right;font-weight:700}
 .evrow{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:2px 0}
 .evrow .ok{color:#8dffb4}.evrow .late{color:#ffe08a}.evrow .fail{color:#ff8a80}
 @media (max-height:420px){#ebtns button{height:34px;font-size:12px}#evp{font-size:11px}}
+
+#ebtns button.blue{background:#1d4f91;border-color:#9cc4ff;animation:none;height:34px;font-size:12px}
+#ebtns button.blue.urgent{background:#b3261e;border-color:#ffb3ab;animation:evpulse 1s infinite}
+#altp{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(430px,70vw);max-height:78vh;overflow:auto;background:rgba(8,16,34,.94);border:2px solid #9cc4ff;border-radius:14px;padding:10px;display:none;pointer-events:auto;z-index:4}
+#altp.on{display:block}
+#altp h3{margin:0 0 6px;font-size:14px}
+#altp .it{display:flex;align-items:center;gap:10px;padding:7px 8px;margin-top:5px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2)}
+#altp .it.ok{border-color:#7dffb0;cursor:pointer}
+#altp .it.no{opacity:.5}
+#altp .it .ar{width:30px;text-align:center;font-size:20px;color:#ffd24a}
+#altp .it .t{font-weight:800;font-size:13px}#altp .it .d{font-size:11.5px;opacity:.85}
+#altp .cl{margin-top:8px;width:100%;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;font-weight:800}
 </style>
 </head>
 <body>
@@ -135,8 +147,10 @@ table.res td:last-child{text-align:right;font-weight:700}
     <button id="eGear" data-act="altgear" class="red">⚙ ЗАПАС. ШАССИ</button>
     <button id="eDesc" data-act="emdesc" class="red">⬇ АВАР. СНИЖ.</button>
     <button id="eGa" data-act="ga" class="red">↻ УХОД</button>
+    <button id="eAlt" data-act="altp" class="blue">✈ ЗАПАСНЫЕ АЭРОДРОМЫ</button>
   </div></div>
   <div id="hint"></div>
+  <div id="altp"></div>
   <div id="fade"></div>
   <div id="log"></div>
   <button id="quit" class="ctl">✕</button>
@@ -362,7 +376,7 @@ const EVENT_DEFS = {
       f.msg('ОТКАЗ ДВИГАТЕЛЯ №' + (ev.side + 1) + '!');
     },
     steps(f, ev) {
-      return [...engOutSteps(f)];
+      return [...engOutSteps(f), { t: 'ЗАПАСНОЙ — можно сесть на ближайшем аэродроме: ' + f.altText(), done: f.diverted, opt: true }];
     },
     tick(f, ev, dt) {
       if (settled(f, ev, dt, 5)) f.resolveEvent(ev, f.time - ev.t0 > 150 ? 'late' : 'ok', 'Самолёт стабилизирован на одном двигателе');
@@ -383,7 +397,7 @@ const EVENT_DEFS = {
       const fr = f.fire;
       const left = Math.max(0, Math.ceil(35 - (f.time - fr.t0)));
       const s = [{ t: fr.ext ? 'Двигатель №' + (fr.side + 1) + ' выключен, огонь потушен' : 'ТУШЕНИЕ — нажмите кнопку (осталось ' + left + ' с)', done: fr.ext }];
-      if (fr.ext) { s.push(...engOutSteps(f)); }
+      if (fr.ext) { s.push(...engOutSteps(f)); s.push({ t: 'ЗАПАСНОЙ — можно сесть на ближайшем аэродроме: ' + f.altText(), done: f.diverted, opt: true }); }
       return s;
     },
     tick(f, ev, dt) {
@@ -574,11 +588,109 @@ function planEvents(f, level, force, r, now) {
 
 return {EVENT_DEFS,EVENT_IDS,evWhen,planEvents};
 })();
+__m.terrain = (function(){
+// Ландшафт: процедурная высота местности, запасные аэродромы вдоль маршрута.
+// Мировая плоскость (метры): точка вылета — начало координат, ось X — вдоль маршрута, Z — вправо.
+// Система координат самолёта (локальная) связана с мировой поворотом/сдвигом f.tf (меняется при уходе на запасной).
+const { AIRPORTS, distKm, bearing } = __m.data;
+
+const smooth = t => t * t * (3 - 2 * t);
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function hs(i, j, s) {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x, z, s) {
+  const i = Math.floor(x), j = Math.floor(z), fx = smooth(x - i), fz = smooth(z - j);
+  const a = hs(i, j, s), b = hs(i + 1, j, s), c = hs(i, j + 1, s), d = hs(i + 1, j + 1, s);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+}
+function fbm(x, z, oct, s) {
+  let v = 0, a = 0.5, n = 0;
+  for (let o = 0; o < oct; o++) { v += a * vnoise(x, z, s + o * 17); n += a; x = x * 2.03 + 11.7; z = z * 2.03 - 5.3; a *= 0.5; }
+  return v / n;
+}
+const worldHash = hs;
+
+// ---- аэродромы мира (в мировой системе координат) ----
+function buildWorld(from, to, D, plane) {
+  const brg0 = bearing(from, to) * Math.PI / 180;
+  const list = [];
+  const push = (id, ap, wx, wz, len, gen) => list.push({ id, ap, wx, wz, len, gen: !!gen });
+  push(from.id, from, 0, 0, from.rwy, false);
+  push(to.id, to, D, 0, to.rwy, false);
+  // реальные аэродромы рядом с маршрутом
+  for (const a of AIRPORTS) {
+    if (a.id === from.id || a.id === to.id) continue;
+    const d = distKm(from, a) * 1000, ang = bearing(from, a) * Math.PI / 180 - brg0;
+    const wx = d * Math.cos(ang), wz = d * Math.sin(ang);
+    const t = Math.max(0, Math.min(D, wx));
+    if (Math.hypot(wx - t, wz) > 260000) continue;
+    push(a.id, a, wx, wz, a.rwy, false);
+  }
+  // запасные аэродромы вдоль трассы
+  const minLen = Math.max(2400, (plane ? plane.minRwy : 2000) + 300);
+  let seed = 0; for (const ch of from.id + to.id) seed = (seed * 31 + ch.charCodeAt(0)) | 0;
+  const alts = [];
+  const gen = (t, side, k) => {
+    const lat = (14000 + hs(k, 1, seed) * 26000) * side;
+    alts.push({ x: t, z: lat, len: Math.round((minLen + hs(k, 2, seed) * 900) / 50) * 50 });
+  };
+  const near = Math.min(55000, D * 0.2);
+  gen(near, hs(1, 1, seed) < 0.5 ? 1 : -1, 1);
+  gen(D - near, hs(2, 1, seed) < 0.5 ? 1 : -1, 2);
+  const n = Math.floor((D - 2 * near) / 130000);
+  for (let k = 0; k < n; k++) gen(near + (k + 0.5) * (D - 2 * near) / n, (k % 2 ? 1 : -1) * (hs(k, 3, seed) < 0.5 ? 1 : -1), 3 + k);
+  alts.forEach((a, i) => {
+    const code = 'Z' + (i + 1);
+    push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true);
+  });
+  return list;
+}
+
+// ---- высота рельефа в мировой точке ----
+function heightW(world, wx, wz) {
+  let dMin = 1e9;
+  for (let i = 0; i < world.length; i++) {
+    const a = world[i], d = Math.hypot(wx - a.wx, wz - a.wz);
+    if (d < dMin) dMin = d;
+  }
+  const flat = sstep(8000, 26000, dMin), mt = sstep(30000, 85000, dMin);
+  if (flat <= 0) return 0;
+  const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
+  const hill = (n1 - 0.38) * 520;
+  let r = 0;
+  if (mt > 0) {
+    const m = sstep(0.42, 0.68, fbm(wx / 100000, wz / 100000, 2, 41));
+    if (m > 0) { const q = 1 - Math.abs(2 * fbm(wx / 14000, wz / 14000, 4, 77) - 1); r = m * (q * q * 1250 + 120 * (n1 - 0.4)); }
+  }
+  const T = flat * hill + mt * r;
+  return T;
+}
+// локальные координаты -> мировые
+function toWorld(tf, x, z, out) {
+  out.x = tf.ox + x * tf.c - z * tf.s; out.z = tf.oz + x * tf.s + z * tf.c; return out;
+}
+function toLocal(tf, wx, wz, out) {
+  const dx = wx - tf.ox, dz = wz - tf.oz;
+  out.x = dx * tf.c + dz * tf.s; out.z = -dx * tf.s + dz * tf.c; return out;
+}
+const _w = { x: 0, z: 0 };
+function terrainAt(f, x, z) { toWorld(f.tf, x, z, _w); return Math.max(0, heightW(f.world, _w.x, _w.z)); }
+// «сырая» высота (может быть отрицательной — озёра)
+function rawAt(f, x, z) { toWorld(f.tf, x, z, _w); return heightW(f.world, _w.x, _w.z); }
+// влажность/растительность в мировой точке: 0..1
+function wetAt(wx, wz) { return fbm(wx / 9000, wz / 9000, 3, 23); }
+
+return {sstep,vnoise,fbm,worldHash,buildWorld,heightW,toWorld,toLocal,terrainAt,rawAt,wetAt};
+})();
 __m.sim = (function(){
 // Физика полёта: продольная модель материальной точки с аэродинамикой, тягой, топливом.
 // Вся логика без графики — её можно гонять в node (см. tools/bot.mjs).
 const { PAX_KG, FUEL_PRICE } = __m.data;
 const { EVENT_DEFS, planEvents, evWhen } = __m.events;
+const { buildWorld, terrainAt, toWorld, toLocal } = __m.terrain;
 
 const DEG = Math.PI / 180;
 const G = 9.80665;
@@ -672,6 +784,10 @@ class Flight {
     this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
+    this.origTo = o.to; this.divTo = null; this.tfA = 0;
+    this.tf = { a: 0, c: 1, s: 0, ox: 0, oz: 0 };
+    this.world = buildWorld(o.from, o.to, o.distM, o.plane);
+    this._tw = 0;
     this.updateMass();
     this.computeSpeeds();
     this.aero(); // начальные величины
@@ -761,7 +877,8 @@ class Flight {
 
   // ---------- вспомогательные расчёты ----------
   get dist() { return this.D - this.x; } // до порога вдоль оси
-  get heading() { return (((this.brg + this.psi / DEG) % 360) + 360) % 360; }
+  get heading() { return (((this.brg + (this.tf.a + this.psi) / DEG) % 360) + 360) % 360; }
+  get locAfter() { return this.toAp.gen ? this.origTo.id : this.toAp.id; }
   get range() { return Math.hypot(this.D - this.x, this.yPos); }
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
@@ -855,6 +972,10 @@ class Flight {
     } else {
       const err = c.apAlt - this.h;
       vsCmd = clamp(0.12 * err, this.emDescent ? -26 : -10, 13);
+      if (c.appr && !this.apprCap && this.dist < 40000 && this.dist > 3500 && this.h < 3200 && c.apAlt <= APPR_ALT + 50 && Math.abs(this.yPos) < 500) {
+        const gsH = glideH(this.D + AIM_OFFSET - this.x);
+        if (this.h > gsH + 40) vsCmd = Math.min(vsCmd, clamp(0.08 * (gsH - 25 - this.h), -8, 0));
+      }
       if (vsCmd > 0) {
         const vsCap = (this.Tavail - this.Dr) * v / (this.mass * G);
         vsCmd = Math.min(vsCmd, Math.max(0, 0.85 * vsCap));
@@ -997,7 +1118,7 @@ class Flight {
         const aim = this.D + AIM_OFFSET - this.x;
         let psiC;
         if (dist > 30000) psiC = Math.atan2(-this.yPos, aim);
-        else psiC = clamp(-this.yPos * 0.0015, -20 * DEG, 20 * DEG);
+        else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * 0.0015, -lim, lim); }
         phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
       }
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
@@ -1111,6 +1232,7 @@ class Flight {
     const n = this.L / (m * G);
     this.nz = n;
     if (n > this.stats.maxG) this.stats.maxG = n;
+    if (this.h < 1500 && this.h > 0.5 && this.airborneOnce && terrainAt(this, this.x, this.yPos) > this.h + 3) { this.finish('crash', 'Столкновение с землёй: самолёт врезался в гору.'); return; }
     if (this.h <= 0 && this.gamma <= 0.02) this.touchdown();
     else if (this.h < 0) this.h = 0;
     // пролетели
@@ -1161,6 +1283,16 @@ class Flight {
     set('pullup', !this.onGround && this.h < 80 && sinkRate < -11);
     set('gear', !this.onGround && this.h < 250 && this.dist < 8000 && this.dist > 0 && !this.c.gear);
     set('flaps', !this.onGround && this.h < 250 && this.dist < 6000 && this.dist > 0 && this.c.flaps < 3 && this.c.gear && !this.hyd);
+    this._tw -= dt;
+    if (this._tw <= 0) {
+      this._tw = 0.5; let th = false;
+      if (!this.onGround && this.airborneOnce && this.h < 1800 && !this.ga) {
+        const cp = Math.cos(this.psi), sp = Math.sin(this.psi);
+        for (const k of [1200, 2600, 4500]) { if (terrainAt(this, this.x + k * cp, this.yPos + k * sp) > this.h - 120 + (this.vs < -2 ? -this.vs * k / Math.max(this.v, 60) * 0.5 : 0)) { th = true; break; } }
+      }
+      this._terrWarn = th;
+    }
+    set('terrain', this._terrWarn);
     set('lowfuel', this.fuel < this.p.burnHr * 0.3 && this.fuel > 0);
     if (w.has('sink') || w.has('pullup')) { this.stats.gpws += dt; this.incident('sink', 'Опасная скорость снижения', 3, 30); }
     if (this.fuel <= 0 && this.Tavail === 0) set('fuel0', true);
@@ -1226,6 +1358,7 @@ class Flight {
     const ev = this.ev; if (!ev) return;
     let out = kind === 'crash' || kind === 'overrun' ? 'fail' : 'late';
     if (ev.id === 'engRoll' && kind === 'abort') out = 'ok';
+    if (this.diverted && kind === 'ok' && ev.id !== 'runway') out = 'ok';
     if (ev.id === 'runway' && this.gaCount === 0 && kind === 'ok') out = 'fail';
     this.resolveEvent(ev, out, '');
   }
@@ -1246,6 +1379,45 @@ class Flight {
     if (this.apLock > 0) a.add('ОТКАЗ АВТОПИЛОТА');
     if (this.atLock > 0) a.add('ОТКАЗ АВТОМАТА ТЯГИ');
     if (this.engCount < 2 && !(this.fire && !this.fire.ext)) a.add(this.engCount ? 'ДВИГАТЕЛЬ ' + (this.eng[0] < 0.01 ? 1 : 2) + ' — ОТКАЗ' : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ');
+  }
+  // ---------- запасные аэродромы ----------
+  altList() {
+    const out = [], p = this.p;
+    for (const w of this.world) {
+      if (w.id === this.toAp.id && !this.diverted) continue;
+      if (this.diverted && w.id === this.divTo) continue;
+      const l = toLocal(this.tf, w.wx, w.wz, { x: 0, z: 0 });
+      const dx = l.x - this.x, dz = l.z - this.yPos, d = Math.hypot(dx, dz);
+      if (d > 520000) continue;
+      const rel0 = Math.abs(wrapPi(Math.atan2(dz, dx) - this.psi));
+      const need = 8000 + 0.8 * (Math.max(0, this.h - 3000) / 9 * 190 + 81000 * Math.min(1, this.h / 3000)) + (rel0 > 1.4 ? 50000 : rel0 > 0.7 ? 15000 : 0);
+      let ok = true, why = '';
+      if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
+      else if (d < need) { ok = false; why = 'слишком близко/высоко'; }
+      else if (this.onGround || this.ga) { ok = false; why = ''; }
+      out.push({ w, d, ok, why, lx: l.x, lz: l.z, rel: Math.atan2(dz, dx) - this.psi, label: w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')' });
+    }
+    out.sort((a, b) => (b.ok - a.ok) || (a.d - b.d));
+    return out;
+  }
+  altText() { const a = this.altList().find(x => x.ok); return a ? a.label + ' — ' + Math.round(a.d / 1000) + ' км' : 'недоступен'; }
+  divertTo(w) {
+    const c = this.c;
+    if (this.onGround || this.done) return false;
+    const p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+    const dx = w.wx - p.x, dz = w.wz - p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx);
+    const hdgW = this.tf.a + this.psi;
+    this.tf = { a, c: Math.cos(a), s: Math.sin(a), ox: p.x, oz: p.z };
+    this.psi = wrapPi(hdgW - a); this.x = 0; this.yPos = 0;
+    this.D = d; this.toAp = w.ap; this.rwy1 = { s: d, e: d + w.len }; this.fr1 = frameOf(d, w.len);
+    this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
+    this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
+    c.appr = false; this.apprCap = false; this.autoDescDone = false; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
+    if (this.ga) this.ga = false;
+    if (this.apLock <= 0 && (this.assist.auto || c.apOn)) { c.apOn = true; c.nav = true; }
+    this.fade = 0.8; this.fadeText = 'Курс на запасной аэродром ' + (w.gen ? w.ap.city.replace('Запасной аэродром', 'Запасной') : w.ap.id);
+    this.msg('Следуем на ' + (w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')') + ', ' + Math.round(d / 1000) + ' км');
+    return true;
   }
   evHint() {
     if (!this.ev || this.done) return '';
@@ -1392,7 +1564,8 @@ function settle(f, contract) {
     const evOk = f.evLog.filter(e => e.outcome === 'ok').length, evLate = f.evLog.filter(e => e.outcome === 'late').length;
     const evB = Math.min(0.35, evOk * 0.12 + evLate * 0.04);
     out.evBonus = evB;
-    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB));
+    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB) * (f.diverted ? 0.4 : 1));
+    out.diverted = !!f.diverted;
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
   } else if (res.kind === 'crash') {
     repair = Math.round(p.value * 0.15);
@@ -1418,6 +1591,7 @@ __m.render = (function(){
 // Отрисовка: вид из кабины (псевдо-3D), HUD, карта для меню.
 const { DEG, GS_TAN, GS_DEG, AIM_OFFSET, FLAP_NAMES, stallIAS, APPR_ALT } = __m.sim;
 const { AIRPORTS, AP_BY } = __m.data;
+const { heightW, toWorld, toLocal, wetAt, sstep, worldHash, fbm } = __m.terrain;
 
 const PAL = [
   { // день
@@ -1452,6 +1626,7 @@ const bF = new Float64Array(40), bU = new Float64Array(40), bZ = new Float64Arra
 const oF = new Float64Array(40), oU = new Float64Array(40), oZ = new Float64Array(40);
 const P = new Float64Array(60);
 
+let seam = false;
 function polyFlat(pts, n, fill) {
   for (let i = 0; i < n; i++) {
     const dx0 = pts[3 * i] - camX, dy = pts[3 * i + 1] - camY, dz0 = pts[3 * i + 2] - camZ;
@@ -1473,6 +1648,7 @@ function polyFlat(pts, n, fill) {
   }
   ctx.closePath();
   ctx.fillStyle = fill; ctx.fill();
+  if (seam) { ctx.strokeStyle = fill; ctx.lineWidth = 1; ctx.stroke(); }
   return true;
 }
 function rect(x0, z0, x1, z1, fill, y = 0) {
@@ -1615,6 +1791,123 @@ function drawGround(pal, hy, f) {
   };
   layer(sB, 1);
   layer(sA, 1 - fr);
+}
+
+// ---- ландшафт: сетки разной детализации вокруг камеры, от дальней к ближней ----
+const LVN = 16, LVS = [150, 450, 1350, 4050];
+const HV = new Float32Array((2 * LVN + 2) * (2 * LVN + 2));
+const tA = new Int16Array(1100), tB = new Int16Array(1100), tD = new Float64Array(1100), tOrd = new Array(1100);
+const FIELD = [[132, 152, 72], [152, 144, 80], [112, 140, 66], [98, 128, 60], [162, 152, 102], [128, 114, 72], [140, 156, 84], [120, 134, 70]];
+const _wp = { x: 0, z: 0 };
+let apLocal = [];
+const SUN = (() => { const l = Math.hypot(-0.45, 0.8, 0.35); return [-0.45 / l, 0.8 / l, 0.35 / l]; })();
+function drawTerrain(pal, hy, f) {
+  const hz = pal.haze, night = pal.night;
+  const tint = night > 0.6 ? [0.075, 0.1, 0.17] : night > 0.1 ? [0.92, 0.72, 0.64] : [1, 1, 1];
+  const fogMix = (c, k) => [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k];
+  const bc = fogMix([94 * tint[0], 134 * tint[1], 70 * tint[2]], 0.82);
+  ctx.fillStyle = rgb(bc); ctx.fillRect(-W, hy - 1, W * 3, H * 2.2);
+  // местные координаты аэродромов
+  apLocal.length = 0;
+  for (const a of f.world) { toLocal(f.tf, a.wx, a.wz, _wp); apLocal.push(_wp.x, _wp.z); }
+  const tanH = Math.hypot(W, H) / 2 / F * 1.15;
+  const D0 = 52000 + 5 * Math.max(0, camY);
+  const drawn = [false, false, false, false];
+  for (let li = 0; li < 4; li++) drawn[li] = !((li === 0 && camY > 6000) || (li === 1 && camY > 16000));
+  for (let li = 3; li >= 0; li--) {
+    if (!drawn[li]) continue;
+    const s = LVS[li], n = LVN, N = 2 * n + 2, ci = Math.floor(camX / s), cj = Math.floor(camZ / s);
+    HV.fill(NaN, 0, N * N);
+    const getH = (a, b) => {
+      const k = a * N + b; let v = HV[k];
+      if (v !== v) { toWorld(f.tf, (ci + a - n) * s, (cj + b - n) * s, _wp); v = heightW(f.world, _wp.x, _wp.z); HV[k] = v; }
+      return v;
+    };
+    let m = 0;
+    const inner = li > 0 && drawn[li - 1] ? LVS[li - 1] * n - s * 0.6 : -1;
+    for (let a = 0; a < 2 * n; a++) {
+      for (let b = 0; b < 2 * n; b++) {
+        const dx = (ci + a - n + 0.5) * s - camX, dz = (cj + b - n + 0.5) * s - camZ;
+        if (inner > 0 && Math.abs(dx) < inner && Math.abs(dz) < inner) continue;
+        const fw = dx * yc + dz * ys, rt = -dx * ys + dz * yc;
+        if (fw < -s * 1.6 || Math.abs(rt) > Math.max(fw, 0) * tanH + s * 1.9) continue;
+        tA[m] = a; tB[m] = b; tD[m] = fw; tOrd[m] = m; m++;
+      }
+    }
+    tOrd.length = m; tOrd.sort((p, q) => tD[q] - tD[p]);
+    const patch = Math.max(s, 700);
+    for (let q = 0; q < m; q++) {
+      const k = tOrd[q], a = tA[k], b = tB[k];
+      const h00 = getH(a, b), h10 = getH(a + 1, b), h11 = getH(a + 1, b + 1), h01 = getH(a, b + 1);
+      const avg = (h00 + h10 + h11 + h01) / 4;
+      const x0 = (ci + a - n) * s, z0 = (cj + b - n) * s, x1 = x0 + s, z1 = z0 + s;
+      const water = avg < 0.5;
+      const y00 = water ? 0 : Math.max(0, h00), y10 = water ? 0 : Math.max(0, h10), y11 = water ? 0 : Math.max(0, h11), y01 = water ? 0 : Math.max(0, h01);
+      const fw = tD[k];
+      let r, g, bl;
+      toWorld(f.tf, x0 + s / 2, z0 + s / 2, _wp);
+      const hv = worldHash(Math.floor(x0 / s), Math.floor(z0 / s), 5 + li);
+      let town = 0;
+      if (water) {
+        const sh = 0.94 + hv * 0.12;
+        r = 40 * sh; g = 88 * sh; bl = 126 * sh;
+        if (fw < 60000) { const kk = 0.25 * (1 - fw / 60000); r += (hz[0] - r) * kk; g += (hz[1] - g) * kk; bl += (hz[2] - bl) * kk; }
+      } else {
+        const wet = wetAt(_wp.x, _wp.z);
+        const dxs = (h10 + h11 - h00 - h01) / (2 * s), dzs = (h01 + h11 - h00 - h10) / (2 * s);
+        const slope = Math.hypot(dxs, dzs);
+        const f1 = fbm(_wp.x / 3200, _wp.z / 3200, 3, 61), f2 = fbm(_wp.x / 1500 + 7, _wp.z / 1500, 2, 67);
+        r = 104 + 40 * f1; g = 134 + 22 * f1; bl = 62 + 14 * f1;
+        const ky = sstep(0.52, 0.66, f2); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
+        const kp = sstep(0.28, 0.2, f2); r += (124 - r) * kp * 0.4; g += (108 - g) * kp * 0.4; bl += (66 - bl) * kp * 0.4;
+        const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6;
+        if (wet > 0.52 && avg < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, avg)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; }
+        if (avg < 6 && avg > 0.5) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
+        const kr = Math.max(sstep(430, 760, avg), sstep(0.35, 0.7, slope));
+        if (kr > 0) { r += (118 - r) * kr; g += (110 - g) * kr; bl += (100 - bl) * kr; }
+        const ks = sstep(820, 980, avg - slope * 120);
+        if (ks > 0) { r += (240 - r) * ks; g += (243 - g) * ks; bl += (248 - bl) * ks; }
+        const sh = 0.975 + hv * 0.05; r *= sh; g *= sh; bl *= sh;
+        // освещение по склону
+        const ex = dxs * 2.6, ez = dzs * 2.6, nl = Math.hypot(ex, 1, ez), dif = Math.max(0, (-ex * SUN[0] + SUN[1] - ez * SUN[2]) / nl);
+        const lk = 0.34 + 0.8 * dif; r *= lk; g *= lk; bl *= lk;
+        // города
+        if (lowFlat && li <= 2 && li >= 0) {
+          let tw = false; const ts = 450;
+          if (li <= 1) tw = worldHash(Math.floor((x0 + s / 2) / ts), Math.floor((z0 + s / 2) / ts), 99) < 0.014;
+          else { const bi = Math.floor(x0 / ts), bj = Math.floor(z0 / ts); for (let u = 0; u < 3 && !tw; u++) for (let v = 0; v < 3; v++) if (worldHash(bi + u, bj + v, 99) < 0.014) { tw = true; break; } }
+          if (tw) {
+            let near = true; const cx = x0 + s / 2, cz = z0 + s / 2;
+            for (let i = 0; i < apLocal.length; i += 2) if (Math.hypot(apLocal[i] - cx, apLocal[i + 1] - cz) < 5200) { near = false; break; }
+            if (near) { town = 1; r = r * 0.45 + 150 * lk * 0.55; g = g * 0.45 + 146 * lk * 0.55; bl = bl * 0.45 + 140 * lk * 0.55; }
+          }
+        }
+      }
+      r *= tint[0]; g *= tint[1]; bl *= tint[2];
+      const fg = Math.min(0.94, 1 - Math.exp(-fw / D0));
+      r += (hz[0] - r) * fg; g += (hz[1] - g) * fg; bl += (hz[2] - bl) * fg;
+      P[0] = x0; P[1] = y00; P[2] = z0; P[3] = x1; P[4] = y10; P[5] = z0; P[6] = x1; P[7] = y11; P[8] = z1; P[9] = x0; P[10] = y01; P[11] = z1;
+      seam = true; const okp = polyFlat(P, 4, `rgb(${r | 0},${g | 0},${bl | 0})`); seam = false;
+      if (!okp) continue;
+      // детали вблизи: деревья, дома, огни
+      if (li === 0 && fw < 2300 && camY < 900 && !water) {
+        const cx = x0 + s / 2, cz = z0 + s / 2;
+        if (town) {
+          if (hv < 0.6) box(cx - 25, cx + 25, cz - 20, cz + 20, 8 + hv * 20, [pal.build[(hv * 3) | 0], pal.build[1], '#8b7f78']);
+          if (night > 0.5 && toScreen(cx, avg + 6, cz, SP)) { ctx.fillStyle = '#ffd890'; ctx.fillRect(SP.x, SP.y, 2, 2); }
+        } else if (g < r + 2 * (r - bl) * 0 + 0 && false) { /* зарезервировано */ }
+        else if (hv > 0.35 && (g * 1.0 < 120 && r < 90)) {
+          for (let t = 0; t < 3; t++) {
+            const tx = x0 + worldHash(a, b, 21 + t) * s, tz = z0 + worldHash(a, b, 31 + t) * s, ty = avg;
+            if (toScreen(tx, ty + 14, tz, SP)) { const sx = SP.x, sy = SP.y; if (toScreen(tx, ty, tz, SP)) { const w2 = Math.max(1.2, 7 * F / SP.f); ctx.fillStyle = `rgb(${(26 * tint[0] + hz[0] * fg * 0.6) | 0},${(66 * tint[1] + hz[1] * fg * 0.6) | 0},${(34 * tint[2] + hz[2] * fg * 0.6) | 0})`; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(SP.x + w2, SP.y); ctx.lineTo(SP.x - w2, SP.y); ctx.closePath(); ctx.fill(); } }
+          }
+        }
+      } else if (town && night > 0.5 && fw < 25000 && toScreen(x0 + s / 2, avg + 3, z0 + s / 2, SP)) {
+        ctx.fillStyle = '#ffcf7a'; const rr = Math.max(1.2, Math.min(5, 300 * F / SP.f / 12));
+        for (let t = 0; t < 4; t++) ctx.fillRect(SP.x + (worldHash(a, b, 41 + t) - 0.5) * s * F / SP.f * 0.7, SP.y + (worldHash(a, b, 51 + t) - 0.5) * 3, rr, rr * 0.8);
+      }
+    }
+  }
 }
 
 function drawHaze(pal, hy) {
@@ -1857,12 +2150,27 @@ function drawFlight(c, w, h, f, t, view) {
 
   drawSky(pal, hy, hi, { theta: th });
   drawMountains(pal, hy);
-  drawGround(pal, hy, f);
+  drawTerrain(pal, hy, f);
+  // прочие аэродромы (запасные и соседние)
+  for (let i = 0; i < f.world.length; i++) {
+    const a = f.world[i];
+    if (a.id === f.toAp.id || (a.id === f.fromAp.id && f.rwy0.s > -1e6)) continue;
+    const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
+    if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); camZ = sz;
+  }
   drawAirport(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, f.fromAp, false, f);
   drawAirport(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, f.toAp, true, f);
   drawHaze(pal, hy);
   drawLights(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, false);
   drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
+  if (pal.night > 0.3) for (let i = 0; i < f.world.length; i++) {
+    const a = f.world[i];
+    if (a.id === f.toAp.id || a.id === f.fromAp.id) continue;
+    const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
+    if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    const sz = camZ; camZ -= lz; drawLights(pal, lx - a.len / 2, a.len, false); camZ = sz;
+  }
   let fog = 0;
   if (view.warp <= 4) fog = drawClouds(pal, f);
   if (chase) drawAircraft(f, pal, t);
@@ -2044,6 +2352,7 @@ function drawHUD(f, t, view, th) {
   if (ws.has('pullup')) wl.push(['ВЫТЯГИВАЙТЕ!', RED]);
   else if (ws.has('gear')) wl.push(['ВЫПУСТИТЕ ШАССИ!', RED]);
   else if (ws.has('sink')) wl.push(['СЛИШКОМ БЫСТРО СНИЖАЕМСЯ', RED]);
+  if (ws.has('terrain')) wl.push(['ЗЕМЛЯ ВПЕРЕДИ! НАБЕРИТЕ ВЫСОТУ', RED]);
   if (ws.has('stall')) wl.push(['МАЛАЯ СКОРОСТЬ!', RED]);
   if (ws.has('over')) wl.push(['ПРЕВЫШЕНИЕ СКОРОСТИ', AMBER]);
   if (ws.has('flaps') && !ws.has('gear')) wl.push(['ЗАКРЫЛКИ!', AMBER]);
@@ -2467,7 +2776,7 @@ function startFlight(c, drill) {
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
-  mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = '';
+  mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = ''; toggleAlt(false);
   hideModal();
 }
 
@@ -2494,6 +2803,23 @@ yokeEl.addEventListener('pointermove', e => { if (stick.id === e.pointerId) yoke
 const yokeUp = e => { if (stick.id === e.pointerId) { stick.id = null; stick.value = 0; stick.roll = 0; setYoke(); } };
 yokeEl.addEventListener('pointerup', yokeUp); yokeEl.addEventListener('pointercancel', yokeUp);
 
+// ---------- запасные аэродромы ----------
+let altOpen = false, altT = 0;
+function toggleAlt(force) {
+  altOpen = force !== undefined ? force : !altOpen;
+  $('altp').classList.toggle('on', altOpen);
+  if (altOpen) { altT = 0; renderAlt(); }
+}
+function renderAlt() {
+  const f = flight; if (!f) return;
+  const list = f.altList().slice(0, 5), box = $('altp');
+  const arrow = a => { let d = ((a % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; return `<span style="display:inline-block;transform:rotate(${(d * 180 / Math.PI).toFixed(0)}deg)">➤</span>`; };
+  const desc = f.ev ? '<div class="d" style="margin-bottom:4px;color:#ffb3ab">Аварийная ситуация — можно сесть на ближайшем подходящем аэродроме (рейс будет оплачен частично).</div>' : '';
+  box.innerHTML = `<h3>Запасные аэродромы</h3>${desc}` + (list.length ? list.map((o, i) => `<div class="it ${o.ok ? 'ok' : 'no'}" data-i="${i}"><div class="ar">${arrow(o.rel)}</div><div><div class="t">${o.label}</div><div class="d">${Math.round(o.d / 1000)} км · ВПП ${o.w.len} м${o.ok ? '' : ' · ' + (o.why || 'сейчас недоступен')}</div></div></div>`).join('') : '<div class="d">Поблизости аэродромов нет.</div>') + '<button class="cl" id="altX">Закрыть</button>';
+  box.querySelectorAll('.it.ok').forEach(el => el.onclick = () => { const o = list[+el.dataset.i]; if (o && f.divertTo(o.w)) toggleAlt(false); });
+  $('altX').onclick = () => toggleAlt(false);
+}
+
 // ---------- кнопки ----------
 function act(a) {
   if (!flight || flight.done) return;
@@ -2504,6 +2830,7 @@ function act(a) {
     case 'fl+': f.setFlaps(c.flaps + 1); break;
     case 'brake': c.brake = !c.brake; break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; if (c.warp === 1 && f.allowedWarp() === 1 && i === 0) f.msg('Ускорение доступно в крейсерском полёте на автопилоте'); break; }
+    case 'altp': toggleAlt(); break;
     case 'ext': f.extinguish(); break;
     case 'altgear': f.altGearExt(); break;
     case 'emdesc': f.emergDescent(); break;
@@ -2542,6 +2869,9 @@ function syncButtons() {
   sh('eExt', f.fire && !f.fire.ext);
   sh('eGear', f.hyd && !f.altGear);
   sh('eDesc', f.decomp && f.ev && f.ev.id === 'decomp' && !f.emDescent);
+  sh('eAlt', !f.onGround && f.airborneOnce && !f.td);
+  $('eAlt').classList.toggle('urgent', !!f.ev && f.ev.id !== 'runway' && f.ev.id !== 'apFail' && f.ev.id !== 'atFail');
+  if (altOpen) { altT -= 0.016; if (altT <= 0) { altT = 0.7; renderAlt(); } if (f.onGround || f.done) toggleAlt(false); }
   sh('eGa', f.canGoAround() && (f.rwyBlocked || f.dist < 9000));
   $('hint').classList.toggle('alert', !!f.ev);
   if (c.atOn) { $('thrfill').style.height = (c.thr * 100) + '%'; $('thrv').textContent = Math.round(c.thr * 100) + '%'; }
@@ -2587,7 +2917,7 @@ function showResult() {
   if (!drill) {
     save.money = Math.max(0, save.money + r.net);
     if (r.kind !== 'abort') save.flights++;
-    if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = to.id; }
+    if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = f.locAfter; }
     if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
     save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
     persist();

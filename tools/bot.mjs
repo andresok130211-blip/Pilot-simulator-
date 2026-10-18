@@ -45,6 +45,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       c.stick = Math.max(-1, Math.min(1, (vsT - f.vs) * 0.35));
     }
     if (f.td) { if (!taxi || (f.v > 24 && !f.c.taxiAuto)) c.brake = true; c.thr = 0; c.atOn = false; c.stick = 0; }
+    if (opts.divert && f.airborneOnce && !f.diverted && !f.onGround && f.x > f.D * opts.divert) { const a = f.altList().find(o => o.ok); if (a) { f.divertTo(a.w); opts._div = a.label; } }
     // ---- реакции на ЧП ----
     const ev = f.ev && f.ev.id, R = opts.react !== false;
     if (R && ev) {
@@ -70,6 +71,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       c.thr = Math.max(0, Math.min(1, c.thr + (tgt - f.ias) * 0.0006));
     }
     if (f.ga && f.apLock <= 0) { c.stick = 0; c.roll = 0; }
+    if (opts.onStep) opts.onStep(f);
     c.warp = wantWarp;
     const w = f.effectiveWarp();
     for (let i = 0; i < w && !f.done; i++) { f.step(dt); t += dt; }
