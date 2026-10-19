@@ -768,6 +768,81 @@ function drawCockpit(pal, f) {
 }
 
 const FLN = ['0', '1', '2', '3', 'ПОЛН'];
+
+// ---------- мини-карта: куда лететь (вид «курс вверх») ----------
+const MAP_RANGES = [5000, 10000, 20000, 40000, 80000, 160000, 320000, 640000, 1300000];
+function drawMiniMap(f, view, t) {
+  const S = Math.min(120 * U, H * 0.6 - 12 - 4 - 88 * U);
+  if (S < 70) { view.mapRect = null; return; }
+  const x0 = 10 + W * 0.02, y0 = 88 * U, R = S / 2, cx = x0 + R, cy = y0 + R;
+  view.mapRect = { x: x0, y: y0, s: S };
+  const aimDx = f.D - f.x, dist = Math.hypot(aimDx, f.yPos || 0);
+  // масштаб: авто (цель всегда на карте) или выбранный нажатием
+  let rng;
+  if (view.mapZoom > 0) rng = MAP_RANGES[Math.min(MAP_RANGES.length - 1, view.mapZoom - 1)];
+  else { rng = MAP_RANGES[MAP_RANGES.length - 1]; for (const r of MAP_RANGES) if (r >= dist / 1.15) { rng = r; break; } }
+  const rp = R - 3 * U, sc = rp / rng, oy = 0.22 * rp;
+  const ps = f.psi || 0, cp = Math.cos(ps), sp = Math.sin(ps);
+  // локальная точка -> экран (курс вверх)
+  const P = (px, py) => { const dx = px - f.x, dy = py - (f.yPos || 0); const fw = dx * cp + dy * sp, rt = -dx * sp + dy * cp; return [cx + rt * sc, cy + oy - fw * sc]; };
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.3); ctx.fillStyle = 'rgba(8,16,32,.72)'; ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R - 1, 0, 6.3); ctx.clip();
+  // кольца дальности
+  ctx.strokeStyle = 'rgba(160,255,200,.22)'; ctx.lineWidth = 1;
+  for (const k of [0.5, 1]) { ctx.beginPath(); ctx.arc(cx, cy + oy, rp * k, 0, 6.3); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.moveTo(cx - R, cy + oy); ctx.lineTo(cx + R, cy + oy); ctx.stroke();
+  // ось маршрута и посадочная прямая
+  { const a = P(f.rwy0.s > -1e6 ? 0 : f.x - 2e5, 0), b = P(f.D, 0);
+    ctx.strokeStyle = 'rgba(120,170,255,.45)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    const fa = P(f.D - 25000, 0);
+    ctx.strokeStyle = 'rgba(125,255,176,.85)'; ctx.lineWidth = 2; ctx.setLineDash([5 * U, 3 * U]);
+    ctx.beginPath(); ctx.moveTo(fa[0], fa[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(125,255,176,.9)';
+    for (const k of [5000, 10000, 20000]) { const q = P(f.D - k, 0); ctx.beginPath(); ctx.arc(q[0], q[1], 1.8 * U, 0, 6.3); ctx.fill(); }
+  }
+  // прочие аэродромы
+  const showAlt = !!f.ev || f.diverted;
+  for (let i = 0; i < f.world.length; i++) {
+    const w = f.world[i]; if (w.id === f.toAp.id) continue;
+    const q = P(apLocal[2 * i], apLocal[2 * i + 1]);
+    if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp * 1.1) continue;
+    ctx.fillStyle = showAlt ? 'rgba(255,224,138,.95)' : 'rgba(200,210,230,.5)';
+    ctx.fillRect(q[0] - 2 * U, q[1] - 2 * U, 4 * U, 4 * U);
+    if (showAlt) txt(w.gen ? 'ЗАП' : w.id, q[0] + 4 * U, q[1] + 3 * U, 'rgba(255,224,138,.95)', 8 * U, 'left', '700');
+  }
+  if (f.rwy0.s > -1e6) { const q = P(0, 0); ctx.fillStyle = 'rgba(200,210,230,.7)'; ctx.fillRect(q[0] - 2 * U, q[1] - 2 * U, 4 * U, 4 * U); }
+  // цель: полоса назначения
+  const dq = P(f.D, 0), de = P(f.D + (f.rwy1.e - f.rwy1.s), 0);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * U; ctx.beginPath(); ctx.moveTo(dq[0], dq[1]); ctx.lineTo(de[0], de[1]); ctx.stroke();
+  { const lx = Math.max(cx - rp + 8 * U, Math.min(cx + rp - 24 * U, dq[0] + 5 * U)), ly = Math.max(cy - rp + 22 * U, Math.min(cy + rp - 6 * U, dq[1] - 4 * U)); txt(f.toAp.id, lx, ly, '#fff', 8.5 * U, 'left', '800'); }
+  // направление на цель
+  const lim = 0.35;
+  const tgtA = f.dist > 30000 ? Math.atan2(-(f.yPos || 0), Math.max(aimDx, 1)) : Math.max(-lim, Math.min(lim, -(f.yPos || 0) * 0.0015));
+  const dTurn = ((tgtA - ps + Math.PI * 3) % (2 * Math.PI)) - Math.PI;
+  if (!f.onGround) {
+    ctx.strokeStyle = 'rgba(80,220,255,.9)'; ctx.lineWidth = 1.4; ctx.setLineDash([3 * U, 3 * U]);
+    ctx.beginPath(); ctx.moveTo(cx, cy + oy); ctx.lineTo(cx + Math.sin(dTurn) * rp * 1.4, cy + oy - Math.cos(dTurn) * rp * 1.4); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.restore();
+  // обод и север
+  ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.3); ctx.stroke();
+  { const na = -((f.heading || 0) * DEG); const nx = cx + Math.sin(na) * (R - 7 * U), ny = cy - Math.cos(na) * (R - 7 * U);
+    txt('С', nx, ny + 3 * U, '#ff9a8a', 8 * U, 'center', '800'); }
+  // метка нужного поворота на ободе
+  { const ba = dTurn, bx = cx + Math.sin(ba) * (R - 1), by = cy - Math.cos(ba) * (R - 1);
+    ctx.fillStyle = CYAN; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - Math.cos(ba) * 5 * U - Math.sin(ba) * 7 * U, by - Math.sin(ba) * 5 * U + Math.cos(ba) * 7 * U);
+    ctx.lineTo(bx + Math.cos(ba) * 5 * U - Math.sin(ba) * 7 * U, by + Math.sin(ba) * 5 * U + Math.cos(ba) * 7 * U); ctx.closePath(); ctx.fill(); }
+  // самолёт
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx, cy + oy - 8 * U); ctx.lineTo(cx + 6 * U, cy + oy + 6 * U); ctx.lineTo(cx, cy + oy + 3 * U); ctx.lineTo(cx - 6 * U, cy + oy + 6 * U); ctx.closePath(); ctx.fill();
+  // подписи
+  const dd = Math.abs(dTurn) / DEG, hd = ((Math.round(f.heading + dTurn / DEG) % 360) + 360) % 360;
+  txt(dd < 3 ? '▲ ПРЯМО' : (dTurn > 0 ? 'ВПРАВО ' : 'ВЛЕВО ') + Math.round(dd) + '°', cx, y0 + 12 * U, dd < 3 ? GREEN : AMBER, 9 * U, 'center', '800');
+  txt(f.toAp.id + ' ' + String(hd).padStart(3, '0') + '°', cx, y0 + S + 10 * U, CYAN, 9 * U, 'center', '800');
+  txt(rng >= 1000 ? (rng / 1000) + ' км' : rng + ' м', cx + R - 3 * U, cy + oy - 3 * U, 'rgba(200,230,215,.7)', 7.5 * U, 'right', '600');
+  ctx.restore();
+}
+
 function drawHUD(f, t, view, th) {
   const c = f.c, chase = view.cam === 'chase';
   const kmh = (f.ias + (f.fx.iasErr || 0)) * 3.6, hAlt = f.h + (f.fx.altErr || 0);
@@ -890,9 +965,10 @@ function drawHUD(f, t, view, th) {
     }
   }
   if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
+  if (view.map !== false && !f.onGround && !f.done) drawMiniMap(f, view, t); else view.mapRect = null;
   // TCAS: встречный борт
   if (f.fx.traffic) {
-    const tr = f.fx.traffic, bx = 14 * U + W * 0.045 + 36 * U, by = 118 * U, r = 26 * U;
+    const tr = f.fx.traffic, bx = W * 0.4, by = H * 0.3, r = 26 * U;
     ctx.fillStyle = 'rgba(6,12,26,.6)'; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.3); ctx.fill();
     ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(bx, by, r * 0.5, 0, 6.3); ctx.arc(bx, by, r, 0, 6.3); ctx.stroke();
     const rr = clamp(tr.d / 8000, 0, 1) * r * 0.9, ra = tr.ra !== 0;

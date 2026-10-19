@@ -212,7 +212,7 @@ function startFlight(c, drill) {
     taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : save.emerg, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
-  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam };
+  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: true, mapZoom: 0 };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = ''; toggleAlt(false);
@@ -299,6 +299,7 @@ function act(a) {
       break;
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
+    case 'map': view.map = view.map === false; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
@@ -307,6 +308,7 @@ function act(a) {
   }
 }
 ui.querySelectorAll('#btns button, #ebtns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
+$('mapzone').addEventListener('pointerdown', e => { e.preventDefault(); if (!view) return; view.mapZoom = ((view.mapZoom || 0) + 1) % 10; if (flight) flight.msg(view.mapZoom ? 'Карта: масштаб зафиксирован' : 'Карта: масштаб авто'); });
 $('eact').addEventListener('pointerdown', e => { const b = e.target.closest('button'); if (!b || !flight) return; e.preventDefault(); flight.evAction(b.dataset.k); });
 
 function syncButtons() {
@@ -323,6 +325,7 @@ function syncButtons() {
   const ev = f.evView(), evp = $('evp');
   if (ev) { evp.style.display = 'block'; const hh = `<b>⚠ ${ev.title}</b>` + ev.steps.map(st => `<div class="${st.done ? 'ok' : 'no'}">${st.done ? '✓' : '•'} ${st.t}</div>`).join(''); if (hh !== evp._h) { evp._h = hh; evp.innerHTML = hh; } }
   else { evp.style.display = 'none'; evp._h = ''; }
+  { const mz = $('mapzone'), r = view.mapRect; if (r) { mz.style.display = 'block'; mz.style.left = r.x + 'px'; mz.style.top = r.y + 'px'; mz.style.width = r.s + 'px'; mz.style.height = r.s + 'px'; } else mz.style.display = 'none'; }
   const sh = (id, v) => $(id).classList.toggle('show', !!v);
   sh('eExt', f.fire && !f.fire.ext);
   sh('eGear', (f.hyd || f.fx.gearStuck) && !f.altGear);
@@ -341,7 +344,7 @@ function syncButtons() {
 addEventListener('keydown', e => {
   if (mode !== 'flight' || !flight) return;
   keys[e.code] = true;
-  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi' }[e.code];
+  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi', KeyM: 'map' }[e.code];
   if (m && !e.repeat) act(m);
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });
