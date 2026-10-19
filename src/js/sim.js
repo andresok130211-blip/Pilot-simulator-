@@ -94,6 +94,7 @@ export class Flight {
     // аварийные ситуации
     this.eng = [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
     this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
     this.origTo = o.to; this.divTo = null; this.tfA = 0;
@@ -195,7 +196,7 @@ export class Flight {
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
   get mach() { return this.v / atmos(this.h + this.elev).a; }
-  get ceilLim() { return this.eng[0] + this.eng[1] < 1.5 ? Math.round(this.p.ceiling * 0.6 / 100) * 100 : this.p.ceiling; }
+  get ceilLim() { const base = this.eng[0] + this.eng[1] < 1.5 ? Math.round(this.p.ceiling * 0.6 / 100) * 100 : this.p.ceiling; return this.fx.noRetract ? Math.min(base, 4200) : base; }
   get engCount() { return (this.eng[0] > 0.01 ? 1 : 0) + (this.eng[1] > 0.01 ? 1 : 0); }
   minSpd() { return 1.22 * stallIAS(this.mass, this.c.flaps, this.p.S) + 4; }
   get flapIdx() { return Math.round(this.flapAct); }
@@ -207,7 +208,7 @@ export class Flight {
     this.A = A;
     const q = 0.5 * A.rho * v * v;
     const M = v / A.a;
-    const dcl = lerpTab(FLAP_DCL, this.flapAct), cdf = lerpTab(FLAP_CD, this.flapAct), as = lerpTab(FLAP_AS, this.flapAct);
+    const dcl = lerpTab(FLAP_DCL, this.flapAct), cdf = lerpTab(FLAP_CD, this.flapAct), as = lerpTab(FLAP_AS, this.flapAct) * (1 - 0.1 * this.fx.ice);
     const alpha = this.onGround ? this.theta : this.theta - this.gamma;
     let CL;
     if (alpha <= as) CL = CL0 + dcl + CLA * alpha;
@@ -215,10 +216,10 @@ export class Flight {
     const spoil = c.brake;
     if (spoil) CL *= this.onGround ? 0.35 : 0.92;
     const CD = p.cd0 + cdf + 0.022 * this.gearPos + (spoil && !this.onGround ? 0.03 : 0) + (this.onGround && spoil ? 0.05 : 0)
-      + this.K * CL * CL + (M > p.cruiseM - 0.01 ? 12 * (M - p.cruiseM + 0.01) ** 2 : 0);
+      + 0.02 * this.fx.ice + this.K * CL * CL + (M > p.cruiseM - 0.01 ? 12 * (M - p.cruiseM + 0.01) ** 2 : 0);
     this.q = q; this.alpha = alpha; this.alphaS = as; this.CL = CL; this.CD = CD;
     this.L = q * p.S * CL; this.Dr = q * p.S * CD;
-    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 : 0;
+    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 * (1 - 0.08 * this.fx.ice) : 0;
     this.stallWarn = !this.onGround && alpha > as - 2.2 * DEG;
     this.stalled = !this.onGround && alpha > as;
     this.clmaxNow = CL0 + dcl + CLA * as;
@@ -228,7 +229,7 @@ export class Flight {
   setFlaps(n) {
     const c = this.c;
     n = clamp(n, 0, 4);
-    if (this.hyd && n !== c.flaps) { if (this.time - this.flapMsgT > 3) { this.msg('Закрылки заклинило — гидравлика отказала'); this.flapMsgT = this.time; } return false; }
+    if ((this.hyd || this.fx.flapJam) && n !== c.flaps) { if (this.time - this.flapMsgT > 3) { this.msg('Закрылки заклинило — гидравлика отказала'); this.flapMsgT = this.time; } return false; }
     if (n > c.flaps) {
       const lim = this.p.flapLim[n];
       if (this.ias > lim) {
@@ -241,7 +242,8 @@ export class Flight {
   setGear(down) {
     const c = this.c;
     if (down === c.gear) return true;
-    if (down && this.hyd && !this.altGear) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не выпускается — нажмите ЗАПАС. ШАССИ'); this.flapMsgT = this.time; } return false; }
+    if (down && (this.hyd || this.fx.gearStuck) && !this.altGear) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не выпускается — нажмите ЗАПАС. ШАССИ'); this.flapMsgT = this.time; } return false; }
+    if (!down && this.fx.noRetract) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не убирается — неисправность'); this.flapMsgT = this.time; } return false; }
     if (!down && this.altGear) { this.msg('Шасси зафиксировано вручную — убрать нельзя'); return false; }
     if (!down) { if (this.onGround) return false; }
     else if (this.ias > this.p.gearLim) { this.msg('Шасси: слишком быстро (≤ ' + Math.round(this.p.gearLim * 3.6) + ' км/ч)'); return false; }
@@ -258,11 +260,13 @@ export class Flight {
     const p = this.p, c = this.c, A = this.A;
     const f = c.flaps;
     const m = this.mass;
-    if (c.gear && (f >= 3 || (this.hyd && this.dist < 60000))) return (this.hyd ? 1.3 : 1.24) * stallIAS(m, f, p.S) + 3;
+    if (c.gear && (f >= 3 || ((this.hyd || this.fx.flapJam) && this.dist < 60000))) return ((this.hyd || this.fx.flapJam) ? 1.3 : 1.24) * stallIAS(m, f, p.S) + 3;
     if (this.emDescent) return Math.min(160, p.flapLim[0] - 8);
     let sched = this.h < 3000 ? 128 : 154;
     const machIAS = p.cruiseM * A.a * Math.sqrt(A.sigma);
     sched = Math.min(sched, machIAS);
+    if (this.fx.turb > 0) sched *= 0.92;
+    if (this.fx.noRetract) sched = Math.min(sched, this.p.gearLim - 8);
     if (c.gear && this.h < 3000) sched = Math.min(sched, 118);
     let lim = p.flapLim[f] - 8;
     // на заходе скорость такая, чтобы следующая ступень закрылков уже разрешалась
@@ -338,14 +342,14 @@ export class Flight {
 
     // помощник: автоматика конфигурации и снижения
     if (!this.onGround) {
-      if (this.assist.auto && !this.autoEngaged && this.h > 200 && !c.gear && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
+      if (this.assist.auto && !this.autoEngaged && this.h > 200 && (!c.gear || this.fx.noRetract) && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
         c.apOn = true; c.atOn = true; c.nav = true; c.apAlt = this.recAlt; this.autoEngaged = true;
         this.msg('Автопилот включён');
       }
       if (this.assist.auto && c.apOn && !this.autoDescDone && dist < this.todDist() && c.apAlt > APPR_ALT) {
         c.apAlt = APPR_ALT; this.autoDescDone = true; this.msg('Начинаем снижение');
       }
-      if (this.assist.auto && c.apOn && dist < 46000 && !c.appr && this.autoDescDone) { c.appr = true; }
+      if (this.assist.auto && c.apOn && dist < 46000 && !c.appr && (this.autoDescDone || (c.apAlt <= APPR_ALT + 50 && this.h < 3300 && this.diverted))) { c.appr = true; }
       if (this.assist.config && dist < 46000 && dist > 0 && this.h < 3200) {
         this.cfgTimer -= dt;
         if (this.cfgTimer <= 0) {
@@ -384,7 +388,7 @@ export class Flight {
     if (c.atOn && !this.onGround) c.split = false;
     const spoolUp = 0.4, spoolDn = 0.6;
     const tg = c.split ? [c.t1, c.t2] : [c.thr, c.thr];
-    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) : 0;
+    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) * (1 - 0.08 * this.fx.ice) : 0;
     for (let i = 0; i < 2; i++) {
       this.thrA[i] += clamp(tg[i] - this.thrA[i], -spoolDn * dt, spoolUp * dt);
       this.Ti[i] = Tb / 2 * this.eng[i] * (IDLE + (1 - IDLE) * this.thrA[i]);
@@ -441,6 +445,7 @@ export class Flight {
         else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * 0.0015, -lim, lim); }
         phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
       }
+      if (Math.abs(roll) <= 0.04) phiT += this.fx.rollBias * DEG * clamp(this.h / 100, 0, 1) * (c.apOn ? 0.25 : 1);
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
       this.phi = clamp(this.phi, -35 * DEG, 35 * DEG);
     } else this.phi = 0;
@@ -451,11 +456,41 @@ export class Flight {
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
     this.asym = this.asymT;
+    this.applyFx(dt);
     if (this.onGround) this.stepGround(dt, T);
     else this.stepAir(dt, T);
 
     // предупреждения
     this.updateWarnings(dt);
+  }
+
+  // эффекты ЧП: турбулентность, сдвиг ветра, снос, лопнувшая шина и т.п.
+  applyFx(dt) {
+    const fx = this.fx, t = this.time;
+    if (fx.fog > 0 && !(this.ev && this.ev.id === 'fog')) fx.fog = Math.max(0, fx.fog - dt / 30);
+    if (fx.smoke > 0 && !(this.ev && this.ev.id === 'cabinFire')) fx.smoke = Math.max(0, fx.smoke - dt / 60);
+    if (fx.flash > 0) fx.flash = Math.max(0, fx.flash - dt * 3);
+    if (this.onGround) {
+      if (fx.tire && !this.airborneOnce && this.v > 3) this.psi += fx.tire * 0.05 * dt * Math.min(1, this.v / 20);
+      return;
+    }
+    if (fx.turb > 0) {
+      const n = Math.sin(1.9 * t) * 0.6 + Math.sin(3.3 * t + 1.3) * 0.4, n2 = Math.sin(1.3 * t + 2) * 0.6 + Math.sin(2.9 * t) * 0.4, n3 = Math.sin(2.3 * t + 0.5);
+      this.gamma += fx.turb * 0.03 * dt * n;
+      this.phi += fx.turb * 4 * DEG * dt * n2;
+      this.v = Math.max(5, this.v + fx.turb * 4 * n3 * dt);
+      if (!fx.belts) { fx.injT = (fx.injT || 0) + dt * fx.turb; if (fx.injT > 25 && !fx.injDone) { fx.injDone = true; this.incident('belts', 'Пассажиры без ремней получили травмы', 8, 999); } }
+    }
+    if (fx.ws > 0) { fx.ws -= dt; this.v = Math.max(8, this.v - 1.6 * dt); this.h -= 5 * dt; }
+    if (fx.gps) this.yPos += 3.5 * dt * (fx.gpsDir || 1);
+  }
+  evAction(k) {
+    const ev = this.ev; if (!ev || this.done) return;
+    const d = EVENT_DEFS[ev.id]; if (d.act) d.act(this, ev, k);
+  }
+  evBtns() {
+    const ev = this.ev; if (!ev || this.done) return [];
+    const d = EVENT_DEFS[ev.id]; return d.btns ? d.btns(this, ev) : [];
   }
 
   stepGround(dt, T) {
@@ -475,7 +510,7 @@ export class Flight {
     } else {
       let mu = paved ? 0.02 : 0.15;
       if (this.gearPos < 0.9) mu = 0.5;
-      if (c.brake) mu += onRwy ? 0.30 : 0.2;
+      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : 0.30) : 0.2;
       let F = T - this.Dr - mu * N;
       if (this.v < 0.3 && F <= 0) { this.v = 0; }
       else {
@@ -495,6 +530,7 @@ export class Flight {
       else this.psi -= this.psi * 0.6 * dt;
     }
     if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
+    if (this.fx.slick && this.v > 25) this.psi += this.fx.slick * 0.02 * Math.sin(this.time * 0.8) * dt;
     this.psi = wrapPi(this.psi);
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
@@ -680,6 +716,7 @@ export class Flight {
     if (ev.id === 'engRoll' && kind === 'abort') out = 'ok';
     if (this.diverted && kind === 'ok' && ev.id !== 'runway') out = 'ok';
     if (ev.id === 'runway' && this.gaCount === 0 && kind === 'ok') out = 'fail';
+    const d = EVENT_DEFS[ev.id]; if (d.close) out = d.close(this, ev, kind, out);
     this.resolveEvent(ev, out, '');
   }
   evStep(dt) {
@@ -687,7 +724,7 @@ export class Flight {
     const c = this.c;
     if (this.apLock > 0) { this.apLock -= dt; c.apOn = false; c.appr = false; this.apprCap = false; if (this.apLock <= 0 && this.assist.auto) { c.apOn = true; c.atOn = c.atOn || this.atLock <= 0; } }
     if (this.atLock > 0) { this.atLock -= dt; c.atOn = false; if (this.atLock <= 0 && this.assist.auto) c.atOn = true; }
-    if (this.engCount < 2 && c.apOn && c.apAlt > this.ceilLim - 250) c.apAlt = this.ceilLim - 250;
+    if ((this.engCount < 2 || this.fx.noRetract) && c.apOn && c.apAlt > this.ceilLim - 250) c.apAlt = this.ceilLim - 250;
     if (this.ga) this.gaStep(dt);
     if (this.ev) EVENT_DEFS[this.ev.id].tick(this, this.ev, dt);
     else if (!this.done && this.evq) { for (const q of this.evq) if (!q.fired && evWhen(this, q)) { q.fired = true; this.startEvent(q.id, q.o); break; } }
@@ -698,6 +735,7 @@ export class Flight {
     if (this.hyd) a.add('ОТКАЗ ГИДРАВЛИКИ');
     if (this.apLock > 0) a.add('ОТКАЗ АВТОПИЛОТА');
     if (this.atLock > 0) a.add('ОТКАЗ АВТОМАТА ТЯГИ');
+    if (this.ev) { const al = EVENT_DEFS[this.ev.id].alert; if (al) { const x = al(this, this.ev); if (x) for (const y of [].concat(x)) a.add(y); } }
     if (this.engCount < 2 && !(this.fire && !this.fire.ext)) a.add(this.engCount ? 'ДВИГАТЕЛЬ ' + (this.eng[0] < 0.01 ? 1 : 2) + ' — ОТКАЗ' : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ');
   }
   // ---------- запасные аэродромы ----------
@@ -755,7 +793,7 @@ export class Flight {
     this.msg('Двигатель №' + (fr.side + 1) + ' остановлен, огнетушитель сработал');
   }
   altGearExt() {
-    if (!this.hyd || this.altGear) return;
+    if (!(this.hyd || this.fx.gearStuck) || this.altGear) return;
     this.altGear = true; this.c.gear = true; this.msg('Запасная выпуска шасси: ~20 секунд');
   }
   emergDescent() {

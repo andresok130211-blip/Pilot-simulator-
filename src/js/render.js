@@ -688,6 +688,7 @@ export function drawFlight(c, w, h, f, t, view) {
   let shy = 0;
   if (f.onGround && f.v > 3) shy = Math.sin(t * 38) * Math.min(1, f.v / 60) * 0.9 * U + (view.bump || 0) * 0.15;
   else shy = (view.bump || 0) * 0.15;
+  if (view.turb > 0.6) shy += (Math.sin(t * 23) * 0.6 + Math.sin(t * 9.7)) * (view.turb - 0.5) * 1.5 * U;
   c.save();
   c.translate(CX, CY + shy); c.rotate(roll); c.translate(-CX, -CY);
 
@@ -721,6 +722,12 @@ export function drawFlight(c, w, h, f, t, view) {
   c.restore();
   drawGuide(f);
   if (fog > 0) { c.fillStyle = `rgba(235,240,248,${fog * 0.8})`; c.fillRect(0, 0, W, H); }
+  { const fx = f.fx;
+    if (fx.fog > 0) { const hz = pal.haze; c.fillStyle = rgb(hz, 0.84 * fx.fog); c.fillRect(0, 0, W, H); }
+    if (fx.flash > 0.02) { c.fillStyle = `rgba(235,240,255,${fx.flash * 0.7})`; c.fillRect(0, 0, W, H); }
+    if (fx.smoke > 0) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.15, CX, H * 0.5, H * 0.9); g.addColorStop(0, `rgba(60,55,50,${fx.smoke * 0.25})`); g.addColorStop(1, `rgba(25,22,20,${fx.smoke * 0.85})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+    if (fx.ice > 0.05) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.3, CX, H * 0.5, H * 0.85); g.addColorStop(0, 'rgba(220,240,255,0)'); g.addColorStop(1, `rgba(220,240,255,${fx.ice * 0.7})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+  }
 
   // кабина: стойки и козырёк
   if (!chase) drawCockpit(pal, f);
@@ -763,7 +770,7 @@ function drawCockpit(pal, f) {
 const FLN = ['0', '1', '2', '3', 'ПОЛН'];
 function drawHUD(f, t, view, th) {
   const c = f.c, chase = view.cam === 'chase';
-  const kmh = f.ias * 3.6;
+  const kmh = (f.ias + (f.fx.iasErr || 0)) * 3.6, hAlt = f.h + (f.fx.altErr || 0);
   if (!chase) {
   // шкала тангажа (вращается вместе с горизонтом)
   ctx.save(); ctx.translate(CX, CY); ctx.rotate(-(f.phi || 0)); ctx.translate(-CX, -CY);
@@ -813,6 +820,7 @@ function drawHUD(f, t, view, th) {
   vbugs.push({ v: vsNow, col: RED, label: 'Vs' });
   if (f.onGround && !f.td) vbugs.push({ v: f.vr * 3.6, col: AMBER, label: 'VR' });
   const sx = W * 0.215;
+  if (f.fx.adc) { panel(sx - 40 * U, CY - 12 * U, 40 * U, 24 * U, 0.6); txt('SPD', sx - 20 * U, CY + 5 * U, RED, 13 * U, 'center', '800'); } else
   drawTape(sx, -1, 0, 1.25 * U, 10, 20, kmh, (v, big) => String(Math.round(v)), vbugs);
   txt('км/ч', sx - 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   txt('M ' + f.mach.toFixed(2).replace(/^0/, ''), sx - 25 * U, CY + H * 0.02 + H * 0.25 + 12 * U, WHITE, 10 * U, 'center');
@@ -820,7 +828,8 @@ function drawHUD(f, t, view, th) {
   const abugs = [];
   if (c.apOn && !f.apprCap) abugs.push({ v: c.apAlt, col: CYAN, label: '' });
   const ax = W * 0.785;
-  drawTape(ax, 1, 0, 0.30 * U, 20, 100, f.h, (v, big) => big ? String(Math.round(f.h)) : String(Math.round(v)), abugs);
+  if (f.fx.adc) { panel(ax, CY - 12 * U, 40 * U, 24 * U, 0.6); txt('ALT', ax + 20 * U, CY + 5 * U, RED, 13 * U, 'center', '800'); } else
+  drawTape(ax, 1, 0, 0.30 * U, 20, 100, hAlt, (v, big) => big ? String(Math.round(hAlt)) : String(Math.round(v)), abugs);
   txt('м', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   // цель АП и вертикальная скорость
   const vs = f.vs;
@@ -881,6 +890,17 @@ function drawHUD(f, t, view, th) {
     }
   }
   if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
+  // TCAS: встречный борт
+  if (f.fx.traffic) {
+    const tr = f.fx.traffic, bx = 14 * U + W * 0.045 + 36 * U, by = 118 * U, r = 26 * U;
+    ctx.fillStyle = 'rgba(6,12,26,.6)'; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.3); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(bx, by, r * 0.5, 0, 6.3); ctx.arc(bx, by, r, 0, 6.3); ctx.stroke();
+    const rr = clamp(tr.d / 8000, 0, 1) * r * 0.9, ra = tr.ra !== 0;
+    ctx.fillStyle = ra ? RED : AMBER; ctx.beginPath(); ctx.moveTo(bx, by - rr - 6 * U); ctx.lineTo(bx + 5 * U, by - rr); ctx.lineTo(bx, by - rr + 6 * U); ctx.lineTo(bx - 5 * U, by - rr); ctx.closePath(); ctx.fill();
+    txt((tr.dh >= 0 ? '+' : '−') + Math.abs(Math.round(tr.dh)), bx, by - rr - 9 * U, ra ? RED : AMBER, 9 * U, 'center', '800');
+    txt('TCAS', bx, by + r + 11 * U, WHITE, 9 * U, 'center', '800');
+    if (ra) { const up = f.ev && f.ev.ra > 0; txt(up ? '▲ КЛИМБ' : '▼ СНИЖАЙСЯ', bx, by + r + 24 * U, RED, 11 * U, 'center', '800'); }
+  }
   // аварийные сообщения (ЧП)
   if (f.alerts.size && !f.done) {
     const al = [...f.alerts].slice(0, 3), flash = Math.floor(t * 2.5) % 2 === 0;

@@ -298,7 +298,7 @@ function act(a) {
       else if (!f.onGround) { c.apOn = true; c.atOn = true; if (f.h < 3000 && !c.appr) c.apAlt = f.dist < 60000 ? 1500 : f.recAlt; if (f.dist >= 60000) c.apAlt = f.recAlt; }
       break;
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
-    case 'nav': c.nav = !c.nav; break;
+    case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
@@ -307,6 +307,7 @@ function act(a) {
   }
 }
 ui.querySelectorAll('#btns button, #ebtns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
+$('eact').addEventListener('pointerdown', e => { const b = e.target.closest('button'); if (!b || !flight) return; e.preventDefault(); flight.evAction(b.dataset.k); });
 
 function syncButtons() {
   const f = flight, c = f.c;
@@ -324,7 +325,9 @@ function syncButtons() {
   else { evp.style.display = 'none'; evp._h = ''; }
   const sh = (id, v) => $(id).classList.toggle('show', !!v);
   sh('eExt', f.fire && !f.fire.ext);
-  sh('eGear', f.hyd && !f.altGear);
+  sh('eGear', (f.hyd || f.fx.gearStuck) && !f.altGear);
+  { const eb = f.evBtns(), key = eb.map(b => b.k).join('|'), ea = $('eact'); if (key !== ea._k) { ea._k = key; ea.innerHTML = eb.map(b => `<button data-k="${b.k}">${b.t}</button>`).join(''); } }
+  if (f.ev && f.ev.id === 'surge' && thrLinked && !f.ev._unl) { f.ev._unl = true; $('thrlink').onclick(); }
   sh('eDesc', f.decomp && f.ev && f.ev.id === 'decomp' && !f.emDescent);
   sh('eAlt', !f.onGround && f.airborneOnce && !f.td);
   $('eAlt').classList.toggle('urgent', !!f.ev && f.ev.id !== 'runway' && f.ev.id !== 'apFail' && f.ev.id !== 'atFail');
@@ -442,7 +445,7 @@ function loop(ts) {
         if (!wasTd && f.td) { view.bump = Math.min(14, 2 + f.td.sink * 3.5); }
         if (!wasAir && f.airborneOnce) view.bump = 1.5;
         view.bump *= Math.pow(0.02, dt);
-        view.turb = f.h > 20 && f.h < 3500 ? 0.4 : f.h >= 3500 ? 0.15 : 0;
+        view.turb = (f.h > 20 && f.h < 3500 ? 0.4 : f.h >= 3500 ? 0.15 : 0) + f.fx.turb * 1.6;
         view.rollKick = (view.rollKick || 0) * Math.pow(0.1, dt);
       } else {
         endTimer += dt;

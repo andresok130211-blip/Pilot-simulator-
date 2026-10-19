@@ -88,6 +88,8 @@ table.res td:last-child{text-align:right;font-weight:700}
 #evp .no{color:#ffe08a}
 #ebtns button{display:none;pointer-events:auto;touch-action:none;width:100%;height:40px;margin-top:4px;border-radius:10px;border:2px solid #ffb3ab;background:#b3261e;color:#fff;font-weight:900;font-size:13px;letter-spacing:.3px;animation:evpulse 1s infinite}
 #ebtns button.show{display:block}
+#eact button{pointer-events:auto;touch-action:none;display:block;width:100%;height:40px;margin-top:4px;border-radius:10px;border:2px solid #ffd9a0;background:#b3591e;color:#fff;font-weight:900;font-size:13px;letter-spacing:.3px;animation:evpulse 1s infinite}
+@media (max-height:420px){#eact button{height:34px;font-size:12px}}
 @keyframes evpulse{50%{filter:brightness(1.35)}}
 #fade{position:absolute;inset:0;background:#000;color:#fff;display:none;align-items:center;justify-content:center;font-size:22px;font-weight:800;pointer-events:none}
 #hint.alert{background:#ffb4ab;color:#3a0603}

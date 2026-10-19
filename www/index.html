@@ -96,6 +96,8 @@ table.res td:last-child{text-align:right;font-weight:700}
 #evp .no{color:#ffe08a}
 #ebtns button{display:none;pointer-events:auto;touch-action:none;width:100%;height:40px;margin-top:4px;border-radius:10px;border:2px solid #ffb3ab;background:#b3261e;color:#fff;font-weight:900;font-size:13px;letter-spacing:.3px;animation:evpulse 1s infinite}
 #ebtns button.show{display:block}
+#eact button{pointer-events:auto;touch-action:none;display:block;width:100%;height:40px;margin-top:4px;border-radius:10px;border:2px solid #ffd9a0;background:#b3591e;color:#fff;font-weight:900;font-size:13px;letter-spacing:.3px;animation:evpulse 1s infinite}
+@media (max-height:420px){#eact button{height:34px;font-size:12px}}
 @keyframes evpulse{50%{filter:brightness(1.35)}}
 #fade{position:absolute;inset:0;background:#000;color:#fff;display:none;align-items:center;justify-content:center;font-size:22px;font-weight:800;pointer-events:none}
 #hint.alert{background:#ffb4ab;color:#3a0603}
@@ -148,7 +150,7 @@ table.res td:last-child{text-align:right;font-weight:700}
     <button id="bTaxi" data-act="taxi">АВТО РУЛ</button>
     <button id="bView" data-act="view">ВИД</button>
   </div>
-  <div id="evbox"><div id="evp"></div><div id="ebtns">
+  <div id="evbox"><div id="evp"></div><div id="eact"></div><div id="ebtns">
     <button id="eExt" data-act="ext" class="red">🔥 ТУШЕНИЕ</button>
     <button id="eGear" data-act="altgear" class="red">⚙ ЗАПАС. ШАССИ</button>
     <button id="eDesc" data-act="emdesc" class="red">⬇ АВАР. СНИЖ.</button>
@@ -344,6 +346,7 @@ function settled(f, ev, dt, need) {
   ev.okT = allDone(st) ? (ev.okT || 0) + dt : 0;
   return ev.okT > need;
 }
+const surgeLev = (f, i) => f.c.split ? (i ? f.c.t2 : f.c.t1) : f.c.thr;
 const pickSide = f => (f.rnd() < 0.5 ? 0 : 1);
 
 const EVENT_DEFS = {
@@ -371,6 +374,7 @@ const EVENT_DEFS = {
       if (!f.airborneOnce && f.c.brake && f.v < 2 && f.maxV > 20) f.resolveEvent(ev, 'ok', 'Взлёт прерван — решение верное');
       else if (f.airborneOnce && f.h > 350 && !f.c.gear) f.resolveEvent(ev, 'ok', 'Взлёт на одном двигателе выполнен');
     },
+    close(f, ev, kind, out) { return kind === 'abort' ? 'ok' : out; },
   },
 
   engFail: {
@@ -442,7 +446,7 @@ const EVENT_DEFS = {
   },
 
   hyd: {
-    title: 'ОТКАЗ ГИДРАВЛИКИ', short: 'Отказ гидравлики', phases: ['cruise', 'descent'], weight: 2, spawn: 'descent',
+    title: 'ОТКАЗ ГИДРАВЛИКИ', short: 'Отказ гидравлики', phases: ['cruise', 'descent'], weight: 2, group: 'cfg', spawn: 'descent',
     desc: 'Закрылки заклинило, шасси не выпускается обычным способом, штурвал тяжёлый. Выпустите шасси кнопкой ЗАПАС. ШАССИ и садитесь на повышенной скорости.',
     ok: f => f.distM >= 400000,
     start(f, ev) {
@@ -462,7 +466,7 @@ const EVENT_DEFS = {
   },
 
   decomp: {
-    title: 'РАЗГЕРМЕТИЗАЦИЯ', short: 'Разгерметизация салона', phases: ['cruise'], weight: 2, spawn: 'cruise',
+    title: 'РАЗГЕРМЕТИЗАЦИЯ', short: 'Разгерметизация салона', phases: ['cruise'], weight: 2, group: 'pax', spawn: 'cruise',
     desc: 'Давление в салоне падает. Надо нажать АВАР. СНИЖ. и быстро спуститься ниже 3500 м, пока пассажиры не потеряли сознание.',
     ok: f => f.recAlt >= 7800,
     extra: f => f.h > 6500,
@@ -493,7 +497,7 @@ const EVENT_DEFS = {
   },
 
   apFail: {
-    title: 'ОТКАЗ АВТОПИЛОТА', short: 'Отказ автопилота', phases: ['climb', 'cruise', 'descent'], weight: 2, spawn: 'cruise',
+    title: 'ОТКАЗ АВТОПИЛОТА', short: 'Отказ автопилота', phases: ['climb', 'cruise', 'descent'], weight: 2, group: 'ctl', spawn: 'cruise',
     desc: 'Автопилот отключается на полторы минуты. Пилотируйте вручную: держите высоту и курс штурвалом.',
     ok: f => f.distM >= 400000,
     spec: (r, ph) => ph === 'descent' ? { ph, d: 64000 + r() * 18000 } : null,
@@ -515,7 +519,7 @@ const EVENT_DEFS = {
   },
 
   atFail: {
-    title: 'ОТКАЗ АВТОМАТА ТЯГИ', short: 'Отказ автомата тяги', phases: ['climb', 'cruise', 'descent'], weight: 2, spawn: 'cruise',
+    title: 'ОТКАЗ АВТОМАТА ТЯГИ', short: 'Отказ автомата тяги', phases: ['climb', 'cruise', 'descent'], weight: 2, group: 'ctl', spawn: 'cruise',
     desc: 'Автомат тяги отключается на две минуты. Держите скорость сами — ползунком ГАЗ.',
     ok: f => f.distM >= 400000,
     spec: (r, ph) => ph === 'descent' ? { ph, d: 64000 + r() * 18000 } : null,
@@ -536,7 +540,7 @@ const EVENT_DEFS = {
   },
 
   runway: {
-    title: 'ПОЛОСА ЗАНЯТА', short: 'Препятствие на полосе', phases: ['final'], weight: 3, spawn: 'final',
+    title: 'ПОЛОСА ЗАНЯТА', short: 'Препятствие на полосе', phases: ['final'], weight: 3, group: 'land', spawn: 'final',
     desc: 'Диспетчер сообщает: на полосе техника. Единственный верный ход — УХОД на второй круг и повторный заход.',
     ok: f => true,
     start(f, ev) {
@@ -554,6 +558,513 @@ const EVENT_DEFS = {
       else if (f.time - ev.t0 > 160 && !f.td) { f.rwyBlocked = false; f.resolveEvent(ev, 'late', 'Полоса освободилась'); }
     },
   },
+  // ======================= новые происшествия =======================
+  surge: {
+    title: 'ПОМПАЖ ДВИГАТЕЛЯ', short: 'Помпаж двигателя', phases: ['climb', 'cruise'], weight: 2, group: 'eng', spawn: 'cruise',
+    desc: 'Двигатель хлопает, тяга скачет. Убавьте газ именно этого двигателя (рычаги раздельно) до малого — иначе он разрушится и откажет.',
+    ok: f => f.distM >= 250000,
+    start(f, ev, o) {
+      ev.side = o && o.side !== undefined ? o.side : pickSide(f);
+      f.atLock = Math.max(f.atLock, 300); f.c.atOn = false;
+      f.msg('ПОМПАЖ ДВИГАТЕЛЯ №' + (ev.side + 1) + '! Убавьте его газ');
+    },
+    steps(f, ev) {
+      const lev = surgeLev(f, ev.side);
+      return [
+        { t: 'Убавьте газ двигателя №' + (ev.side + 1) + ' ниже 35% (рычаги РАЗДЕЛЬНО, сейчас ' + Math.round(lev * 100) + '%)', done: !!ev.fixed || lev < 0.35 },
+        { t: 'Держите малый газ ещё ' + Math.max(0, Math.ceil(4 - (ev.lowT || 0))) + ' с', done: !!ev.fixed },
+      ];
+    },
+    alert: (f, ev) => ev.fixed ? null : 'ПОМПАЖ ДВ' + (ev.side + 1),
+    tick(f, ev, dt) {
+      const i = ev.side, age = f.time - ev.t0;
+      ev.low = surgeLev(f, i) < 0.35;
+      ev.lowT = ev.low ? (ev.lowT || 0) + dt : 0;
+      if (ev.lowT > 4) {
+        f.eng[i] = 0.8; f.atLock = 0.01;
+        f.resolveEvent(ev, age > 22 ? 'late' : 'ok', 'Помпаж прекратился: двигатель №' + (i + 1) + ' работает с пониженной тягой');
+        return;
+      }
+      f.eng[i] = Math.max(0.05, 0.45 + 0.25 * Math.sin(f.time * 9));
+      if (age > 35) {
+        f.atLock = 0.01;
+        f.resolveEvent(ev, 'fail', 'Двигатель №' + (i + 1) + ' разрушен помпажем!');
+        f.startEvent('engFail', { side: i });
+      }
+    },
+  },
+
+  flapJam: {
+    title: 'АСИММЕТРИЯ ЗАКРЫЛКОВ', short: 'Асимметрия закрылков/спойлеров', phases: ['descent'], weight: 2, group: 'cfg', spawn: 'descent',
+    desc: 'Закрылки/спойлеры встали несимметрично: самолёт валит в крен, а посадочная скорость выше. Держите крыло и заходите быстрее.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      ev.dir = f.rnd() < 0.5 ? -1 : 1; f.fx.flapJam = true; f.fx.rollBias = ev.dir * 6;
+      f.msg('ЗАКРЫЛКИ/СПОЙЛЕРЫ — АСИММЕТРИЯ! Крен тянет ' + (ev.dir > 0 ? 'вправо' : 'влево'));
+    },
+    steps(f, ev) {
+      return [
+        { t: 'Закрылки заклинило на ' + FL[f.c.flaps] + '. Держите крыло ровно (штурвал или А/П), крен ' + Math.round(Math.abs(f.phi) / 0.01745) + '°', done: Math.abs(f.phi) < 6 * 0.01745 },
+        { t: 'Заходите быстрее: не ниже ' + kmh(f.minSpd() + 8) + ' км/ч', done: f.ias > f.minSpd() + 8 },
+      ];
+    },
+    alert: (f, ev) => 'АСИММЕТРИЯ ЗАКРЫЛКОВ',
+    tick(f, ev, dt) { if (settled(f, ev, dt, 10)) f.resolveEvent(ev, f.time - ev.t0 > 150 ? 'late' : 'ok', 'Самолёт сбалансирован, заход на повышенной скорости'); },
+  },
+
+  gearStuck: {
+    title: 'ШАССИ НЕ ВЫПУСКАЕТСЯ', short: 'Невыпуск шасси', phases: ['descent'], weight: 2, group: 'cfg', spawn: 'descent',
+    desc: 'Перед посадкой шасси не выходит. Нажмите ЗАПАС. ШАССИ (ручной выпуск, ~20 с) заранее — с убранными стойками посадка закончится катастрофой.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { f.fx.gearStuck = true; f.msg('ШАССИ НЕ ВЫПУСКАЕТСЯ! Нажмите ЗАПАС. ШАССИ'); },
+    steps(f, ev) {
+      const done = f.altGear && f.gearPos > 0.98;
+      return [{ t: 'ЗАПАС. ШАССИ — выпуск вручную' + (f.altGear && !done ? ' (выходит…)' : !f.altGear && f.dist < 30000 ? ' — ПОРА!' : ''), done }];
+    },
+    alert: (f, ev) => 'ШАССИ НЕ ВЫПУЩЕНО',
+    tick(f, ev, dt) { if (f.altGear && f.gearPos > 0.98) f.resolveEvent(ev, f.dist > 10000 ? 'ok' : 'late', 'Шасси выпущено и зафиксировано'); },
+  },
+
+  noRetract: {
+    title: 'ШАССИ НЕ УБИРАЕТСЯ', short: 'Неубор шасси', phases: ['low', 'climb'], weight: 2, group: 'cfg', spawn: 'climb',
+    desc: 'После взлёта шасси остаётся выпущенным. Нужна малая скорость и потолок ≈ 4000 м; разумнее вернуться или сесть на запасном.',
+    ok: f => f.distM >= 150000,
+    start(f, ev) {
+      f.fx.noRetract = true; f.c.gear = true;
+      f.msg('ШАССИ НЕ УБИРАЕТСЯ! Скорость не выше ' + kmh(f.p.gearLim) + ' км/ч');
+    },
+    steps(f, ev) {
+      return [
+        { t: 'Скорость не выше ' + kmh(f.p.gearLim) + ' км/ч, высота до 4200 м', done: f.ias < f.p.gearLim && f.h < 4400 },
+        { t: 'Рекомендуется вернуться: ' + f.altText(), done: f.diverted, opt: true },
+      ];
+    },
+    alert: (f, ev) => 'ШАССИ НЕ УБРАЛОСЬ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (f.diverted) { f.resolveEvent(ev, 'ok', 'Возвращаемся с выпущенным шасси — разумное решение'); return; }
+      if (age > 150 && f.ias < f.p.gearLim + 5) { f.fx.noRetract = false; f.resolveEvent(ev, 'late', 'Шасси убралось со второй попытки'); }
+    },
+  },
+
+  gen: {
+    title: 'ОТКАЗ ГЕНЕРАТОРА / ШИНЫ ПИТАНИЯ', short: 'Отказ генератора/шины питания', phases: ['cruise'], weight: 2, group: 'ctl', spawn: 'cruise',
+    desc: 'Генератор и шина питания обесточены: автопилот и автомат тяги отключаются. Запустите ВСУ и пилотируйте вручную до подачи питания.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      const c = f.c; f.fx.elec = true; f.apLock = f.atLock = 9999; c.apOn = c.atOn = c.appr = false; f.apprCap = false;
+      f.msg('ОТКАЗ ГЕНЕРАТОРА! Шина обесточена — А/П и А/Т отключены');
+    },
+    btns: (f, ev) => ev.apu ? [] : [{ k: 'apu', t: '⚡ ЗАПУСК ВСУ' }],
+    act(f, ev, k) { if (k === 'apu' && !ev.apu) { ev.apu = f.time; f.msg('ВСУ запускается… около 12 секунд'); } },
+    steps(f, ev) {
+      return [
+        { t: 'ЗАПУСК ВСУ — нажмите кнопку', done: !!ev.apu },
+        { t: 'Пилотируйте вручную: высота ' + Math.round(f.c.apAlt) + ' м, держите курс', done: !f.fx.elec },
+      ];
+    },
+    alert: (f, ev) => 'ОТКАЗ ГЕНЕРАТОРА / ШИНЫ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      const back = () => { f.fx.elec = false; f.apLock = f.atLock = 0.01; };
+      if (ev.apu && f.time - ev.apu > 12) { back(); f.resolveEvent(ev, ev.apu - ev.t0 < 45 ? 'ok' : 'late', 'Питание восстановлено от ВСУ'); }
+      else if (!ev.apu && age > 200) { back(); f.resolveEvent(ev, 'late', 'Питание восстановлено автоматически'); }
+    },
+  },
+
+  adc: {
+    title: 'ПОТЕРЯ ДАННЫХ ADS/IRS', short: 'Потеря данных с датчиков ADS/IRS', phases: ['cruise'], weight: 2, group: 'ctl', spawn: 'cruise',
+    desc: 'Пропали данные скорости и высоты. Автопилот отключился. Держите тангаж и тягу «как были» и переключитесь на резервные приборы.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      const c = f.c; f.fx.adc = true; f.apLock = f.atLock = 9999; c.apOn = c.atOn = c.appr = false; f.apprCap = false;
+      f.msg('ПОТЕРЯ ДАННЫХ ADS/IRS! Скорость и высота недоступны');
+    },
+    btns: (f, ev) => ev.stby ? [] : [{ k: 'stby', t: '🛟 РЕЗЕРВНЫЕ ПРИБОРЫ' }],
+    act(f, ev, k) { if (k === 'stby' && !ev.stby) { ev.stby = f.time; f.msg('Переключение на резервные приборы…'); } },
+    steps(f, ev) {
+      return [
+        { t: 'Нет скорости и высоты: держите тангаж и тягу как были, не меняйте режим', done: !f.fx.adc },
+        { t: 'РЕЗЕРВНЫЕ ПРИБОРЫ — нажмите кнопку', done: !!ev.stby },
+      ];
+    },
+    alert: (f, ev) => 'ADS/IRS — НЕТ ДАННЫХ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0, back = () => { f.fx.adc = false; f.apLock = f.atLock = 0.01; };
+      if (ev.stby && f.time - ev.stby > 8) { back(); f.resolveEvent(ev, ev.stby - ev.t0 < 40 ? 'ok' : 'late', 'Резервные приборы работают'); }
+      else if (!ev.stby && age > 240) { back(); f.resolveEvent(ev, 'late', 'Данные восстановились'); }
+    },
+  },
+
+  indic: {
+    title: 'РАСХОЖДЕНИЕ ПОКАЗАНИЙ', short: 'Ошибки индикации высоты/скорости', phases: ['cruise'], weight: 2, group: 'ctl', spawn: 'cruise',
+    desc: 'Скорость и высота на основном приборе врут (заблокированы ПВД). Сверьте с резервным индикатором, не верьте ленте слепо.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      const c = f.c, s = f.rnd() < 0.5 ? 1 : -1;
+      f.fx.iasErr = s * (9 + f.rnd() * 5); f.fx.altErr = -s * (100 + f.rnd() * 120);
+      f.apLock = f.atLock = 9999; c.apOn = c.atOn = c.appr = false; f.apprCap = false;
+      f.msg('РАСХОЖДЕНИЕ ПОКАЗАНИЙ скорости и высоты! А/П отключён');
+    },
+    btns: (f, ev) => ev.chk ? [] : [{ k: 'chk', t: '🔍 СВЕРИТЬ С РЕЗЕРВОМ' }],
+    act(f, ev, k) { if (k === 'chk' && !ev.chk) { ev.chk = f.time; f.msg('Сверяем с резервными приборами…'); } },
+    steps(f, ev) {
+      return [
+        { t: 'Показания расходятся (скорость на ' + Math.round(Math.abs(f.fx.iasErr) * 3.6) + ' км/ч, высота на ' + Math.round(Math.abs(f.fx.altErr)) + ' м) — не доверяйте ленте', done: !f.fx.iasErr },
+        { t: 'СВЕРИТЬ С РЕЗЕРВОМ — нажмите кнопку', done: !!ev.chk },
+      ];
+    },
+    alert: (f, ev) => 'РАСХОЖДЕНИЕ ПОКАЗАНИЙ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0, back = () => { f.fx.iasErr = 0; f.fx.altErr = 0; f.apLock = f.atLock = 0.01; };
+      if (ev.chk && f.time - ev.chk > 6) { back(); f.resolveEvent(ev, ev.chk - ev.t0 < 40 ? 'ok' : 'late', 'Неисправный источник отключён, показания верны'); }
+      else if (!ev.chk && age > 180) { back(); f.resolveEvent(ev, 'late', 'Показания пришли в норму'); }
+    },
+  },
+
+  turb: {
+    title: 'СИЛЬНАЯ ТУРБУЛЕНТНОСТЬ', short: 'Сильная турбулентность', phases: ['cruise'], weight: 3, group: 'wx', spawn: 'cruise',
+    desc: 'Самолёт трясёт. Включите табло «ремни», объявите пассажирам и снизьте скорость до скорости турбулентности.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { f.fx.turb = 1; f.fx.belts = false; f.fx.injT = 0; f.fx.injDone = false; ev.dur = 75; f.msg('СИЛЬНАЯ ТУРБУЛЕНТНОСТЬ! Включите ремни и снизьте скорость'); },
+    btns: (f, ev) => f.fx.belts ? [] : [{ k: 'belts', t: '🔔 РЕМНИ / ОБЪЯВЛЕНИЕ' }],
+    act(f, ev, k) { if (k === 'belts' && !f.fx.belts) { f.fx.belts = true; ev.beltT = f.time - ev.t0; f.msg('Пассажиры пристёгнуты'); } },
+    steps(f, ev) {
+      const tg = f.atTargetIAS();
+      return [
+        { t: 'РЕМНИ — нажмите кнопку', done: f.fx.belts },
+        { t: 'Скорость турбулентности ≈ ' + kmh(tg) + ' км/ч (сейчас ' + kmh(f.ias) + ')', done: f.ias <= tg + 6 },
+        { t: 'Зона болтанки закончится через ' + Math.max(0, Math.ceil(ev.dur - (f.time - ev.t0))) + ' с', done: false, opt: true },
+      ];
+    },
+    alert: (f, ev) => 'ТУРБУЛЕНТНОСТЬ',
+    tick(f, ev, dt) {
+      if (f.time - ev.t0 > ev.dur) { f.fx.turb = 0; f.fx.belts = false; f.resolveEvent(ev, ev.beltT !== undefined && ev.beltT < 25 ? 'ok' : 'late', 'Турбулентность позади'); }
+    },
+  },
+
+  ice: {
+    title: 'ОБЛЕДЕНЕНИЕ', short: 'Обледенение', phases: ['climb', 'cruise', 'descent'], weight: 2, group: 'wx', spawn: 'cruise',
+    desc: 'Планер и двигатели обмерзают: растёт сопротивление, падает подъёмная сила. Включите противообледенительную систему и держите скорость.',
+    ok: f => f.distM >= 250000,
+    spec: (r, ph) => ph === 'descent' ? { ph, d: 64000 + r() * 18000 } : null,
+    start(f, ev) { f.fx.ice = 0.05; f.fx.anti = false; f.msg('ОБЛЕДЕНЕНИЕ! Включите противообледенительную систему'); },
+    btns: (f, ev) => f.fx.anti ? [] : [{ k: 'anti', t: '❄ ПРОТИВООБЛЕД.' }],
+    act(f, ev, k) { if (k === 'anti' && !f.fx.anti) { f.fx.anti = true; ev.antiT = f.time - ev.t0; f.msg('Противообледенительная система включена'); } },
+    steps(f, ev) {
+      return [
+        { t: 'ПРОТИВООБЛЕД. — включите (лёд ' + Math.round(f.fx.ice * 100) + '%)', done: f.fx.anti },
+        { t: 'Держите скорость не ниже ' + kmh(f.minSpd() + 10) + ' км/ч — запас до сваливания меньше', done: f.ias > f.minSpd() + 10 },
+        { t: 'Лёд стаивает', done: f.fx.ice < 0.1 },
+      ];
+    },
+    alert: (f, ev) => 'ОБЛЕДЕНЕНИЕ',
+    tick(f, ev, dt) {
+      const fx = f.fx;
+      fx.ice = Math.max(0, Math.min(1, fx.ice + (fx.anti ? -0.05 : 0.018) * dt));
+      if (fx.anti && fx.ice < 0.1) { fx.ice = 0; fx.anti = false; f.resolveEvent(ev, ev.antiT < 40 ? 'ok' : 'late', 'Лёд сошёл, самолёт чистый'); }
+    },
+  },
+
+  wshear: {
+    title: 'СДВИГ ВЕТРА', short: 'Гроза и сдвиг ветра на заходе', phases: ['final'], weight: 2, group: 'land', spawn: 'final',
+    desc: 'На заходе в грозу — внезапный сдвиг ветра: скорость падает, самолёт проваливается. Только УХОД с взлётной тягой.',
+    ok: f => true,
+    start(f, ev) { f.fx.ws = 10; f.fx.flash = 1; f.msg('СДВИГ ВЕТРА! УХОД! ВЗЛЁТНЫЙ ГАЗ!'); },
+    steps(f, ev) {
+      return [
+        { t: 'УХОД — нажмите кнопку (газ взлётный, нос вверх)', done: !!f.ga || f.gaCount > 0 },
+        { t: 'Не допускайте сваливания: скорость ≥ ' + kmh(f.minSpd()) + ' км/ч', done: f.ias > f.minSpd() },
+      ];
+    },
+    alert: (f, ev) => f.fx.ws > 0 ? 'СДВИГ ВЕТРА!' : null,
+    tick(f, ev, dt) {
+      if (f.fx.ws > 0 && f.rnd() < dt * 0.8) f.fx.flash = 1;
+      if (f.ga || f.gaCount > 0) f.resolveEvent(ev, 'ok', 'Уход из сдвига ветра выполнен');
+      else if (f.td) { f.resolveEvent(ev, 'late', 'Посадка в сдвиг ветра'); }
+      else if (f.fx.ws <= 0 && f.time - ev.t0 > 16 && f.ias > f.minSpd()) f.resolveEvent(ev, 'late', 'Сдвиг ветра пройден без ухода');
+    },
+  },
+
+  storm: {
+    title: 'ГРОЗОВОЙ ФРОНТ', short: 'Гроза по курсу', phases: ['cruise'], weight: 2, group: 'wx', spawn: 'cruise',
+    desc: 'По курсу грозовые очаги: молнии, болтанка, град. Включите ремни и обойдите грозу — кнопка ОБХОД.',
+    ok: f => f.distM >= 300000,
+    start(f, ev) { f.fx.turb = 1.6; f.fx.belts = false; f.fx.injT = 0; f.fx.injDone = false; ev.dur = 100; f.msg('ГРОЗОВОЙ ФРОНТ ПО КУРСУ! Обойдите грозу'); },
+    btns: (f, ev) => [...(ev.avoid ? [] : [{ k: 'avoid', t: '🌩 ОБХОД ГРОЗЫ' }]), ...(f.fx.belts ? [] : [{ k: 'belts', t: '🔔 РЕМНИ' }])],
+    act(f, ev, k) {
+      if (k === 'belts' && !f.fx.belts) { f.fx.belts = true; f.msg('Пассажиры пристёгнуты'); }
+      if (k === 'avoid' && !ev.avoid) { ev.avoid = f.time; ev.avoidT = f.time - ev.t0; f.fuel = Math.max(0, f.fuel - f.p.burnHr * 0.02); f.msg('Обходим грозу — отклонение ≈ 25 км'); }
+    },
+    steps(f, ev) {
+      return [
+        { t: 'ОБХОД ГРОЗЫ — нажмите кнопку', done: !!ev.avoid },
+        { t: 'Ремни — нажмите кнопку', done: f.fx.belts },
+        { t: 'Снизьте скорость до ≈ ' + kmh(f.atTargetIAS()) + ' км/ч', done: f.ias <= f.atTargetIAS() + 6, opt: true },
+      ];
+    },
+    alert: (f, ev) => 'ГРОЗА ПО КУРСУ',
+    tick(f, ev, dt) {
+      if (f.rnd() < dt * 0.7) f.fx.flash = 1;
+      if (ev.avoid) {
+        f.fx.turb = Math.max(0, f.fx.turb - dt / 10);
+        if (f.fx.turb <= 0.02) { f.fx.turb = 0; f.fx.belts = false; f.resolveEvent(ev, ev.avoidT < 35 ? 'ok' : 'late', 'Гроза обойдена'); }
+      } else if (f.time - ev.t0 > ev.dur) { f.fx.turb = 0; f.fx.belts = false; f.resolveEvent(ev, 'late', 'Прошли сквозь грозовой фронт'); }
+    },
+  },
+
+  fog: {
+    title: 'ПЛОХАЯ ВИДИМОСТЬ / ТУМАН', short: 'Туман: видимость ниже минимума', phases: ['descent'], weight: 2, group: 'land', spawn: 'descent',
+    desc: 'В аэропорту назначения густой туман: видимость 300 м, ниже минимума. Заходите по ГЛС, а на высоте принятия решения (60 м) без полосы — УХОД (или на запасной).',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { f.fx.fog = Math.max(f.fx.fog, 0.05); f.msg('ТУМАН В АЭРОПОРТУ НАЗНАЧЕНИЯ: видимость 300 м, ниже минимума'); },
+    steps(f, ev) {
+      return [
+        { t: 'Заход строго по ГЛС (кнопка ПОСАДКА): визуально полосы не видно', done: f.apprCap || f.ga || f.gaCount > 0 || f.diverted },
+        { t: 'На ВПР (60 м) полосы нет — УХОД; или сразу на запасной: ' + f.altText(), done: f.gaCount > 0 || f.ga || f.diverted },
+      ];
+    },
+    alert: (f, ev) => !f.td && !f.ga && f.h < 70 && f.dist > 0 && f.dist < 6000 ? 'ВПР: ПОЛОСЫ НЕ ВИДНО — УХОД!' : null,
+    tick(f, ev, dt) {
+      f.fx.fog = Math.min(1, f.fx.fog + dt / 40);
+      if (f.diverted) { f.resolveEvent(ev, 'ok', 'Туман обойдён — идём на запасной'); return; }
+      if (f.ga || f.gaCount > 0) { f.resolveEvent(ev, 'ok', 'Уход из тумана выполнен — молодец'); return; }
+      if (f.td) { f.incident('fog', 'Посадка ниже минимума видимости', 10, 999); f.resolveEvent(ev, 'fail', 'Посадка вслепую вопреки минимуму'); }
+    },
+  },
+
+  cabinFire: {
+    title: 'ПОЖАР В САЛОНЕ / БАГАЖНИКЕ', short: 'Пожар в салоне или багажнике', phases: ['cruise'], weight: 2, group: 'pax', spawn: 'cruise',
+    desc: 'Дым и огонь на борту. Тушите, быстро снижайтесь ниже 3000 м и садитесь на ближайшем аэродроме — времени мало.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      ev.res = f.rnd() < 0.65; ev.where = f.rnd() < 0.5 ? 'салоне' : 'грузовом отсеке'; f.fx.smoke = 0.15;
+      f.msg('ПОЖАР В ' + (ev.where === 'салоне' ? 'САЛОНЕ' : 'ГРУЗОВОМ ОТСЕКЕ') + '! Дым в кабине');
+    },
+    btns: (f, ev) => ev.ext ? [] : [{ k: 'ext', t: '🧯 ТУШЕНИЕ' }],
+    act(f, ev, k) {
+      if (k !== 'ext' || ev.ext) return;
+      ev.ext = f.time; const c = f.c;
+      f.msg(ev.res ? 'Очаг потушен, но дым остаётся — садитесь' : 'Огонь не гаснет! СРОЧНО НА ПОСАДКУ');
+      if (f.apLock <= 0) { c.apOn = true; c.atOn = f.atLock <= 0; c.appr = false; }
+      c.apAlt = Math.min(c.apAlt, 3000);
+    },
+    steps(f, ev) {
+      return [
+        { t: 'ТУШЕНИЕ — нажмите кнопку (пожар в ' + ev.where + ')', done: !!ev.ext },
+        { t: 'Снизьтесь ниже 3000 м (сейчас ' + Math.round(f.h) + ' м)', done: f.h < 3100 },
+        { t: 'Срочная посадка: ' + f.altText(), done: f.diverted || f.dist < 100000 },
+      ];
+    },
+    alert: (f, ev) => ['ДЫМ В КАБИНЕ', ...(ev.ext && !ev.res ? ['ОГОНЬ НЕ ПОТУШЕН'] : [])],
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      ev.needDiv = !!ev.ext;
+      f.fx.smoke = ev.ext ? (ev.res ? 0.4 : 0.8) : Math.min(0.9, 0.15 + age * 0.006);
+      if (!ev.ext && age > 90 && !ev.spread) { ev.spread = true; f.incident('cfire', 'Пожар не тушили вовремя', 10, 999); }
+      if (age > 480 && !f.diverted && f.dist > 100000) { f.finish('crash', 'Пожар на борту: самолёт потерян.'); return; }
+      if (f.td) { f.resolveEvent(ev, 'late', 'Посадка с пожаром на борту'); return; }
+      if (settled(f, ev, dt, 3)) f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Пожар локализован, идём на посадку');
+    },
+  },
+
+  medical: {
+    title: 'МЕДИЦИНСКАЯ ПРОБЛЕМА НА БОРТУ', short: 'Медицинская проблема на борту', phases: ['cruise'], weight: 2, group: 'pax', spawn: 'cruise',
+    desc: 'Пассажиру плохо. Запросите врача на борту: если врача нет или состояние тяжёлое — нужна срочная посадка.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { ev.doc = f.rnd() < 0.7; ev.crit = f.rnd() < 0.35; f.msg('ПАССАЖИРУ ПЛОХО! Запросите врача на борту'); },
+    btns: (f, ev) => ev.asked ? [] : [{ k: 'doc', t: '🩺 ВРАЧА НА БОРТ' }],
+    act(f, ev, k) {
+      if (k !== 'doc' || ev.asked) return;
+      ev.asked = f.time;
+      ev.needDiv = !ev.doc || ev.crit;
+      f.msg(ev.doc ? (ev.crit ? 'Врач нашёлся, но состояние тяжёлое — нужна посадка' : 'Врач оказывает помощь — состояние стабильное') : 'Врача на борту нет! Нужна срочная посадка');
+    },
+    steps(f, ev) {
+      const s = [{ t: 'Запросите врача на борту — кнопка', done: !!ev.asked }];
+      if (ev.asked) s.push(ev.needDiv ? { t: 'Срочная посадка: ' + f.altText(), done: f.diverted || f.dist < 150000 } : { t: 'Состояние стабильное — можно лететь дальше', done: true });
+      return s;
+    },
+    alert: (f, ev) => 'МЕДИЦИНСКАЯ ПРОБЛЕМА',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (ev.asked && !ev.needDiv && f.time - ev.asked > 8) f.resolveEvent(ev, ev.asked - ev.t0 < 60 ? 'ok' : 'late', 'Пассажир стабилен, продолжаем рейс');
+      else if (ev.needDiv && (f.diverted || f.dist < 150000)) f.resolveEvent(ev, age > 300 ? 'late' : 'ok', 'Идём на посадку — скорая встретит на полосе');
+      else if (ev.needDiv && age > 500) { f.incident('med', 'Состояние пассажира критическое', 12, 999); f.resolveEvent(ev, 'fail', 'Слишком поздно...'); }
+      else if (!ev.asked && age > 150) { f.incident('med', 'Не запросили врача вовремя', 6, 999); f.resolveEvent(ev, 'fail', 'Помощь оказана слишком поздно'); }
+    },
+  },
+
+  unruly: {
+    title: 'ДЕБОШИР / УГРОЗА БЕЗОПАСНОСТИ', short: 'Дебошир или угроза безопасности', phases: ['cruise'], weight: 2, group: 'pax', spawn: 'cruise',
+    desc: 'В салоне агрессивный пассажир. Заприте дверь кабины, дайте сигнал тревоги; при серьёзной угрозе — садитесь на ближайшем аэродроме.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { ev.sev = f.rnd() < 0.45; f.msg(ev.sev ? 'УГРОЗА БЕЗОПАСНОСТИ: пассажир рвётся в кабину!' : 'ПАССАЖИР-ДЕБОШИР в салоне!'); },
+    btns: (f, ev) => [...(ev.door ? [] : [{ k: 'door', t: '🔒 ЗАПЕРЕТЬ КАБИНУ' }]), ...(ev.alarm ? [] : [{ k: 'alarm', t: '🚨 ТРЕВОГА 7500' }])],
+    act(f, ev, k) {
+      if (k === 'door' && !ev.door) { ev.door = f.time; f.msg('Дверь кабины заперта'); }
+      if (k === 'alarm' && !ev.alarm) { ev.alarm = f.time; f.msg('Сигнал тревоги передан, экипаж салона действует'); }
+    },
+    steps(f, ev) {
+      const s = [{ t: 'ЗАПЕРЕТЬ КАБИНУ — кнопка', done: !!ev.door }, { t: 'ТРЕВОГА 7500 — сообщить диспетчеру', done: !!ev.alarm }];
+      if (ev.sev) s.push({ t: 'Серьёзная угроза: садитесь на ближайшем аэродроме — ' + f.altText(), done: f.diverted || f.dist < 120000 });
+      return s;
+    },
+    alert: (f, ev) => ev.sev ? 'УГРОЗА БЕЗОПАСНОСТИ' : 'ДЕБОШИР В САЛОНЕ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      ev.needDiv = !!ev.sev && !!ev.door && !!ev.alarm;
+      if (!ev.door && age > 40 && !ev.warned) { ev.warned = true; f.incident('door', 'Дверь кабины не заперта вовремя', 8, 999); }
+      if (ev.sev && age > 360 && !f.diverted && f.dist > 120000) { f.resolveEvent(ev, 'fail', 'Угрозу не удалось купировать'); f.incident('threat', 'Игнорирование угрозы безопасности', 12, 999); return; }
+      if (ev.door && ev.alarm) {
+        if (!ev.sev && f.time - Math.max(ev.door, ev.alarm) > 25) f.resolveEvent(ev, age > 90 ? 'late' : 'ok', 'Дебошир усмирён экипажем');
+        else if (ev.sev && (f.diverted || f.dist < 120000)) f.resolveEvent(ev, age > 240 ? 'late' : 'ok', 'Идём на посадку, полиция встретит у трапа');
+      } else if (!ev.sev && age > 150) f.resolveEvent(ev, 'late', 'Экипаж справился без вашей помощи');
+    },
+  },
+
+  tcas: {
+    title: 'КОНФЛИКТ С ДРУГИМ БОРТОМ (TCAS)', short: 'Конфликт с бортом (TCAS)', phases: ['cruise'], weight: 2, spawn: 'cruise',
+    desc: 'Встречный борт на вашем эшелоне. TCAS даёт команду: вверх или вниз. Выполняйте немедленно вертикальной скоростью ≥ 6 м/с.',
+    ok: f => f.distM >= 250000,
+    extra: f => Math.abs(f.vs) < 2.5 && f.h > 4000,
+    start(f, ev) {
+      ev.ra = (f.h > f.ceilLim - 700 || f.rnd() < 0.5) ? -1 : 1;
+      ev.hAc = f.h - ev.ra * 50;
+      f.fx.traffic = { d: 8000, dh: ev.hAc - f.h, ra: 0 };
+      f.msg('ТРАФИК! ТРАФИК!');
+    },
+    steps(f, ev) {
+      const raOn = f.time - ev.t0 > 3;
+      return [
+        { t: 'Встречный борт ' + Math.round(Math.max(0, f.fx.traffic ? f.fx.traffic.d : 0) / 100) / 10 + ' км, на том же эшелоне', done: raOn },
+        ...(raOn ? [{ t: 'TCAS: ' + (ev.ra > 0 ? 'ВВЕРХ (А/П: ВЫС +)' : 'ВНИЗ (А/П: ВЫС −)') + ' — вертикальная ≥ 6 м/с', done: f.vs * ev.ra > 5 }] : []),
+      ];
+    },
+    alert: (f, ev) => f.time - ev.t0 > 3 ? (ev.ra > 0 ? 'TCAS: КЛИМБ! КЛИМБ!' : 'TCAS: СНИЖАЙСЯ! СНИЖАЙСЯ!') : 'TCAS: ТРАФИК',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0, tr = f.fx.traffic;
+      if (tr) { tr.d = 8000 - 400 * age; tr.dh = ev.hAc - f.h; tr.ra = age > 3 ? ev.ra : 0; }
+      if (age > 6 && !ev.auto && f.assist.auto && f.c.apOn && f.apLock <= 0) { ev.auto = true; f.c.apAlt = Math.max(300, Math.min(f.ceilLim - 250, f.h + ev.ra * 500)); f.msg('А/П выполняет команду TCAS'); }
+      if (age >= 20) {
+        const sep = Math.abs(f.h - ev.hAc); f.fx.traffic = null;
+        if (sep >= 120) f.resolveEvent(ev, 'ok', 'Разошлись безопасно (' + Math.round(sep) + ' м по вертикали)');
+        else if (sep >= 70) { f.incident('tcas', 'Опасное сближение с бортом', 4, 999); f.resolveEvent(ev, 'late', 'Разошлись впритык (' + Math.round(sep) + ' м)'); }
+        else { f.incident('nmac', 'Опасное сближение (NMAC)', 15, 999); f.resolveEvent(ev, 'fail', 'Чудом разошлись: ' + Math.round(sep) + ' м'); }
+      }
+    },
+  },
+
+  gps: {
+    title: 'СБОЙ GPS / НАВИГАЦИИ', short: 'Сбой GPS/навигации', phases: ['cruise'], weight: 2, group: 'ctl', spawn: 'cruise',
+    desc: 'Пропал сигнал GPS: автопилот не знает, где ось маршрута, и самолёт сносит. Перейдите на резервную навигацию VOR/DME.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { f.fx.gps = true; f.fx.gpsDir = f.rnd() < 0.5 ? 1 : -1; f.c.nav = false; f.msg('СБОЙ GPS! Навигация потеряна — возможен снос'); },
+    btns: (f, ev) => ev.vor ? [] : [{ k: 'vor', t: '📡 РЕЗЕРВ. НАВИГАЦИЯ' }],
+    act(f, ev, k) { if (k === 'vor' && !ev.vor) { ev.vor = f.time; f.msg('Переход на VOR/DME… около 10 секунд'); } },
+    steps(f, ev) {
+      return [
+        { t: 'GPS потерян — РЕЗЕРВ. НАВИГАЦИЯ (VOR/DME), кнопка', done: !!ev.vor },
+        { t: 'Держите линию пути: снос ' + Math.round(Math.abs(f.yPos)) + ' м', done: Math.abs(f.yPos) < 3000 },
+      ];
+    },
+    alert: (f, ev) => 'GPS — НЕТ СИГНАЛА',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0, back = () => { f.fx.gps = false; f.c.nav = true; };
+      if (ev.vor && f.time - ev.vor > 10) { back(); f.resolveEvent(ev, ev.vor - ev.t0 < 50 ? 'ok' : 'late', 'Навигация восстановлена по VOR/DME'); }
+      else if (!ev.vor && age > 200) { back(); f.resolveEvent(ev, 'late', 'Сигнал GPS вернулся'); }
+    },
+  },
+
+  closure: {
+    title: 'АЭРОПОРТ ЗАКРЫТ', short: 'Закрытие аэропорта', phases: ['descent'], weight: 2, group: 'land', spawn: 'descent',
+    desc: 'Диспетчер: аэропорт назначения закрыт. Выберите запасной аэродром (кнопка ЗАПАСНЫЕ) и следуйте туда; садиться на закрытую полосу нельзя.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) {
+      ev.why = ['авария на полосе', 'аварийно-спасательные работы', 'закрытие по погоде', 'отказ освещения полосы'][Math.floor(f.rnd() * 4)];
+      f.msg('ДИСПЕТЧЕР: АЭРОПОРТ ЗАКРЫТ (' + ev.why + ')! Следуйте на запасной');
+    },
+    steps(f, ev) {
+      return [
+        { t: 'Выберите ЗАПАСНОЙ аэродром (кнопка внизу): ' + f.altText(), done: f.diverted },
+        { t: 'Не заходите на посадку в закрытый аэропорт', done: f.diverted || (!f.rwyBlocked && f.dist > 2500) },
+      ];
+    },
+    alert: (f, ev) => f.diverted ? null : 'АЭРОПОРТ ЗАКРЫТ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0; ev.needDiv = true;
+      if (f.diverted) { f.rwyBlocked = false; f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Следуем на запасной аэродром'); return; }
+      if (f.dist < 2500 && !f.td && !f.rwyBlocked && !f.ga && f.gaCount === 0) { f.rwyBlocked = true; f.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
+      if (age > 700) { f.rwyBlocked = false; f.resolveEvent(ev, 'fail', 'Аэропорт открыт — но вы потеряли много времени'); }
+    },
+  },
+
+  rto: {
+    title: 'ПРЕРВАННЫЙ ВЗЛЁТ', short: 'Прерванный взлёт (до V1)', phases: ['roll'], weight: 2, group: 'eng', spawn: 'roll',
+    desc: 'На разбеге до V1 срабатывает сигнализация (шина, пожар, дверь). Единственный верный ход: газ 0 и ТОРМОЗ — взлёт прекращён.',
+    ok: f => true,
+    spec: (r, ph) => ({ ph: 'roll', k: 0.5 + r() * 0.18 }),
+    start(f, ev) {
+      const causes = ['ЛОПНУЛА ШИНА', 'ПОЖАРНАЯ СИГНАЛИЗАЦИЯ ДВИГАТЕЛЯ', 'СИГНАЛ «ДВЕРЬ НЕ ЗАКРЫТА»', 'ВИБРАЦИЯ ДВИГАТЕЛЯ'];
+      ev.cause = Math.floor(f.rnd() * causes.length); if (ev.cause === 0) f.fx.tire = f.rnd() < 0.5 ? 1 : -1;
+      f.msg('СТОП! ' + causes[ev.cause] + '. Прекращайте взлёт!');
+    },
+    steps(f, ev) {
+      return [
+        { t: 'ДО V1 (' + kmh(f.v1) + ' км/ч): газ 0 и ТОРМОЗ — ПРЕРВАТЬ ВЗЛЁТ', done: f.c.brake && f.c.thr < 0.15 },
+        { t: 'Держите ось полосы штурвалом влево/вправо', done: Math.abs(f.yPos) < 12 },
+      ];
+    },
+    alert: (f, ev) => 'ПРЕРВИТЕ ВЗЛЁТ!',
+    tick(f, ev, dt) {
+      if (!f.airborneOnce && f.c.brake && f.v < 2 && f.maxV > 20) { f.fx.tire = 0; f.resolveEvent(ev, 'ok', 'Взлёт прерван — решение верное'); return; }
+      if (f.airborneOnce) { f.fx.tire = 0; f.resolveEvent(ev, 'late', 'Решение запоздало — взлёт продолжен'); return; }
+      if (f.ias > f.v1 && !f.c.brake) f.resolveEvent(ev, 'late', 'Выше V1 — взлёт продолжается');
+    },
+    close(f, ev, kind, out) { return kind === 'abort' ? 'ok' : out; },
+  },
+
+  goAr: {
+    title: 'УХОД НА ВТОРОЙ КРУГ', short: 'Уход на второй круг', phases: ['final'], weight: 2, group: 'land', spawn: 'final',
+    desc: 'Диспетчер: впереди идущий борт не освободил полосу. Команда — уход на второй круг; садиться без разрешения нельзя.',
+    ok: f => true,
+    start(f, ev) { f.msg('ДИСПЕТЧЕР: ПОЛОСА НЕ ОСВОБОДИЛАСЬ — УХОД НА ВТОРОЙ КРУГ!'); },
+    steps(f, ev) {
+      return [
+        { t: 'УХОД — нажмите кнопку (газ взлётный, шасси убираются)', done: !!f.ga || f.gaCount > 0 },
+        { t: 'Наберите высоту — самолёт сам зайдёт на второй круг', done: f.gaCount > 0 && !f.ga },
+      ];
+    },
+    alert: (f, ev) => !f.ga && f.gaCount === 0 ? 'ДИСПЕТЧЕР: УХОД!' : null,
+    tick(f, ev, dt) {
+      if (f.ga || f.gaCount > 0) f.resolveEvent(ev, 'ok', 'Уход выполнен — повторный заход');
+      else if (f.td) { f.incident('goar', 'Игнорирование команды ухода', 10, 999); f.resolveEvent(ev, 'fail', 'Посадка вопреки команде диспетчера'); }
+    },
+    close(f, ev, kind, out) { return f.gaCount === 0 && kind === 'ok' ? 'fail' : out; },
+  },
+
+  slick: {
+    title: 'СКОЛЬЗКАЯ ПОЛОСА / АКВАПЛАНИРОВАНИЕ', short: 'Скользкая полоса, аквапланирование', phases: ['descent', 'final'], weight: 2, group: 'land', spawn: 'descent',
+    desc: 'Полоса мокрая или с шугой: тормоза почти не держат, самолёт «плывёт». Касайтесь точно в зоне, не завышайте скорость, тормозите плавно и держите ось.',
+    ok: f => true,
+    start(f, ev) { f.fx.slick = 1; f.msg('ДИСПЕТЧЕР: ВПП СКОЛЬЗКАЯ, ТОРМОЗНОЙ ЭФФЕКТ ПЛОХОЙ'); },
+    steps(f, ev) {
+      if (f.td && f.td.onDest) return [
+        { t: 'Тормозите и держите ось — тормозной путь вдвое длиннее', done: f.v < 12 },
+        { t: 'Остановитесь до конца полосы (осталось ' + Math.max(0, Math.round(f.rwy1.e - f.x)) + ' м)', done: f.x < f.rwy1.e },
+      ];
+      return [
+        { t: 'Касание точно в зоне (первые 700 м) на скорости не выше Vref+10', done: false },
+        { t: 'Сразу после касания: тормоз и ось, без рывков', done: false },
+      ];
+    },
+    alert: (f, ev) => f.td ? null : 'ВПП СКОЛЬЗКАЯ',
+    tick(f, ev, dt) {
+      if (f.td && f.td.onDest && f.v < 12) { f.resolveEvent(ev, f.td.past < 900 && Math.abs(f.yPos) < 20 ? 'ok' : 'late', 'Остановились на мокрой полосе'); }
+      else if (f.td && !f.td.onDest) f.resolveEvent(ev, 'late', '');
+    },
+  },
+
 };
 
 const EVENT_IDS = Object.keys(EVENT_DEFS);
@@ -571,7 +1082,7 @@ function planEvents(f, level, force, r, now) {
     const d = EVENT_DEFS[id];
     const ph = d.phases[Math.floor(r() * d.phases.length)];
     let spec = now ? nowSpec(ph) : (d.spec && d.spec(r, ph)) || phaseSpec(ph, r);
-    if (now && d.spec) { const e = d.spec(r, ph); if (e && e.d) spec = { ...spec, d: 60000 }; }
+    if (now && d.spec) { const e = d.spec(r, ph); if (e && e.d) spec = { ...spec, d: 60000 }; if (e && e.k) spec = { ...spec, k: e.k }; }
     return { id, spec, fired: false };
   };
   if (force) { for (const id of [].concat(force)) if (EVENT_DEFS[id]) list.push(mk(id)); return list; }
@@ -789,6 +1300,7 @@ class Flight {
     // аварийные ситуации
     this.eng = [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
     this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
     this.origTo = o.to; this.divTo = null; this.tfA = 0;
@@ -890,7 +1402,7 @@ class Flight {
   get ias() { return this.v * Math.sqrt(atmos(this.h + this.elev).sigma); }
   get vs() { return this.v * Math.sin(this.gamma); }
   get mach() { return this.v / atmos(this.h + this.elev).a; }
-  get ceilLim() { return this.eng[0] + this.eng[1] < 1.5 ? Math.round(this.p.ceiling * 0.6 / 100) * 100 : this.p.ceiling; }
+  get ceilLim() { const base = this.eng[0] + this.eng[1] < 1.5 ? Math.round(this.p.ceiling * 0.6 / 100) * 100 : this.p.ceiling; return this.fx.noRetract ? Math.min(base, 4200) : base; }
   get engCount() { return (this.eng[0] > 0.01 ? 1 : 0) + (this.eng[1] > 0.01 ? 1 : 0); }
   minSpd() { return 1.22 * stallIAS(this.mass, this.c.flaps, this.p.S) + 4; }
   get flapIdx() { return Math.round(this.flapAct); }
@@ -902,7 +1414,7 @@ class Flight {
     this.A = A;
     const q = 0.5 * A.rho * v * v;
     const M = v / A.a;
-    const dcl = lerpTab(FLAP_DCL, this.flapAct), cdf = lerpTab(FLAP_CD, this.flapAct), as = lerpTab(FLAP_AS, this.flapAct);
+    const dcl = lerpTab(FLAP_DCL, this.flapAct), cdf = lerpTab(FLAP_CD, this.flapAct), as = lerpTab(FLAP_AS, this.flapAct) * (1 - 0.1 * this.fx.ice);
     const alpha = this.onGround ? this.theta : this.theta - this.gamma;
     let CL;
     if (alpha <= as) CL = CL0 + dcl + CLA * alpha;
@@ -910,10 +1422,10 @@ class Flight {
     const spoil = c.brake;
     if (spoil) CL *= this.onGround ? 0.35 : 0.92;
     const CD = p.cd0 + cdf + 0.022 * this.gearPos + (spoil && !this.onGround ? 0.03 : 0) + (this.onGround && spoil ? 0.05 : 0)
-      + this.K * CL * CL + (M > p.cruiseM - 0.01 ? 12 * (M - p.cruiseM + 0.01) ** 2 : 0);
+      + 0.02 * this.fx.ice + this.K * CL * CL + (M > p.cruiseM - 0.01 ? 12 * (M - p.cruiseM + 0.01) ** 2 : 0);
     this.q = q; this.alpha = alpha; this.alphaS = as; this.CL = CL; this.CD = CD;
     this.L = q * p.S * CL; this.Dr = q * p.S * CD;
-    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 : 0;
+    this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 * (1 - 0.08 * this.fx.ice) : 0;
     this.stallWarn = !this.onGround && alpha > as - 2.2 * DEG;
     this.stalled = !this.onGround && alpha > as;
     this.clmaxNow = CL0 + dcl + CLA * as;
@@ -923,7 +1435,7 @@ class Flight {
   setFlaps(n) {
     const c = this.c;
     n = clamp(n, 0, 4);
-    if (this.hyd && n !== c.flaps) { if (this.time - this.flapMsgT > 3) { this.msg('Закрылки заклинило — гидравлика отказала'); this.flapMsgT = this.time; } return false; }
+    if ((this.hyd || this.fx.flapJam) && n !== c.flaps) { if (this.time - this.flapMsgT > 3) { this.msg('Закрылки заклинило — гидравлика отказала'); this.flapMsgT = this.time; } return false; }
     if (n > c.flaps) {
       const lim = this.p.flapLim[n];
       if (this.ias > lim) {
@@ -936,7 +1448,8 @@ class Flight {
   setGear(down) {
     const c = this.c;
     if (down === c.gear) return true;
-    if (down && this.hyd && !this.altGear) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не выпускается — нажмите ЗАПАС. ШАССИ'); this.flapMsgT = this.time; } return false; }
+    if (down && (this.hyd || this.fx.gearStuck) && !this.altGear) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не выпускается — нажмите ЗАПАС. ШАССИ'); this.flapMsgT = this.time; } return false; }
+    if (!down && this.fx.noRetract) { if (this.time - this.flapMsgT > 3) { this.msg('Шасси не убирается — неисправность'); this.flapMsgT = this.time; } return false; }
     if (!down && this.altGear) { this.msg('Шасси зафиксировано вручную — убрать нельзя'); return false; }
     if (!down) { if (this.onGround) return false; }
     else if (this.ias > this.p.gearLim) { this.msg('Шасси: слишком быстро (≤ ' + Math.round(this.p.gearLim * 3.6) + ' км/ч)'); return false; }
@@ -953,11 +1466,13 @@ class Flight {
     const p = this.p, c = this.c, A = this.A;
     const f = c.flaps;
     const m = this.mass;
-    if (c.gear && (f >= 3 || (this.hyd && this.dist < 60000))) return (this.hyd ? 1.3 : 1.24) * stallIAS(m, f, p.S) + 3;
+    if (c.gear && (f >= 3 || ((this.hyd || this.fx.flapJam) && this.dist < 60000))) return ((this.hyd || this.fx.flapJam) ? 1.3 : 1.24) * stallIAS(m, f, p.S) + 3;
     if (this.emDescent) return Math.min(160, p.flapLim[0] - 8);
     let sched = this.h < 3000 ? 128 : 154;
     const machIAS = p.cruiseM * A.a * Math.sqrt(A.sigma);
     sched = Math.min(sched, machIAS);
+    if (this.fx.turb > 0) sched *= 0.92;
+    if (this.fx.noRetract) sched = Math.min(sched, this.p.gearLim - 8);
     if (c.gear && this.h < 3000) sched = Math.min(sched, 118);
     let lim = p.flapLim[f] - 8;
     // на заходе скорость такая, чтобы следующая ступень закрылков уже разрешалась
@@ -1033,14 +1548,14 @@ class Flight {
 
     // помощник: автоматика конфигурации и снижения
     if (!this.onGround) {
-      if (this.assist.auto && !this.autoEngaged && this.h > 200 && !c.gear && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
+      if (this.assist.auto && !this.autoEngaged && this.h > 200 && (!c.gear || this.fx.noRetract) && ias > 1.18 * stallIAS(m, c.flaps, p.S)) {
         c.apOn = true; c.atOn = true; c.nav = true; c.apAlt = this.recAlt; this.autoEngaged = true;
         this.msg('Автопилот включён');
       }
       if (this.assist.auto && c.apOn && !this.autoDescDone && dist < this.todDist() && c.apAlt > APPR_ALT) {
         c.apAlt = APPR_ALT; this.autoDescDone = true; this.msg('Начинаем снижение');
       }
-      if (this.assist.auto && c.apOn && dist < 46000 && !c.appr && this.autoDescDone) { c.appr = true; }
+      if (this.assist.auto && c.apOn && dist < 46000 && !c.appr && (this.autoDescDone || (c.apAlt <= APPR_ALT + 50 && this.h < 3300 && this.diverted))) { c.appr = true; }
       if (this.assist.config && dist < 46000 && dist > 0 && this.h < 3200) {
         this.cfgTimer -= dt;
         if (this.cfgTimer <= 0) {
@@ -1079,7 +1594,7 @@ class Flight {
     if (c.atOn && !this.onGround) c.split = false;
     const spoolUp = 0.4, spoolDn = 0.6;
     const tg = c.split ? [c.t1, c.t2] : [c.thr, c.thr];
-    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) : 0;
+    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) * (1 - 0.08 * this.fx.ice) : 0;
     for (let i = 0; i < 2; i++) {
       this.thrA[i] += clamp(tg[i] - this.thrA[i], -spoolDn * dt, spoolUp * dt);
       this.Ti[i] = Tb / 2 * this.eng[i] * (IDLE + (1 - IDLE) * this.thrA[i]);
@@ -1136,6 +1651,7 @@ class Flight {
         else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * 0.0015, -lim, lim); }
         phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
       }
+      if (Math.abs(roll) <= 0.04) phiT += this.fx.rollBias * DEG * clamp(this.h / 100, 0, 1) * (c.apOn ? 0.25 : 1);
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
       this.phi = clamp(this.phi, -35 * DEG, 35 * DEG);
     } else this.phi = 0;
@@ -1146,11 +1662,41 @@ class Flight {
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
     this.asym = this.asymT;
+    this.applyFx(dt);
     if (this.onGround) this.stepGround(dt, T);
     else this.stepAir(dt, T);
 
     // предупреждения
     this.updateWarnings(dt);
+  }
+
+  // эффекты ЧП: турбулентность, сдвиг ветра, снос, лопнувшая шина и т.п.
+  applyFx(dt) {
+    const fx = this.fx, t = this.time;
+    if (fx.fog > 0 && !(this.ev && this.ev.id === 'fog')) fx.fog = Math.max(0, fx.fog - dt / 30);
+    if (fx.smoke > 0 && !(this.ev && this.ev.id === 'cabinFire')) fx.smoke = Math.max(0, fx.smoke - dt / 60);
+    if (fx.flash > 0) fx.flash = Math.max(0, fx.flash - dt * 3);
+    if (this.onGround) {
+      if (fx.tire && !this.airborneOnce && this.v > 3) this.psi += fx.tire * 0.05 * dt * Math.min(1, this.v / 20);
+      return;
+    }
+    if (fx.turb > 0) {
+      const n = Math.sin(1.9 * t) * 0.6 + Math.sin(3.3 * t + 1.3) * 0.4, n2 = Math.sin(1.3 * t + 2) * 0.6 + Math.sin(2.9 * t) * 0.4, n3 = Math.sin(2.3 * t + 0.5);
+      this.gamma += fx.turb * 0.03 * dt * n;
+      this.phi += fx.turb * 4 * DEG * dt * n2;
+      this.v = Math.max(5, this.v + fx.turb * 4 * n3 * dt);
+      if (!fx.belts) { fx.injT = (fx.injT || 0) + dt * fx.turb; if (fx.injT > 25 && !fx.injDone) { fx.injDone = true; this.incident('belts', 'Пассажиры без ремней получили травмы', 8, 999); } }
+    }
+    if (fx.ws > 0) { fx.ws -= dt; this.v = Math.max(8, this.v - 1.6 * dt); this.h -= 5 * dt; }
+    if (fx.gps) this.yPos += 3.5 * dt * (fx.gpsDir || 1);
+  }
+  evAction(k) {
+    const ev = this.ev; if (!ev || this.done) return;
+    const d = EVENT_DEFS[ev.id]; if (d.act) d.act(this, ev, k);
+  }
+  evBtns() {
+    const ev = this.ev; if (!ev || this.done) return [];
+    const d = EVENT_DEFS[ev.id]; return d.btns ? d.btns(this, ev) : [];
   }
 
   stepGround(dt, T) {
@@ -1170,7 +1716,7 @@ class Flight {
     } else {
       let mu = paved ? 0.02 : 0.15;
       if (this.gearPos < 0.9) mu = 0.5;
-      if (c.brake) mu += onRwy ? 0.30 : 0.2;
+      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : 0.30) : 0.2;
       let F = T - this.Dr - mu * N;
       if (this.v < 0.3 && F <= 0) { this.v = 0; }
       else {
@@ -1190,6 +1736,7 @@ class Flight {
       else this.psi -= this.psi * 0.6 * dt;
     }
     if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
+    if (this.fx.slick && this.v > 25) this.psi += this.fx.slick * 0.02 * Math.sin(this.time * 0.8) * dt;
     this.psi = wrapPi(this.psi);
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
@@ -1375,6 +1922,7 @@ class Flight {
     if (ev.id === 'engRoll' && kind === 'abort') out = 'ok';
     if (this.diverted && kind === 'ok' && ev.id !== 'runway') out = 'ok';
     if (ev.id === 'runway' && this.gaCount === 0 && kind === 'ok') out = 'fail';
+    const d = EVENT_DEFS[ev.id]; if (d.close) out = d.close(this, ev, kind, out);
     this.resolveEvent(ev, out, '');
   }
   evStep(dt) {
@@ -1382,7 +1930,7 @@ class Flight {
     const c = this.c;
     if (this.apLock > 0) { this.apLock -= dt; c.apOn = false; c.appr = false; this.apprCap = false; if (this.apLock <= 0 && this.assist.auto) { c.apOn = true; c.atOn = c.atOn || this.atLock <= 0; } }
     if (this.atLock > 0) { this.atLock -= dt; c.atOn = false; if (this.atLock <= 0 && this.assist.auto) c.atOn = true; }
-    if (this.engCount < 2 && c.apOn && c.apAlt > this.ceilLim - 250) c.apAlt = this.ceilLim - 250;
+    if ((this.engCount < 2 || this.fx.noRetract) && c.apOn && c.apAlt > this.ceilLim - 250) c.apAlt = this.ceilLim - 250;
     if (this.ga) this.gaStep(dt);
     if (this.ev) EVENT_DEFS[this.ev.id].tick(this, this.ev, dt);
     else if (!this.done && this.evq) { for (const q of this.evq) if (!q.fired && evWhen(this, q)) { q.fired = true; this.startEvent(q.id, q.o); break; } }
@@ -1393,6 +1941,7 @@ class Flight {
     if (this.hyd) a.add('ОТКАЗ ГИДРАВЛИКИ');
     if (this.apLock > 0) a.add('ОТКАЗ АВТОПИЛОТА');
     if (this.atLock > 0) a.add('ОТКАЗ АВТОМАТА ТЯГИ');
+    if (this.ev) { const al = EVENT_DEFS[this.ev.id].alert; if (al) { const x = al(this, this.ev); if (x) for (const y of [].concat(x)) a.add(y); } }
     if (this.engCount < 2 && !(this.fire && !this.fire.ext)) a.add(this.engCount ? 'ДВИГАТЕЛЬ ' + (this.eng[0] < 0.01 ? 1 : 2) + ' — ОТКАЗ' : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ');
   }
   // ---------- запасные аэродромы ----------
@@ -1450,7 +1999,7 @@ class Flight {
     this.msg('Двигатель №' + (fr.side + 1) + ' остановлен, огнетушитель сработал');
   }
   altGearExt() {
-    if (!this.hyd || this.altGear) return;
+    if (!(this.hyd || this.fx.gearStuck) || this.altGear) return;
     this.altGear = true; this.c.gear = true; this.msg('Запасная выпуска шасси: ~20 секунд');
   }
   emergDescent() {
@@ -2293,6 +2842,7 @@ function drawFlight(c, w, h, f, t, view) {
   let shy = 0;
   if (f.onGround && f.v > 3) shy = Math.sin(t * 38) * Math.min(1, f.v / 60) * 0.9 * U + (view.bump || 0) * 0.15;
   else shy = (view.bump || 0) * 0.15;
+  if (view.turb > 0.6) shy += (Math.sin(t * 23) * 0.6 + Math.sin(t * 9.7)) * (view.turb - 0.5) * 1.5 * U;
   c.save();
   c.translate(CX, CY + shy); c.rotate(roll); c.translate(-CX, -CY);
 
@@ -2326,6 +2876,12 @@ function drawFlight(c, w, h, f, t, view) {
   c.restore();
   drawGuide(f);
   if (fog > 0) { c.fillStyle = `rgba(235,240,248,${fog * 0.8})`; c.fillRect(0, 0, W, H); }
+  { const fx = f.fx;
+    if (fx.fog > 0) { const hz = pal.haze; c.fillStyle = rgb(hz, 0.84 * fx.fog); c.fillRect(0, 0, W, H); }
+    if (fx.flash > 0.02) { c.fillStyle = `rgba(235,240,255,${fx.flash * 0.7})`; c.fillRect(0, 0, W, H); }
+    if (fx.smoke > 0) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.15, CX, H * 0.5, H * 0.9); g.addColorStop(0, `rgba(60,55,50,${fx.smoke * 0.25})`); g.addColorStop(1, `rgba(25,22,20,${fx.smoke * 0.85})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+    if (fx.ice > 0.05) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.3, CX, H * 0.5, H * 0.85); g.addColorStop(0, 'rgba(220,240,255,0)'); g.addColorStop(1, `rgba(220,240,255,${fx.ice * 0.7})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+  }
 
   // кабина: стойки и козырёк
   if (!chase) drawCockpit(pal, f);
@@ -2368,7 +2924,7 @@ function drawCockpit(pal, f) {
 const FLN = ['0', '1', '2', '3', 'ПОЛН'];
 function drawHUD(f, t, view, th) {
   const c = f.c, chase = view.cam === 'chase';
-  const kmh = f.ias * 3.6;
+  const kmh = (f.ias + (f.fx.iasErr || 0)) * 3.6, hAlt = f.h + (f.fx.altErr || 0);
   if (!chase) {
   // шкала тангажа (вращается вместе с горизонтом)
   ctx.save(); ctx.translate(CX, CY); ctx.rotate(-(f.phi || 0)); ctx.translate(-CX, -CY);
@@ -2418,6 +2974,7 @@ function drawHUD(f, t, view, th) {
   vbugs.push({ v: vsNow, col: RED, label: 'Vs' });
   if (f.onGround && !f.td) vbugs.push({ v: f.vr * 3.6, col: AMBER, label: 'VR' });
   const sx = W * 0.215;
+  if (f.fx.adc) { panel(sx - 40 * U, CY - 12 * U, 40 * U, 24 * U, 0.6); txt('SPD', sx - 20 * U, CY + 5 * U, RED, 13 * U, 'center', '800'); } else
   drawTape(sx, -1, 0, 1.25 * U, 10, 20, kmh, (v, big) => String(Math.round(v)), vbugs);
   txt('км/ч', sx - 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   txt('M ' + f.mach.toFixed(2).replace(/^0/, ''), sx - 25 * U, CY + H * 0.02 + H * 0.25 + 12 * U, WHITE, 10 * U, 'center');
@@ -2425,7 +2982,8 @@ function drawHUD(f, t, view, th) {
   const abugs = [];
   if (c.apOn && !f.apprCap) abugs.push({ v: c.apAlt, col: CYAN, label: '' });
   const ax = W * 0.785;
-  drawTape(ax, 1, 0, 0.30 * U, 20, 100, f.h, (v, big) => big ? String(Math.round(f.h)) : String(Math.round(v)), abugs);
+  if (f.fx.adc) { panel(ax, CY - 12 * U, 40 * U, 24 * U, 0.6); txt('ALT', ax + 20 * U, CY + 5 * U, RED, 13 * U, 'center', '800'); } else
+  drawTape(ax, 1, 0, 0.30 * U, 20, 100, hAlt, (v, big) => big ? String(Math.round(hAlt)) : String(Math.round(v)), abugs);
   txt('м', ax + 25 * U, CY + H * 0.02 - H * 0.25 - 4 * U, 'rgba(230,255,240,.7)', 9 * U, 'center', '600');
   // цель АП и вертикальная скорость
   const vs = f.vs;
@@ -2486,6 +3044,17 @@ function drawHUD(f, t, view, th) {
     }
   }
   if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
+  // TCAS: встречный борт
+  if (f.fx.traffic) {
+    const tr = f.fx.traffic, bx = 14 * U + W * 0.045 + 36 * U, by = 118 * U, r = 26 * U;
+    ctx.fillStyle = 'rgba(6,12,26,.6)'; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.3); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(bx, by, r * 0.5, 0, 6.3); ctx.arc(bx, by, r, 0, 6.3); ctx.stroke();
+    const rr = clamp(tr.d / 8000, 0, 1) * r * 0.9, ra = tr.ra !== 0;
+    ctx.fillStyle = ra ? RED : AMBER; ctx.beginPath(); ctx.moveTo(bx, by - rr - 6 * U); ctx.lineTo(bx + 5 * U, by - rr); ctx.lineTo(bx, by - rr + 6 * U); ctx.lineTo(bx - 5 * U, by - rr); ctx.closePath(); ctx.fill();
+    txt((tr.dh >= 0 ? '+' : '−') + Math.abs(Math.round(tr.dh)), bx, by - rr - 9 * U, ra ? RED : AMBER, 9 * U, 'center', '800');
+    txt('TCAS', bx, by + r + 11 * U, WHITE, 9 * U, 'center', '800');
+    if (ra) { const up = f.ev && f.ev.ra > 0; txt(up ? '▲ КЛИМБ' : '▼ СНИЖАЙСЯ', bx, by + r + 24 * U, RED, 11 * U, 'center', '800'); }
+  }
   // аварийные сообщения (ЧП)
   if (f.alerts.size && !f.done) {
     const al = [...f.alerts].slice(0, 3), flash = Math.floor(t * 2.5) % 2 === 0;
@@ -3087,7 +3656,7 @@ function act(a) {
       else if (!f.onGround) { c.apOn = true; c.atOn = true; if (f.h < 3000 && !c.appr) c.apAlt = f.dist < 60000 ? 1500 : f.recAlt; if (f.dist >= 60000) c.apAlt = f.recAlt; }
       break;
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
-    case 'nav': c.nav = !c.nav; break;
+    case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
@@ -3096,6 +3665,7 @@ function act(a) {
   }
 }
 ui.querySelectorAll('#btns button, #ebtns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
+$('eact').addEventListener('pointerdown', e => { const b = e.target.closest('button'); if (!b || !flight) return; e.preventDefault(); flight.evAction(b.dataset.k); });
 
 function syncButtons() {
   const f = flight, c = f.c;
@@ -3113,7 +3683,9 @@ function syncButtons() {
   else { evp.style.display = 'none'; evp._h = ''; }
   const sh = (id, v) => $(id).classList.toggle('show', !!v);
   sh('eExt', f.fire && !f.fire.ext);
-  sh('eGear', f.hyd && !f.altGear);
+  sh('eGear', (f.hyd || f.fx.gearStuck) && !f.altGear);
+  { const eb = f.evBtns(), key = eb.map(b => b.k).join('|'), ea = $('eact'); if (key !== ea._k) { ea._k = key; ea.innerHTML = eb.map(b => `<button data-k="${b.k}">${b.t}</button>`).join(''); } }
+  if (f.ev && f.ev.id === 'surge' && thrLinked && !f.ev._unl) { f.ev._unl = true; $('thrlink').onclick(); }
   sh('eDesc', f.decomp && f.ev && f.ev.id === 'decomp' && !f.emDescent);
   sh('eAlt', !f.onGround && f.airborneOnce && !f.td);
   $('eAlt').classList.toggle('urgent', !!f.ev && f.ev.id !== 'runway' && f.ev.id !== 'apFail' && f.ev.id !== 'atFail');
@@ -3231,7 +3803,7 @@ function loop(ts) {
         if (!wasTd && f.td) { view.bump = Math.min(14, 2 + f.td.sink * 3.5); }
         if (!wasAir && f.airborneOnce) view.bump = 1.5;
         view.bump *= Math.pow(0.02, dt);
-        view.turb = f.h > 20 && f.h < 3500 ? 0.4 : f.h >= 3500 ? 0.15 : 0;
+        view.turb = (f.h > 20 && f.h < 3500 ? 0.4 : f.h >= 3500 ? 0.15 : 0) + f.fx.turb * 1.6;
         view.rollKick = (view.rollKick || 0) * Math.pow(0.1, dt);
       } else {
         endTimer += dt;

@@ -54,6 +54,25 @@ export function fly(planeId, fromId, toId, opts = {}) {
       if (ev === 'decomp' && !f.emDescent && f.time - f.ev.t0 > (opts.delay ?? 6)) f.emergDescent();
       if (ev === 'runway' && !f.ga && f.canGoAround()) f.goAround();
       if (ev === 'engRoll' && !f.airborneOnce && opts.reject && f.ias < f.v1) { c.thr = 0; c.brake = true; }
+      const age = f.time - f.ev.t0, d0 = opts.delay ?? 6, E = f.ev;
+      if (ev === 'rto' && !f.airborneOnce && f.ias < f.v1) { c.thr = c.t1 = c.t2 = 0; c.split = false; c.brake = true; }
+      if (ev === 'surge' && age > d0) { if (!c.split) { c.t1 = c.t2 = c.thr; c.split = true; } if (E.side) c.t2 = 0.2; else c.t1 = 0.2; }
+      if (ev === 'gearStuck' && !f.altGear && age > d0) f.altGearExt();
+      if (ev === 'gen' && age > d0) f.evAction('apu');
+      if (ev === 'adc' && age > d0) f.evAction('stby');
+      if (ev === 'indic' && age > d0) f.evAction('chk');
+      if (ev === 'turb' && age > d0) f.evAction('belts');
+      if (ev === 'storm' && age > d0) { f.evAction('belts'); f.evAction('avoid'); }
+      if (ev === 'ice' && age > d0) f.evAction('anti');
+      if (ev === 'cabinFire' && age > d0) f.evAction('ext');
+      if (ev === 'medical' && age > d0) f.evAction('doc');
+      if (ev === 'unruly' && age > d0) { f.evAction('door'); f.evAction('alarm'); }
+      if (ev === 'gps' && age > d0) f.evAction('vor');
+      if (ev === 'tcas' && age > 4 && !E.bot) { E.bot = 1; c.apOn = true; c.apAlt = Math.max(300, f.h + E.ra * 500); }
+      if ((ev === 'wshear' || ev === 'goAr') && !f.ga && f.canGoAround()) f.goAround();
+      if (ev === 'fog' && !f.ga && f.h < 75 && f.canGoAround()) f.goAround();
+      if (E.needDiv && !f.diverted && age > d0 && !f.onGround) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); }
+      if (ev === 'noRetract' && !f.diverted && age > d0) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); }
     }
     if (f.onGround && f.v > 5 && f.eng.some(x => x < 1)) c.roll = Math.max(-1, Math.min(1, -f.yPos * 0.06 - f.psi * 3));
     else if (f.onGround && !f.td) c.roll = 0;
