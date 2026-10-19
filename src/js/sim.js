@@ -79,10 +79,10 @@ export class Flight {
     this.fr0 = frameOf(0, o.from.rwy); this.fr1 = frameOf(this.D, o.to.rwy);
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
     if (this.taxiOps) { this.x = this.fr0.gx; this.yPos = GATE_Z; this.psi = -Math.PI / 2; } // стоим на гейте носом к рулёжке
-    this.thrAct = 0; this.gearPos = 1; this.flapAct = 2;
+    this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = [];
@@ -142,7 +142,7 @@ export class Flight {
     const c = this.c;
     if (!this.td && !this.airborneOnce) {
       this.lined = this.onRunway(this.x, this.yPos) && Math.abs(wrapPi(this.psi)) < 12 * DEG && Math.abs(this.yPos) < 20 && this.x > 20;
-      if (this.lined && c.taxiAuto) { c.taxiAuto = false; c.brake = true; c.thr = 0; this.msg('Вы на полосе. Отпустите тормоз и дайте полный газ'); }
+      if (this.lined && c.taxiAuto) { c.taxiAuto = false; c.brake = true; c.thr = c.t1 = c.t2 = 0; c.split = false; this.msg('Вы на полосе. Отпустите тормоз и дайте полный газ'); }
     } else if (this.td && this.td.onDest) {
       if (!this._inInit) { this._inInit = true; this.ri = 0; this._routeT = 0; }
       if (this.v < 24 && this.assist.taxi && !this._inEngaged) { this._inEngaged = true; c.taxiAuto = true; }
@@ -170,7 +170,7 @@ export class Flight {
     if (Math.abs(e) > 0.9) vt = Math.min(vt, 3);
     if (!this.onPaved()) vt = Math.min(vt, 6);
     this.autoV = vt;
-    c.thr = 0;
+    c.thr = c.t1 = c.t2 = 0; c.split = false;
     c.brake = this.v > vt + 1.5 || (this.ri === last && dist < 3);
   }
 
@@ -380,10 +380,18 @@ export class Flight {
       if (this.h < 12 && this.gearPos > 0.9 && c.flaps >= 3) thr = 0;
       c.thr = clamp(thr, 0, 1);
     }
-    // тяга
+    // тяга: у каждого двигателя свой рычаг и своя приёмистость
+    if (c.atOn && !this.onGround) c.split = false;
     const spoolUp = 0.4, spoolDn = 0.6;
-    this.thrAct += clamp(c.thr - this.thrAct, -spoolDn * dt, spoolUp * dt);
-    const T = this.Tavail * (IDLE + (1 - IDLE) * this.thrAct);
+    const tg = c.split ? [c.t1, c.t2] : [c.thr, c.thr];
+    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) : 0;
+    for (let i = 0; i < 2; i++) {
+      this.thrA[i] += clamp(tg[i] - this.thrA[i], -spoolDn * dt, spoolUp * dt);
+      this.Ti[i] = Tb / 2 * this.eng[i] * (IDLE + (1 - IDLE) * this.thrA[i]);
+    }
+    this.thrAct = (this.thrA[0] + this.thrA[1]) / 2;
+    const T = this.Ti[0] + this.Ti[1];
+    this.asymT = Tb > 1 ? this.eng[1] * this.thrA[1] - this.eng[0] * this.thrA[0] : 0;
     this.T = T;
 
     // управление тангажем
@@ -442,7 +450,7 @@ export class Flight {
     this.fuel = Math.max(0, this.fuel - flow * dt);
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
-    this.asym = this.eng[1] - this.eng[0];
+    this.asym = this.asymT;
     if (this.onGround) this.stepGround(dt, T);
     else this.stepAir(dt, T);
 
@@ -486,7 +494,7 @@ export class Flight {
       if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
       else this.psi -= this.psi * 0.6 * dt;
     }
-    if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * this.thrAct * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
+    if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
     this.psi = wrapPi(this.psi);
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
@@ -509,7 +517,7 @@ export class Flight {
     if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
     if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
     // автотормоз после касания
-    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = 0; c.atOn = false; }
+    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = c.t1 = c.t2 = 0; c.split = false; c.atOn = false; }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
@@ -534,7 +542,7 @@ export class Flight {
     const al = this.alpha, ca = Math.cos(al), sa = Math.sin(al);
     const dv = ((T * ca - this.Dr) / m - G * Math.sin(this.gamma)) * dt;
     const dg = ((this.L * Math.cos(this.phi) + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
-    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * this.thrAct * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
+    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
     this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
@@ -762,7 +770,7 @@ export class Flight {
     if (!this.canGoAround()) return;
     const c = this.c;
     this.ga = true; this.gaT0 = this.time;
-    c.thr = 1; c.atOn = false; c.appr = false; this.apprCap = false; c.brake = false;
+    c.thr = c.t1 = c.t2 = 1; c.split = false; c.atOn = false; c.appr = false; this.apprCap = false; c.brake = false;
     if (this.apLock <= 0) { c.apOn = true; c.nav = true; } else this.gHold = 7 * DEG;
     c.apAlt = 1500;
     if (c.flaps > 2) this.setFlaps(2);
@@ -773,7 +781,7 @@ export class Flight {
     c.appr = false; this.apprCap = false; c.brake = false;
     if (this.apLock <= 0 && !c.apOn) c.apOn = true;
     if (this.h > 25 && this.vs > 0 && c.gear && !this.altGear) this.setGear(false);
-    if (this.h > 250 && this.atLock <= 0) c.atOn = true; else if (this.h <= 250) { c.thr = 1; c.atOn = false; }
+    if (this.h > 250 && this.atLock <= 0) c.atOn = true; else if (this.h <= 250) { c.thr = c.t1 = c.t2 = 1; c.split = false; c.atOn = false; }
     if (this.apLock > 0 && c.apAlt && this.h > 1000) this.gHold = 0;
     if (this.h > 1350 || this.time - this.gaT0 > 150) this.circuit();
   }

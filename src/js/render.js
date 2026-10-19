@@ -873,10 +873,12 @@ function drawHUD(f, t, view, th) {
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';
   if (warpTxt) txt('УСКОРЕНИЕ ' + warpTxt, W - 14 * U - W * 0.045, 36 * U, AMBER, 10 * U, 'right', '800');
   // состояние двигателей
-  if (f.eng[0] < 1 || f.eng[1] < 1) {
+  {
     const col = i => f.eng[i] > 0.99 ? GREEN : f.eng[i] > 0.01 ? AMBER : RED;
-    txt('ДВ1', 14 * U + W * 0.045, 64 * U, col(0), 10 * U, 'left', '800');
-    txt('ДВ2', 14 * U + W * 0.045 + 34 * U, 64 * U, col(1), 10 * U, 'left', '800');
+    for (let i = 0; i < 2; i++) {
+      const n1 = f.eng[i] > 0.01 ? Math.round((22 + 78 * f.thrA[i]) * Math.min(1, f.eng[i] + 0.2)) : 0;
+      txt('ДВ' + (i + 1) + ' ' + n1 + '%', 14 * U + W * 0.045 + i * 66 * U, 64 * U, col(i), 10 * U, 'left', '800');
+    }
   }
   if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
   // аварийные сообщения (ЧП)

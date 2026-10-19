@@ -14,22 +14,24 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #ui{position:fixed;inset:0;pointer-events:none;display:none}
 #ui.on{display:block}
 .ctl{pointer-events:auto;touch-action:none}
-#thr{position:absolute;bottom:12px;width:64px;height:58%;border-radius:16px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
-#thr{left:calc(10px + env(safe-area-inset-left))}
+#thrw{position:absolute;bottom:12px;left:calc(8px + env(safe-area-inset-left));height:58%;width:118px;display:flex;gap:6px;pointer-events:none}
+#thrw .tl{position:relative;pointer-events:auto;touch-action:none;flex:1;height:calc(100% - 26px);border-radius:14px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#thrlink{position:absolute;left:0;right:0;bottom:0;height:22px;pointer-events:auto;touch-action:none;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:8px;font-size:10px;font-weight:800}
+#thrlink.on{background:#1f8f4e;border-color:#7dffb0}
 #yoke{position:absolute;right:calc(8px + env(safe-area-inset-right));bottom:10px;width:min(150px,40vh);height:min(150px,40vh);border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,.06));border:2px solid rgba(255,255,255,.4);overflow:hidden}
 #yoke svg{position:absolute;inset:6%;width:88%;height:88%;pointer-events:none}
 #yoke .yl{position:absolute;top:4px;left:0;right:0;text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.8;pointer-events:none}
-#thrfill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
-#thr .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
-#thrv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
-#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 300px))}
+#thrw .tf{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
+#thrw .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
+#thrw .tv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
+#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;width:min(520px,calc(100vw - 360px))}
 #btns button{pointer-events:auto;touch-action:none;height:36px;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:9px;font-size:10.5px;font-weight:800;padding:0 2px;line-height:1.05}
 #btns button.on{background:#1f8f4e;border-color:#7dffb0}
 #btns button.warn{background:#a23232;border-color:#ff9a9a}
 #btns button:disabled{opacity:.4}
 #quit{position:absolute;top:8px;right:calc(10px + env(safe-area-inset-right));width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.5);background:rgba(20,30,55,.7);color:#fff;font-size:15px;pointer-events:auto;z-index:3}
 #hint{position:absolute;left:50%;transform:translateX(-50%);top:46px;max-width:min(520px,60vw);text-align:center;font-size:14px;font-weight:800;color:#0b1220;background:rgba(141,255,180,.95);border-radius:10px;padding:5px 12px;display:none;pointer-events:none}
-#log{position:absolute;left:calc(86px + env(safe-area-inset-left));bottom:62px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;pointer-events:none;max-width:34vw}
+#log{position:absolute;left:calc(138px + env(safe-area-inset-left));bottom:62px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;pointer-events:none;max-width:34vw}
 #log div{margin-top:2px;background:rgba(6,12,26,.55);padding:2px 7px;border-radius:6px;width:fit-content}
 
 /* ---------- экраны меню ---------- */
@@ -80,10 +82,10 @@ table.res td:last-child{text-align:right;font-weight:700}
   .panel{width:64vw}
 }
 
-#thrmark{position:absolute;left:0;right:0;bottom:35%;border-top:2px dashed rgba(255,255,255,.7);z-index:1;pointer-events:none}
-#thrmark span{position:absolute;left:0;right:0;text-align:center;font-size:7.5px;font-weight:800;opacity:.85}
-#thrmark span:first-child{bottom:2px}
-#thrmark span:last-child{top:2px}
+#thrw .tm{position:absolute;left:0;right:0;bottom:35%;border-top:2px dashed rgba(255,255,255,.7);z-index:1;pointer-events:none}
+#thrw .tm span{position:absolute;left:0;right:0;text-align:center;font-size:7.5px;font-weight:800;opacity:.85}
+#thrw .tm span:first-child{bottom:2px}
+#thrw .tm span:last-child{top:2px}
 
 /* аварийные ситуации */
 #evbox{position:absolute;top:48px;right:calc(10px + env(safe-area-inset-right));width:min(250px,34vw);display:flex;flex-direction:column;gap:6px;align-items:stretch;pointer-events:none}
@@ -119,7 +121,11 @@ table.res td:last-child{text-align:right;font-weight:700}
 <canvas id="c"></canvas>
 
 <div id="ui">
-  <div id="thr" class="ctl"><div id="thrfill"></div><div id="thrmark"><span>ВЗЛЁТ ▲</span><span>▼ РУЛЕНИЕ</span></div><div class="lb">ГАЗ</div><div id="thrv">0%</div></div>
+  <div id="thrw">
+    <div class="tl ctl" id="thr1"><div class="tf"></div><div class="tm"><span>ВЗЛЁТ ▲</span><span>▼ РУЛЕНИЕ</span></div><div class="lb">ДВ1</div><div class="tv">0%</div></div>
+    <div class="tl ctl" id="thr2"><div class="tf"></div><div class="tm"><span>ВЗЛЁТ ▲</span><span>▼ РУЛЕНИЕ</span></div><div class="lb">ДВ2</div><div class="tv">0%</div></div>
+    <button id="thrlink" class="on">СВЯЗАНЫ</button>
+  </div>
   <div id="yoke" class="ctl"><svg id="yokeSvg" viewBox="-100 -100 200 200"><g id="yokeG">
     <rect x="-9" y="8" width="18" height="86" rx="8" fill="#2b3242"/>
     <path d="M-80 -52 L-80 -6 Q-80 26 -48 26 L48 26 Q80 26 80 -6 L80 -52" fill="none" stroke="#10141c" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
@@ -768,10 +774,10 @@ class Flight {
     this.fr0 = frameOf(0, o.from.rwy); this.fr1 = frameOf(this.D, o.to.rwy);
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
     if (this.taxiOps) { this.x = this.fr0.gx; this.yPos = GATE_Z; this.psi = -Math.PI / 2; } // стоим на гейте носом к рулёжке
-    this.thrAct = 0; this.gearPos = 1; this.flapAct = 2;
+    this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = [];
@@ -831,7 +837,7 @@ class Flight {
     const c = this.c;
     if (!this.td && !this.airborneOnce) {
       this.lined = this.onRunway(this.x, this.yPos) && Math.abs(wrapPi(this.psi)) < 12 * DEG && Math.abs(this.yPos) < 20 && this.x > 20;
-      if (this.lined && c.taxiAuto) { c.taxiAuto = false; c.brake = true; c.thr = 0; this.msg('Вы на полосе. Отпустите тормоз и дайте полный газ'); }
+      if (this.lined && c.taxiAuto) { c.taxiAuto = false; c.brake = true; c.thr = c.t1 = c.t2 = 0; c.split = false; this.msg('Вы на полосе. Отпустите тормоз и дайте полный газ'); }
     } else if (this.td && this.td.onDest) {
       if (!this._inInit) { this._inInit = true; this.ri = 0; this._routeT = 0; }
       if (this.v < 24 && this.assist.taxi && !this._inEngaged) { this._inEngaged = true; c.taxiAuto = true; }
@@ -859,7 +865,7 @@ class Flight {
     if (Math.abs(e) > 0.9) vt = Math.min(vt, 3);
     if (!this.onPaved()) vt = Math.min(vt, 6);
     this.autoV = vt;
-    c.thr = 0;
+    c.thr = c.t1 = c.t2 = 0; c.split = false;
     c.brake = this.v > vt + 1.5 || (this.ri === last && dist < 3);
   }
 
@@ -1069,10 +1075,18 @@ class Flight {
       if (this.h < 12 && this.gearPos > 0.9 && c.flaps >= 3) thr = 0;
       c.thr = clamp(thr, 0, 1);
     }
-    // тяга
+    // тяга: у каждого двигателя свой рычаг и своя приёмистость
+    if (c.atOn && !this.onGround) c.split = false;
     const spoolUp = 0.4, spoolDn = 0.6;
-    this.thrAct += clamp(c.thr - this.thrAct, -spoolDn * dt, spoolUp * dt);
-    const T = this.Tavail * (IDLE + (1 - IDLE) * this.thrAct);
+    const tg = c.split ? [c.t1, c.t2] : [c.thr, c.thr];
+    const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) : 0;
+    for (let i = 0; i < 2; i++) {
+      this.thrA[i] += clamp(tg[i] - this.thrA[i], -spoolDn * dt, spoolUp * dt);
+      this.Ti[i] = Tb / 2 * this.eng[i] * (IDLE + (1 - IDLE) * this.thrA[i]);
+    }
+    this.thrAct = (this.thrA[0] + this.thrA[1]) / 2;
+    const T = this.Ti[0] + this.Ti[1];
+    this.asymT = Tb > 1 ? this.eng[1] * this.thrA[1] - this.eng[0] * this.thrA[0] : 0;
     this.T = T;
 
     // управление тангажем
@@ -1131,7 +1145,7 @@ class Flight {
     this.fuel = Math.max(0, this.fuel - flow * dt);
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
-    this.asym = this.eng[1] - this.eng[0];
+    this.asym = this.asymT;
     if (this.onGround) this.stepGround(dt, T);
     else this.stepAir(dt, T);
 
@@ -1175,7 +1189,7 @@ class Flight {
       if (Math.abs(steer) > 0.04) this.psi += steer * 0.25 * Math.min(1, 25 / Math.max(this.v, 5)) * dt;
       else this.psi -= this.psi * 0.6 * dt;
     }
-    if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * this.thrAct * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
+    if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
     this.psi = wrapPi(this.psi);
     this.x += this.v * Math.cos(this.psi) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
@@ -1198,7 +1212,7 @@ class Flight {
     if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
     if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
     // автотормоз после касания
-    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = 0; c.atOn = false; }
+    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = c.t1 = c.t2 = 0; c.split = false; c.atOn = false; }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
@@ -1223,7 +1237,7 @@ class Flight {
     const al = this.alpha, ca = Math.cos(al), sa = Math.sin(al);
     const dv = ((T * ca - this.Dr) / m - G * Math.sin(this.gamma)) * dt;
     const dg = ((this.L * Math.cos(this.phi) + T * sa) / (m * v) - G * Math.cos(this.gamma) / v) * dt;
-    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * this.thrAct * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
+    if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
     this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
@@ -1451,7 +1465,7 @@ class Flight {
     if (!this.canGoAround()) return;
     const c = this.c;
     this.ga = true; this.gaT0 = this.time;
-    c.thr = 1; c.atOn = false; c.appr = false; this.apprCap = false; c.brake = false;
+    c.thr = c.t1 = c.t2 = 1; c.split = false; c.atOn = false; c.appr = false; this.apprCap = false; c.brake = false;
     if (this.apLock <= 0) { c.apOn = true; c.nav = true; } else this.gHold = 7 * DEG;
     c.apAlt = 1500;
     if (c.flaps > 2) this.setFlaps(2);
@@ -1462,7 +1476,7 @@ class Flight {
     c.appr = false; this.apprCap = false; c.brake = false;
     if (this.apLock <= 0 && !c.apOn) c.apOn = true;
     if (this.h > 25 && this.vs > 0 && c.gear && !this.altGear) this.setGear(false);
-    if (this.h > 250 && this.atLock <= 0) c.atOn = true; else if (this.h <= 250) { c.thr = 1; c.atOn = false; }
+    if (this.h > 250 && this.atLock <= 0) c.atOn = true; else if (this.h <= 250) { c.thr = c.t1 = c.t2 = 1; c.split = false; c.atOn = false; }
     if (this.apLock > 0 && c.apAlt && this.h > 1000) this.gHold = 0;
     if (this.h > 1350 || this.time - this.gaT0 > 150) this.circuit();
   }
@@ -2464,10 +2478,12 @@ function drawHUD(f, t, view, th) {
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';
   if (warpTxt) txt('УСКОРЕНИЕ ' + warpTxt, W - 14 * U - W * 0.045, 36 * U, AMBER, 10 * U, 'right', '800');
   // состояние двигателей
-  if (f.eng[0] < 1 || f.eng[1] < 1) {
+  {
     const col = i => f.eng[i] > 0.99 ? GREEN : f.eng[i] > 0.01 ? AMBER : RED;
-    txt('ДВ1', 14 * U + W * 0.045, 64 * U, col(0), 10 * U, 'left', '800');
-    txt('ДВ2', 14 * U + W * 0.045 + 34 * U, 64 * U, col(1), 10 * U, 'left', '800');
+    for (let i = 0; i < 2; i++) {
+      const n1 = f.eng[i] > 0.01 ? Math.round((22 + 78 * f.thrA[i]) * Math.min(1, f.eng[i] + 0.2)) : 0;
+      txt('ДВ' + (i + 1) + ' ' + n1 + '%', 14 * U + W * 0.045 + i * 66 * U, 64 * U, col(i), 10 * U, 'left', '800');
+    }
   }
   if (f.hyd) txt('ЗАКР: заклинило ' + FLN[f.c.flaps], 14 * U + W * 0.045, 78 * U, AMBER, 10 * U, 'left', '700');
   // аварийные сообщения (ЧП)
@@ -2993,17 +3009,35 @@ function startFlight(c, drill) {
 }
 
 // ---------- ввод: газ и ручка ----------
-const thrEl = $('thr'), yokeEl = $('yoke'), yokeG = $('yokeG');
+const yokeEl = $('yoke'), yokeG = $('yokeG');
 const stick = { value: 0, roll: 0, id: null };
-function thrSet(v, silent) {
-  v = Math.max(0, Math.min(1, v));
-  if (flight) { flight.c.thr = v; if (!silent) flight.c.atOn = false; }
-  $('thrfill').style.height = (v * 100) + '%';
-  $('thrv').textContent = Math.round(v * 100) + '%';
+const thrEls = [$('thr1'), $('thr2')];
+let thrLinked = true;
+function thrPaint(v1, v2) {
+  [v1, v2].forEach((v, i) => { thrEls[i].querySelector('.tf').style.height = (v * 100) + '%'; thrEls[i].querySelector('.tv').textContent = Math.round(v * 100) + '%'; });
 }
-thrEl.addEventListener('pointerdown', e => { thrEl.setPointerCapture(e.pointerId); thrMove(e); });
-thrEl.addEventListener('pointermove', e => { if (thrEl.hasPointerCapture(e.pointerId)) thrMove(e); });
-function thrMove(e) { const r = thrEl.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height); }
+// idx: 0/1 — один двигатель, -1 — оба
+function thrSet(v, silent, idx = -1) {
+  v = Math.max(0, Math.min(1, v));
+  const f = flight;
+  if (f) {
+    const c = f.c;
+    if (idx < 0 || thrLinked) { c.t1 = c.t2 = c.thr = v; c.split = false; }
+    else { if (!c.split) { c.t1 = c.t2 = c.thr; c.split = true; } if (idx === 0) c.t1 = v; else c.t2 = v; c.thr = (c.t1 + c.t2) / 2; }
+    if (!silent) c.atOn = false;
+    thrPaint(c.split ? c.t1 : c.thr, c.split ? c.t2 : c.thr);
+  } else thrPaint(v, v);
+}
+thrEls.forEach((el, i) => {
+  const mv = e => { const r = el.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height, false, i); };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); mv(e); });
+  el.addEventListener('pointermove', e => { if (el.hasPointerCapture(e.pointerId)) mv(e); });
+});
+$('thrlink').onclick = () => {
+  thrLinked = !thrLinked;
+  $('thrlink').classList.toggle('on', thrLinked); $('thrlink').textContent = thrLinked ? 'СВЯЗАНЫ' : 'РАЗДЕЛЬНО';
+  if (thrLinked && flight) { const c = flight.c; const m = (c.split ? (c.t1 + c.t2) / 2 : c.thr); thrSet(m, true); }
+};
 function setYoke() { yokeG.setAttribute('transform', `translate(0 ${(-stick.value * 16).toFixed(1)}) rotate(${(stick.roll * 75).toFixed(1)})`); }
 function yokeMove(e) {
   const r = yokeEl.getBoundingClientRect(), R = r.width * 0.36;
@@ -3086,7 +3120,7 @@ function syncButtons() {
   if (altOpen) { altT -= 0.016; if (altT <= 0) { altT = 0.7; renderAlt(); } if (f.onGround || f.done) toggleAlt(false); }
   sh('eGa', f.canGoAround() && (f.rwyBlocked || f.dist < 9000));
   $('hint').classList.toggle('alert', !!f.ev);
-  if (c.atOn) { $('thrfill').style.height = (c.thr * 100) + '%'; $('thrv').textContent = Math.round(c.thr * 100) + '%'; }
+  if (c.atOn || !c.split) thrPaint(c.thr, c.thr);
 }
 
 // ---------- клавиатура ----------
@@ -3107,6 +3141,9 @@ function keyboardInput(dt) {
   else if (keys._kb && stick.id === null) { stick.value = 0; stick.roll = 0; setYoke(); keys._kb = false; }
   let dthr = 0; if (keys.ShiftLeft || keys.ShiftRight) dthr += 0.4; if (keys.ControlLeft || keys.ControlRight) dthr -= 0.4;
   if (dthr) thrSet(f.c.thr + dthr * dt);
+  // раздельно: Q/Z — левый двигатель, E/X — правый (при несвязанных рычагах)
+  let d1 = 0, d2 = 0; if (keys.KeyQ) d1 += 0.4; if (keys.KeyZ) d1 -= 0.4; if (keys.KeyE) d2 += 0.4; if (keys.KeyX) d2 -= 0.4;
+  if (d1 || d2) { const c = f.c; const a = c.split ? c.t1 : c.thr, b = c.split ? c.t2 : c.thr; const was = thrLinked; thrLinked = false; if (d1) thrSet(a + d1 * dt, false, 0); if (d2) thrSet((c.split ? c.t2 : b) + d2 * dt, false, 1); thrLinked = was; }
 }
 
 // ---------- выход / завершение ----------

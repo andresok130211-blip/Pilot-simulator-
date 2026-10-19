@@ -220,17 +220,35 @@ function startFlight(c, drill) {
 }
 
 // ---------- ввод: газ и ручка ----------
-const thrEl = $('thr'), yokeEl = $('yoke'), yokeG = $('yokeG');
+const yokeEl = $('yoke'), yokeG = $('yokeG');
 const stick = { value: 0, roll: 0, id: null };
-function thrSet(v, silent) {
-  v = Math.max(0, Math.min(1, v));
-  if (flight) { flight.c.thr = v; if (!silent) flight.c.atOn = false; }
-  $('thrfill').style.height = (v * 100) + '%';
-  $('thrv').textContent = Math.round(v * 100) + '%';
+const thrEls = [$('thr1'), $('thr2')];
+let thrLinked = true;
+function thrPaint(v1, v2) {
+  [v1, v2].forEach((v, i) => { thrEls[i].querySelector('.tf').style.height = (v * 100) + '%'; thrEls[i].querySelector('.tv').textContent = Math.round(v * 100) + '%'; });
 }
-thrEl.addEventListener('pointerdown', e => { thrEl.setPointerCapture(e.pointerId); thrMove(e); });
-thrEl.addEventListener('pointermove', e => { if (thrEl.hasPointerCapture(e.pointerId)) thrMove(e); });
-function thrMove(e) { const r = thrEl.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height); }
+// idx: 0/1 — один двигатель, -1 — оба
+function thrSet(v, silent, idx = -1) {
+  v = Math.max(0, Math.min(1, v));
+  const f = flight;
+  if (f) {
+    const c = f.c;
+    if (idx < 0 || thrLinked) { c.t1 = c.t2 = c.thr = v; c.split = false; }
+    else { if (!c.split) { c.t1 = c.t2 = c.thr; c.split = true; } if (idx === 0) c.t1 = v; else c.t2 = v; c.thr = (c.t1 + c.t2) / 2; }
+    if (!silent) c.atOn = false;
+    thrPaint(c.split ? c.t1 : c.thr, c.split ? c.t2 : c.thr);
+  } else thrPaint(v, v);
+}
+thrEls.forEach((el, i) => {
+  const mv = e => { const r = el.getBoundingClientRect(); thrSet(1 - (e.clientY - r.top) / r.height, false, i); };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); mv(e); });
+  el.addEventListener('pointermove', e => { if (el.hasPointerCapture(e.pointerId)) mv(e); });
+});
+$('thrlink').onclick = () => {
+  thrLinked = !thrLinked;
+  $('thrlink').classList.toggle('on', thrLinked); $('thrlink').textContent = thrLinked ? 'СВЯЗАНЫ' : 'РАЗДЕЛЬНО';
+  if (thrLinked && flight) { const c = flight.c; const m = (c.split ? (c.t1 + c.t2) / 2 : c.thr); thrSet(m, true); }
+};
 function setYoke() { yokeG.setAttribute('transform', `translate(0 ${(-stick.value * 16).toFixed(1)}) rotate(${(stick.roll * 75).toFixed(1)})`); }
 function yokeMove(e) {
   const r = yokeEl.getBoundingClientRect(), R = r.width * 0.36;
@@ -313,7 +331,7 @@ function syncButtons() {
   if (altOpen) { altT -= 0.016; if (altT <= 0) { altT = 0.7; renderAlt(); } if (f.onGround || f.done) toggleAlt(false); }
   sh('eGa', f.canGoAround() && (f.rwyBlocked || f.dist < 9000));
   $('hint').classList.toggle('alert', !!f.ev);
-  if (c.atOn) { $('thrfill').style.height = (c.thr * 100) + '%'; $('thrv').textContent = Math.round(c.thr * 100) + '%'; }
+  if (c.atOn || !c.split) thrPaint(c.thr, c.thr);
 }
 
 // ---------- клавиатура ----------
@@ -334,6 +352,9 @@ function keyboardInput(dt) {
   else if (keys._kb && stick.id === null) { stick.value = 0; stick.roll = 0; setYoke(); keys._kb = false; }
   let dthr = 0; if (keys.ShiftLeft || keys.ShiftRight) dthr += 0.4; if (keys.ControlLeft || keys.ControlRight) dthr -= 0.4;
   if (dthr) thrSet(f.c.thr + dthr * dt);
+  // раздельно: Q/Z — левый двигатель, E/X — правый (при несвязанных рычагах)
+  let d1 = 0, d2 = 0; if (keys.KeyQ) d1 += 0.4; if (keys.KeyZ) d1 -= 0.4; if (keys.KeyE) d2 += 0.4; if (keys.KeyX) d2 -= 0.4;
+  if (d1 || d2) { const c = f.c; const a = c.split ? c.t1 : c.thr, b = c.split ? c.t2 : c.thr; const was = thrLinked; thrLinked = false; if (d1) thrSet(a + d1 * dt, false, 0); if (d2) thrSet((c.split ? c.t2 : b) + d2 * dt, false, 1); thrLinked = was; }
 }
 
 // ---------- выход / завершение ----------
