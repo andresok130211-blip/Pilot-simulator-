@@ -1,5 +1,5 @@
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
-import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
+import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } from './data.js';
 import { Flight, settle, FLAP_NAMES } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { drawFlight, drawMap } from './render.js';
@@ -18,7 +18,7 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, xp: 0, evOk: 0, evLate: 0, evFail: 0 };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, xp: 0, evOk: 0, evLate: 0, evFail: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 if (!PL_BY[save.plane] || !save.owned.includes(save.plane)) { save.plane = save.owned[0] || 'ssj'; }
@@ -140,12 +140,14 @@ function renderSelect() {
       <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
       <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
       <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
+      <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
       <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
       <button class="btn go big" id="bGo">Лететь ✈</button>
     </div>
   </div>`;
   $('oTod') && ($('oTod').value = String(save.tod));
   $('oEm') && ($('oEm').value = String(save.emerg));
+  $('oWx') && ($('oWx').value = String(save.wxLvl));
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { save.plane = b.dataset.pl; persist(); sel = null; renderSelect(); });
   menu.querySelectorAll('[data-to]').forEach(el => el.onclick = () => {
@@ -162,6 +164,7 @@ function renderSelect() {
     $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
     $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
     $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
+    $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
   }
 }
@@ -205,10 +208,23 @@ function renderDrill() {
 // ---------- запуск рейса ----------
 function startFlight(c, drill) {
   audioInit();
+  const from = apLoc(), to = AP_BY[c.to];
+  const brg = bearing(from, to);
+  const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg);
+  if (drill || !wx.level) return beginFlight(c, drill, wx);
+  const wc = windComp(wx, brg), hw = Math.round(wc.head), cwv = Math.round(Math.abs(wc.cross));
+  showModal(`<h2>Брифинг перед вылетом</h2>
+    <div class="sub"><b>Вылет:</b> ${metarText(from, wx, 'dep')}<br><b>Назначение:</b> ${metarText(to, wx, 'dst')}<br><br>
+    Для полосы по маршруту: ${hw >= 0 ? 'встречный' : 'попутный'} ветер ${Math.abs(hw)} м/с, боковой ${cwv} м/с${wc.cross > 0.5 ? ' справа' : wc.cross < -0.5 ? ' слева' : ''}.
+    ${wx.vis < 1500 || wx.visD < 1500 ? '<br>⚠ Низкая видимость: заходите по глиссаде (кнопка ПОСАДКА).' : ''}${wx.spd + wx.gust > 12 ? '<br>⚠ Сильный ветер и порывы: держите курс на заходе, возможен снос.' : ''}</div>
+    <div class="mrow"><button class="btn g" id="mNo">Отмена</button><button class="btn go" id="mGo">Лететь ✈</button></div>`);
+  $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx);
+}
+function beginFlight(c, drill, wx) {
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+  flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
     taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : save.emerg, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
@@ -300,6 +316,8 @@ function act(a) {
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'map': view.map = view.map === false; break;
+    case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
+    case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
@@ -316,6 +334,8 @@ function syncButtons() {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('bGear', c.gear); $('bGear').textContent = 'ШАССИ ' + (f.gearPos > 0.98 ? '▼' : f.gearPos < 0.02 ? '▲' : '…');
   $('bFlD').textContent = 'ЗАКР − (' + FLAP_NAMES[c.flaps] + ')'; $('bFlU').textContent = 'ЗАКР +';
+  thrEls.forEach((el, i) => { el.querySelector('.lb').textContent = c.rev ? 'РЕВ' + (i + 1) : 'ДВ' + (i + 1); });
+  on('bRev', c.rev); $('bRev').classList.toggle('warn', !!c.rev); $('bAbrk').textContent = 'АВТОТОРМ ' + (c.abrk ? c.abrk : '—'); on('bAbrk', c.abrk > 0);
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
   on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bTaxi', c.taxiAuto && f.onGround); $('bTaxi').disabled = !f.onGround || !f.taxiOps;
   $('bView').textContent = save.cam === 'chase' ? 'ВИД: СНАРУЖИ' : 'ВИД: КАБИНА'; on('bAppr', c.appr);
@@ -344,7 +364,7 @@ function syncButtons() {
 addEventListener('keydown', e => {
   if (mode !== 'flight' || !flight) return;
   keys[e.code] = true;
-  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi', KeyM: 'map' }[e.code];
+  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi', KeyM: 'map', KeyU: 'rev', KeyO: 'abrk' }[e.code];
   if (m && !e.repeat) act(m);
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });

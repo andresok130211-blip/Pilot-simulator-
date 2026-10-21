@@ -65,7 +65,7 @@ export class Flight {
     this.D = o.distM; // порог ВПП назначения
     this.rwy0 = { s: 0, e: o.from.rwy };
     this.rwy1 = { s: this.D, e: this.D + o.to.rwy };
-    this.elev = o.from.elev;
+    this.elev = o.from.elev; this.elevA = o.from.elev;
     this.pax = o.pax;
     this.payload = o.pax * PAX_KG;
     this.fuel = o.fuelKg; this.fuel0 = o.fuelKg;
@@ -82,7 +82,7 @@ export class Flight {
     this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = [];
@@ -97,6 +97,8 @@ export class Flight {
     this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
+    this.wx = o.wx || { dir: o.bearing || 0, spd: 0, gust: 0, vis: 10000, visD: 10000, rain: 0, rainD: 0, temp: 14, qnh: 1013 };
+    this.wl = { x: 0, z: 0 }; this.gustF = 0; this.wxNow = { vis: 10000, rain: 0 };
     this.origTo = o.to; this.divTo = null; this.tfA = 0;
     this.tf = { a: 0, c: 1, s: 0, ox: 0, oz: 0 };
     this.world = buildWorld(o.from, o.to, o.distM, o.plane);
@@ -252,7 +254,7 @@ export class Flight {
 
   todDist() {
     const h = Math.max(this.c.apAlt > 3000 ? this.h : 3000, 3000);
-    const d1 = (h - 3000) / 9 * 190;
+    const d1 = (h - 3000) / 9 * (190 + 0.012 * this.elev);
     return d1 + 38000 + 29000 + 14000;
   }
 
@@ -281,7 +283,7 @@ export class Flight {
       const dd = this.D + AIM_OFFSET - this.x;
       const hGS = glideH(dd);
       const dev = this.h - hGS;
-      vsCmd = -v * Math.sin(GS_DEG * DEG) - 0.12 * dev;
+      vsCmd = -Math.max(40, v * Math.cos(this.psi) + this.wl.x) * Math.sin(GS_DEG * DEG) - 0.12 * dev;
       if (this.h < FLARE_H && this.c.gear) vsCmd = -(0.4 + 0.25 * this.h);
       vsCmd = clamp(vsCmd, -9, 3);
       this.dev = dev;
@@ -328,6 +330,8 @@ export class Flight {
     this.time += dt; this.simTime += dt;
     this.updateMass();
     this.aero();
+    this.updateWind();
+    { const e1 = this.toAp.elev !== undefined ? this.toAp.elev : this.elevA; this.elev = this.elevA + (e1 - this.elevA) * clamp(this.x / Math.max(this.D, 1), 0, 1); }
     const A = this.A, v = this.v, m = this.mass;
     const ias = this.ias;
     const dist = this.dist;
@@ -387,15 +391,18 @@ export class Flight {
     // тяга: у каждого двигателя свой рычаг и своя приёмистость
     if (c.atOn && !this.onGround) c.split = false;
     const spoolUp = 0.4, spoolDn = 0.6;
+    if (c.rev && (!this.onGround || this.v < 12)) { c.rev = false; if (this.onGround) { c.thr = c.t1 = c.t2 = 0; c.split = false; } }
+    const rev = !!c.rev && this.onGround;
     const tg = c.split ? [c.t1, c.t2] : [c.thr, c.thr];
     const Tb = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * (v / A.a)) * (1 - 0.08 * this.fx.ice) : 0;
     for (let i = 0; i < 2; i++) {
       this.thrA[i] += clamp(tg[i] - this.thrA[i], -spoolDn * dt, spoolUp * dt);
       this.Ti[i] = Tb / 2 * this.eng[i] * (IDLE + (1 - IDLE) * this.thrA[i]);
+      if (rev) this.Ti[i] = -Tb / 2 * 0.4 * this.eng[i] * this.thrA[i];
     }
     this.thrAct = (this.thrA[0] + this.thrA[1]) / 2;
     const T = this.Ti[0] + this.Ti[1];
-    this.asymT = Tb > 1 ? this.eng[1] * this.thrA[1] - this.eng[0] * this.thrA[0] : 0;
+    this.asymT = Tb > 1 ? (this.eng[1] * this.thrA[1] - this.eng[0] * this.thrA[0]) * (rev ? -1 : 1) : 0;
     this.T = T;
 
     // управление тангажем
@@ -441,8 +448,9 @@ export class Flight {
       else if (c.apOn && c.nav) {
         const aim = this.D + AIM_OFFSET - this.x;
         let psiC;
-        if (dist > 30000) psiC = Math.atan2(-this.yPos, aim);
-        else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * 0.0015, -lim, lim); }
+        const ff = -this.wl.z / Math.max(v, 50);
+        if (dist > 30000) psiC = Math.atan2(-this.yPos, aim) + ff;
+        else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * (0.0015 + 0.004 * clamp(1 - dist / 8000, 0, 1)), -lim, lim) + ff; }
         phiT = clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
       }
       if (Math.abs(roll) <= 0.04) phiT += this.fx.rollBias * DEG * clamp(this.h / 100, 0, 1) * (c.apOn ? 0.25 : 1);
@@ -451,7 +459,7 @@ export class Flight {
     } else this.phi = 0;
 
     // топливо
-    const flow = 1.6e-5 * T;
+    const flow = 1.6e-5 * (Math.abs(this.Ti[0]) + Math.abs(this.Ti[1]));
     this.fuel = Math.max(0, this.fuel - flow * dt);
     if (this.fuel <= 0 && this.Tavail === 0 && !this.warnings.has('fuel0')) { this.warnings.add('fuel0'); this.msg('Топливо закончилось!'); }
 
@@ -464,10 +472,22 @@ export class Flight {
     this.updateWarnings(dt);
   }
 
+  // ветер в местной системе координат, видимость и дождь по маршруту
+  updateWind() {
+    const wx = this.wx, t = this.time, tf = this.tf;
+    this.gustF = Math.max(0, Math.sin(t * 0.31) * Math.sin(t * 0.77 + 1));
+    const S = wx.spd + wx.gust * this.gustF;
+    if (S < 0.05) { this.wl.x = 0; this.wl.z = 0; }
+    else { const th = (wx.dir + 180 - this.brg) * DEG, Wx = S * Math.cos(th), Wz = S * Math.sin(th); this.wl.x = Wx * tf.c + Wz * tf.s; this.wl.z = -Wx * tf.s + Wz * tf.c; }
+    const u = clamp(this.diverted ? 1 : this.x / Math.max(this.D, 1), 0, 1), k = u < 0.5 ? 0 : (u - 0.5) * 2;
+    this.wxNow.vis = wx.vis + (wx.visD - wx.vis) * k; this.wxNow.rain = wx.rain + (wx.rainD - wx.rain) * k;
+    this.fogBase = this.h < 4500 ? clamp((8000 - this.wxNow.vis) / 7000, 0, 1) * 0.85 * clamp((4500 - this.h) / 1500, 0, 1) : 0;
+  }
   // эффекты ЧП: турбулентность, сдвиг ветра, снос, лопнувшая шина и т.п.
   applyFx(dt) {
     const fx = this.fx, t = this.time;
     if (fx.fog > 0 && !(this.ev && this.ev.id === 'fog')) fx.fog = Math.max(0, fx.fog - dt / 30);
+    if (this.wx.gust > 1 && this.h < 1200 && !this.onGround) { const tw = clamp(this.wx.gust / 8, 0, 1) * 0.5 * this.gustF; this.gamma += tw * 0.02 * dt * Math.sin(this.time * 2.7); this.phi += tw * 3 * DEG * dt * Math.sin(this.time * 1.9 + 1); }
     if (fx.smoke > 0 && !(this.ev && this.ev.id === 'cabinFire')) fx.smoke = Math.max(0, fx.smoke - dt / 60);
     if (fx.flash > 0) fx.flash = Math.max(0, fx.flash - dt * 3);
     if (this.onGround) {
@@ -510,7 +530,8 @@ export class Flight {
     } else {
       let mu = paved ? 0.02 : 0.15;
       if (this.gearPos < 0.9) mu = 0.5;
-      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : 0.30) : 0.2;
+      if (!c.brake && this.td && c.abrk > 0 && this.v > 3) mu += [0.08, 0.14, 0.22][c.abrk - 1] * (this.fx.slick ? 0.55 : this.wxNow.rain > 0.3 ? 0.8 : 1);
+      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : this.wxNow.rain > 0.3 ? 0.24 : 0.30) : 0.2;
       let F = T - this.Dr - mu * N;
       if (this.v < 0.3 && F <= 0) { this.v = 0; }
       else {
@@ -531,8 +552,9 @@ export class Flight {
     }
     if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
     if (this.fx.slick && this.v > 25) this.psi += this.fx.slick * 0.02 * Math.sin(this.time * 0.8) * dt;
+    if (this.v > 20 && (this.wl.x || this.wl.z)) this.psi -= this.wl.z * 0.0015 * clamp((this.v - 20) / 20, 0, 1) * (this.assist.auto ? 0.3 : 1) * dt;
     this.psi = wrapPi(this.psi);
-    this.x += this.v * Math.cos(this.psi) * dt;
+    this.x += (this.v * Math.cos(this.psi) + (this.v > 20 ? this.wl.x * clamp((this.v - 20) / 15, 0, 1) : 0)) * dt;
     this.yPos += this.v * Math.sin(this.psi) * dt;
     this.gamma = 0; this.h = 0;
     if (this.taxiOps) {
@@ -553,7 +575,11 @@ export class Flight {
     if (!onRwy && this.v > 30 && !this.td && (this.x > this.rwy0.e || Math.abs(this.yPos) > 32)) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы при взлёте.' : 'Самолёт выкатился за конец полосы при взлёте.'); return; }
     if (!onRwy && this.td && this.v > 25) { this.finish('crash', Math.abs(this.yPos) > 32 ? 'Самолёт выкатился с боковой стороны полосы.' : this.x > this.rwy1.e ? 'Самолёт выкатился за пределы полосы на большой скорости.' : 'Посадка вне полосы на большой скорости.'); return; }
     // автотормоз после касания
-    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) { c.brake = true; c.thr = c.t1 = c.t2 = 0; c.split = false; c.atOn = false; }
+    if (this.td && this.assist.auto && this.v > 8 && !(this.taxiOps && c.taxiAuto && this.v < 24)) {
+      c.brake = true; c.atOn = false; c.split = false;
+      const autoRev = this.eng[0] > 0.9 && this.eng[1] > 0.9 && this.v > 32 && this.td.onDest;
+      c.rev = autoRev; c.thr = c.t1 = c.t2 = autoRev ? 0.6 : 0;
+    }
     // конец пробега
     if (this.v > this.maxV) this.maxV = this.v;
     if (this.td && this.v < 0.6 && this.time - this.td.t > 2) {
@@ -581,8 +607,8 @@ export class Flight {
     if (this.v > 20) this.psi = wrapPi(this.psi + G * Math.tan(this.phi) / this.v * dt - this.asym * 0.012 * (c0apOn(this) ? 0.1 : this.assist.auto ? 0.4 : 1) * dt);
     this.v = Math.max(5, this.v + dv);
     this.gamma = clamp(this.gamma + dg, -1.2, 1.2);
-    this.x += this.v * Math.cos(this.gamma) * Math.cos(this.psi) * dt;
-    this.yPos += this.v * Math.cos(this.gamma) * Math.sin(this.psi) * dt;
+    this.x += (this.v * Math.cos(this.gamma) * Math.cos(this.psi) + this.wl.x) * dt;
+    this.yPos += (this.v * Math.cos(this.gamma) * Math.sin(this.psi) + this.wl.z) * dt;
     this.h += this.v * Math.sin(this.gamma) * dt;
     // перегрузка
     const n = this.L / (m * G);
@@ -611,7 +637,7 @@ export class Flight {
       return;
     }
     if (Math.abs(this.phi) > 12 * DEG) { this.finish('crash', 'Касание крылом: слишком большой крен при посадке.'); return; }
-    if (Math.abs(this.psi) > 12 * DEG) { this.finish('crash', 'Боковой снос: самолёт приземлился не вдоль полосы.'); return; }
+    if (Math.abs(this.psi) > 15 * DEG) { this.finish('crash', 'Боковой снос: самолёт приземлился не вдоль полосы.'); return; }
     if (sink > 5.5) { this.finish('crash', 'Слишком жёсткое приземление (' + sink.toFixed(1) + ' м/с): конструкция разрушена.'); return; }
     if (ias * 3.6 > 400) { this.finish('crash', 'Слишком высокая скорость при посадке.'); return; }
     this.onGround = true; this.gamma = 0;
@@ -769,7 +795,7 @@ export class Flight {
     this.psi = wrapPi(hdgW - a); this.x = 0; this.yPos = 0;
     this.D = d; this.toAp = w.ap; this.rwy1 = { s: d, e: d + w.len }; this.fr1 = frameOf(d, w.len);
     this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
-    this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
+    this.elevA = this.elev; this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
     c.appr = false; this.apprCap = false; this.autoDescDone = false; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
     if (this.ga) this.ga = false;
     if (this.apLock <= 0 && (this.assist.auto || c.apOn)) { c.apOn = true; c.nav = true; }
@@ -804,6 +830,30 @@ export class Flight {
     this.msg('Аварийное снижение до 3000 м');
   }
   canGoAround() { return !this.onGround && !this.ga && this.airborneOnce && this.dist < 20000 && this.dist > -300 && this.h < 1500 && !this.td; }
+  // смена полосы: поворачиваем ось захода вокруг аэропорта и выводим самолёт на новую прямую
+  changeRunway() {
+    if (this.onGround || this.done) return false;
+    const c = this.c, tf = this.tf, A = toWorld(tf, this.D, 0, { x: 0, z: 0 });
+    const cand = [-80, -60, -40, 40, 60, 80].map(d => d * DEG);
+    // выбираем направление с лучшим встречным ветром
+    let best = cand[0], bh = -1e9;
+    for (const d of cand) {
+      const a2 = tf.a + d, th = (this.wx.dir + 180 - this.brg) * DEG, S = this.wx.spd;
+      const head = -(S * Math.cos(th - a2)) + (this.rnd() - 0.5) * 0.5; // встречная составляющая вдоль новой оси
+      if (head > bh) { bh = head; best = d; }
+    }
+    const a2 = tf.a + best, c2 = Math.cos(a2), s2 = Math.sin(a2);
+    this.tf = { a: a2, c: c2, s: s2, ox: A.x - this.D * c2, oz: A.z - this.D * s2 };
+    this.ga = false; this.rwyBlocked = false;
+    this.x = this.D - 36000; this.yPos = 0; this.psi = 0; this.phi = 0; this.h = clamp(this.h, 1000, 1800); this.gamma = 0; this.gHold = null; this.vsCmdS = 0;
+    this.fuel = Math.max(0, this.fuel - this.p.burnHr * 0.05);
+    const rw = Math.round((((this.brg + this.tf.a / DEG) % 360) + 360) % 360 / 10) || 36;
+    this.rwyName = rw; this.fade = 1; this.fadeText = 'Смена полосы: заход на ВПП ' + String(rw).padStart(2, '0');
+    c.flaps = this.hyd || this.fx.flapJam ? c.flaps : Math.max(c.flaps, 1); this.flapAct = c.flaps;
+    c.apAlt = APPR_ALT; if (this.apLock <= 0) { c.apOn = true; c.appr = true; c.nav = true; } if (this.atLock <= 0) c.atOn = true; this.autoDescDone = true; this.apprCap = false;
+    this.msg('Заход на ВПП ' + String(rw).padStart(2, '0'));
+    return true;
+  }
   goAround() {
     if (!this.canGoAround()) return;
     const c = this.c;

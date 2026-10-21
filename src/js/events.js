@@ -755,6 +755,26 @@ export const EVENT_DEFS = {
     close(f, ev, kind, out) { return f.gaCount === 0 && kind === 'ok' ? 'fail' : out; },
   },
 
+  rwyChg: {
+    title: 'СМЕНА ПОЛОСЫ', short: 'Смена полосы по команде диспетчера', phases: ['descent'], weight: 2, group: 'land', spawn: 'descent',
+    desc: 'Ветер сменился: диспетчер назначает другую полосу. Подтвердите — заход пойдёт с нового направления.',
+    ok: f => f.distM >= 250000,
+    start(f, ev) { f.msg('ДИСПЕТЧЕР: ВЕТЕР СМЕНИЛСЯ — СМЕНА ПОЛОСЫ! Подтвердите'); },
+    btns: (f, ev) => ev.ack ? [] : [{ k: 'ack', t: '📻 ПОДТВЕРДИТЬ СМЕНУ ПОЛОСЫ' }],
+    act(f, ev, k) { if (k === 'ack' && !ev.ack) { ev.ack = f.time; f.msg('Подтверждаю смену полосы, разворачиваюсь на новый заход'); } },
+    steps(f, ev) {
+      return [
+        { t: 'Подтвердите смену полосы — кнопка', done: !!ev.ack },
+        { t: 'Выйдите на новую посадочную прямую (карта) и заходите по глиссаде', done: !!ev.moved },
+      ];
+    },
+    alert: (f, ev) => ev.moved ? null : 'СМЕНА ПОЛОСЫ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (!ev.moved && ((ev.ack && f.time - ev.ack > 4) || age > 100 || f.dist < 15000)) { if (f.changeRunway()) { ev.moved = true; f.resolveEvent(ev, ev.ack && ev.ack - ev.t0 < 45 ? 'ok' : 'late', 'Новая полоса, заход выполнен'); } }
+    },
+  },
+
   slick: {
     title: 'СКОЛЬЗКАЯ ПОЛОСА / АКВАПЛАНИРОВАНИЕ', short: 'Скользкая полоса, аквапланирование', phases: ['descent', 'final'], weight: 2, group: 'land', spawn: 'descent',
     desc: 'Полоса мокрая или с шугой: тормоза почти не держат, самолёт «плывёт». Касайтесь точно в зоне, не завышайте скорость, тормозите плавно и держите ось.',

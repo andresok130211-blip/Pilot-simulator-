@@ -6,7 +6,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
   const plane = PL_BY[planeId], from = AP_BY[fromId], to = AP_BY[toId];
   const km = distKm(from, to);
   const c0 = makeContract(plane, from, to, () => opts.load ?? 0.9);
-  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: Math.min(plane.fuelCap, c0.fuel + (opts.emerg || opts.force ? plane.burnHr * 0.25 : 0)), assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km), force: opts.force, emerg: opts.emerg || 0, rnd: opts.rnd });
+  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: Math.min(plane.fuelCap, c0.fuel + (opts.emerg || opts.force ? plane.burnHr * 0.25 : 0)), assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km), force: opts.force, emerg: opts.emerg || 0, rnd: opts.rnd, wx: opts.wx });
   const c = f.c;
   const dt = 1 / 60;
   let t = 0, phase = 'roll', log = [];
@@ -45,6 +45,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       c.stick = Math.max(-1, Math.min(1, (vsT - f.vs) * 0.35));
     }
     if (f.td) { if (!taxi || (f.v > 24 && !f.c.taxiAuto)) c.brake = true; c.thr = 0; c.atOn = false; c.stick = 0; }
+    if (f.td && opts.rev && f.v > 14 && f.td.onDest) { c.rev = f.v > 30; c.thr = c.rev ? 0.6 : 0; }
     if (opts.divert && f.airborneOnce && !f.diverted && !f.onGround && f.x > f.D * opts.divert) { const a = f.altList().find(o => o.ok); if (a) { f.divertTo(a.w); opts._div = a.label; } }
     // ---- реакции на ЧП ----
     const ev = f.ev && f.ev.id, R = opts.react !== false;
@@ -68,13 +69,14 @@ export function fly(planeId, fromId, toId, opts = {}) {
       if (ev === 'medical' && age > d0) f.evAction('doc');
       if (ev === 'unruly' && age > d0) { f.evAction('door'); f.evAction('alarm'); }
       if (ev === 'gps' && age > d0) f.evAction('vor');
+      if (ev === 'rwyChg' && age > d0) f.evAction('ack');
       if (ev === 'tcas' && age > 4 && !E.bot) { E.bot = 1; c.apOn = true; c.apAlt = Math.max(300, f.h + E.ra * 500); }
       if ((ev === 'wshear' || ev === 'goAr') && !f.ga && f.canGoAround()) f.goAround();
       if (ev === 'fog' && !f.ga && f.h < 75 && f.canGoAround()) f.goAround();
       if (E.needDiv && !f.diverted && age > d0 && !f.onGround) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); }
       if (ev === 'noRetract' && !f.diverted && age > d0) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); }
     }
-    if (f.onGround && f.v > 5 && f.eng.some(x => x < 1)) c.roll = Math.max(-1, Math.min(1, -f.yPos * 0.06 - f.psi * 3));
+    if (f.onGround && f.v > 5 && (f.eng.some(x => x < 1) || (f.wx && f.wx.spd > 1))) c.roll = Math.max(-1, Math.min(1, -f.yPos * 0.06 - f.psi * 3));
     else if (f.onGround && !f.td) c.roll = 0;
     if (opts._locked && f.apLock <= 0 && f.atLock <= 0 && !f.assist.auto && !f.td) { opts._locked = false; c.apOn = true; c.atOn = true; c.nav = true; }
     if (f.apLock > 0 || f.atLock > 0) opts._locked = true;

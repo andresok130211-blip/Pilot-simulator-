@@ -723,7 +723,10 @@ export function drawFlight(c, w, h, f, t, view) {
   drawGuide(f);
   if (fog > 0) { c.fillStyle = `rgba(235,240,248,${fog * 0.8})`; c.fillRect(0, 0, W, H); }
   { const fx = f.fx;
-    if (fx.fog > 0) { const hz = pal.haze; c.fillStyle = rgb(hz, 0.84 * fx.fog); c.fillRect(0, 0, W, H); }
+    const fgA = Math.max(fx.fog * 0.84, f.fogBase || 0);
+    if (fgA > 0.01) { const hz = pal.haze; c.fillStyle = rgb(hz, fgA); c.fillRect(0, 0, W, H); }
+    const rn = f.wxNow ? f.wxNow.rain : 0;
+    if (rn > 0.05 && f.h < 5500) { c.fillStyle = `rgba(20,30,50,${rn * 0.18})`; c.fillRect(0, 0, W, H); c.strokeStyle = `rgba(200,220,255,${0.25 + rn * 0.3})`; c.lineWidth = 1; c.beginPath(); const n = Math.round(30 + rn * 70), sp = (f.v || 0) / 60 + 1; for (let i = 0; i < n; i++) { const hx = (i * 97.13 + t * (60 + i % 7 * 9)) % W, hy = (i * 53.7 + t * (400 + i % 5 * 90) * sp) % H; c.moveTo(hx, hy); c.lineTo(hx - 2 - sp, hy + 10 + sp * 3); } c.stroke(); }
     if (fx.flash > 0.02) { c.fillStyle = `rgba(235,240,255,${fx.flash * 0.7})`; c.fillRect(0, 0, W, H); }
     if (fx.smoke > 0) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.15, CX, H * 0.5, H * 0.9); g.addColorStop(0, `rgba(60,55,50,${fx.smoke * 0.25})`); g.addColorStop(1, `rgba(25,22,20,${fx.smoke * 0.85})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
     if (fx.ice > 0.05) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.3, CX, H * 0.5, H * 0.85); g.addColorStop(0, 'rgba(220,240,255,0)'); g.addColorStop(1, `rgba(220,240,255,${fx.ice * 0.7})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
@@ -772,9 +775,9 @@ const FLN = ['0', '1', '2', '3', 'ПОЛН'];
 // ---------- мини-карта: куда лететь (вид «курс вверх») ----------
 const MAP_RANGES = [5000, 10000, 20000, 40000, 80000, 160000, 320000, 640000, 1300000];
 function drawMiniMap(f, view, t) {
-  const S = Math.min(120 * U, H * 0.6 - 12 - 4 - 88 * U);
+  const S = Math.min(120 * U, H * 0.6 - 12 - 4 - 100 * U);
   if (S < 70) { view.mapRect = null; return; }
-  const x0 = 10 + W * 0.02, y0 = 88 * U, R = S / 2, cx = x0 + R, cy = y0 + R;
+  const x0 = 10 + W * 0.02, y0 = 100 * U, R = S / 2, cx = x0 + R, cy = y0 + R;
   view.mapRect = { x: x0, y: y0, s: S };
   const aimDx = f.D - f.x, dist = Math.hypot(aimDx, f.yPos || 0);
   // масштаб: авто (цель всегда на карте) или выбранный нажатием
@@ -951,6 +954,13 @@ function drawHUD(f, t, view, th) {
   txt('Топливо ' + Math.round(f.fuel).toLocaleString('ru-RU') + ' кг', 14 * U + W * 0.045, 22 * U, f.warnings.has('lowfuel') ? RED : 'rgba(230,240,255,.9)', 11 * U, 'left', '600');
   txt('Масса ' + Math.round(f.mass / 100) / 10 + ' т', 14 * U + W * 0.045, 36 * U, 'rgba(230,240,255,.7)', 10 * U, 'left', '600');
   { const hd = Math.round(f.heading !== undefined ? f.heading : 0) % 360; txt('Курс ' + String(hd).padStart(3, '0') + '°', 14 * U + W * 0.045, 50 * U, CYAN, 11 * U, 'left', '700'); }
+  { const wx = f.wx, S = Math.hypot(f.wl.x, f.wl.z);
+    if (wx && wx.spd + wx.gust > 0.5) {
+      const ax = 14 * U + W * 0.045, ay = 92 * U, ang = Math.atan2(f.wl.z, f.wl.x) - (f.psi || 0);
+      // стрелка: куда дует ветер относительно носа
+      ctx.save(); ctx.translate(ax + 5 * U, ay - 4 * U); ctx.rotate(Math.PI / 2 + ang); ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.moveTo(0, -6 * U); ctx.lineTo(4 * U, 4 * U); ctx.lineTo(0, 2 * U); ctx.lineTo(-4 * U, 4 * U); ctx.closePath(); ctx.fill(); ctx.restore();
+      txt('Ветер ' + String(Math.round(wx.dir / 10) * 10 % 360).padStart(3, '0') + '°/' + Math.round(S), ax + 14 * U, ay, 'rgba(235,245,255,.9)', 10 * U, 'left', '700');
+    } }
   const modes = [['А/П', c.apOn], ['НАВ', c.apOn && c.nav], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
   let mx = W - 14 * U - W * 0.045;
   for (let i = modes.length - 1; i >= 0; i--) { txt(modes[i][0], mx, 22 * U, modes[i][1] ? GREEN : 'rgba(200,210,230,.4)', 11 * U, 'right', '800'); mx -= 36 * U; }
