@@ -177,7 +177,7 @@ export function makeWeather(rnd, level, brg) {
   if (cw > 9) { const k = 9 / cw; spd *= k; gust *= k; }
   const vis = () => (rnd() < cfg.bad ? 700 + rnd() * 3300 : 6000 + rnd() * 4000);
   const rn = () => (rnd() < cfg.rain ? 0.3 + rnd() * 0.7 : 0);
-  return { dir: ((brg || 0) + rel + 360) % 360, spd, gust, vis: vis(), visD: vis(), rain: rn(), rainD: rn(), temp: Math.round(-8 + rnd() * 30), qnh: Math.round(1000 + rnd() * 25), level: L };
+  return { dir: ((brg || 0) + rel + 360) % 360, spd, gust, vis: vis(), visD: vis(), rain: rn(), rainD: rn(), temp: Math.round(-12 + rnd() * 47), qnh: Math.round(1000 + rnd() * 25), level: L, jet: Math.round((rnd() < 0.5 ? -1 : 1) * (6 + rnd() * (L > 1 ? 18 : 10))) };
 }
 // текст метеосводки для брифинга; headwind > 0 — встречный, cross > 0 — ветер справа
 export function metarText(ap, wx, which) {

@@ -775,6 +775,30 @@ export const EVENT_DEFS = {
     },
   },
 
+  fuelLeak: {
+    title: 'УТЕЧКА ТОПЛИВА', short: 'Утечка топлива', phases: ['cruise'], weight: 2, group: 'eng', spawn: 'cruise',
+    desc: 'Из бака течёт топливо. Откройте ПЕРЕКАЧКУ, чтобы оба двигателя питались из оставшегося топлива, и садитесь как можно скорее — запасной аэродром может оказаться ближе.',
+    ok: f => f.distM >= 350000,
+    extra: f => f.h > 5000 && !f.xfeed,
+    start(f, ev) {
+      f.leakSide = f.rnd() < 0.5 ? 0 : 1; f.leak = f.p.burnHr / 3600 * 0.2; ev.xf = 0;
+      f.msg('УТЕЧКА ТОПЛИВА из ' + (f.leakSide ? 'правого' : 'левого') + ' бака! Откройте ПЕРЕКАЧКУ');
+    },
+    btns: (f, ev) => f.xfeed ? [] : [{ k: 'xfeed', t: '⛽ ПЕРЕКАЧКА' }],
+    act(f, ev, k) { if (k === 'xfeed' && !f.xfeed) { f.xfeed = true; ev.xf = f.time; f.msg('Перекачка открыта: оба двигателя питаются от обоих баков'); } },
+    steps(f, ev) {
+      const left = Math.round(f.fuel), need = Math.round(f.p.burnHr * f.dist / 220000 / 1 * 1.1 + f.leak * (f.dist / 200));
+      return [
+        { t: 'ПЕРЕКАЧКА — нажмите кнопку', done: f.xfeed },
+        { t: 'Топлива ' + left + ' кг, до посадки нужно ≈ ' + need + ' кг' + (left < need ? ' — ЗАПАСНОЙ!' : ''), done: !!f.td },
+      ];
+    },
+    alert: (f, ev) => 'УТЕЧКА ТОПЛИВА',
+    tick(f, ev, dt) {
+      if (f.td) { f.leak = 0; f.resolveEvent(ev, f.xfeed && ev.xf - ev.t0 < 70 ? 'ok' : 'late', 'Посадка с утечкой топлива'); }
+    },
+  },
+
   slick: {
     title: 'СКОЛЬЗКАЯ ПОЛОСА / АКВАПЛАНИРОВАНИЕ', short: 'Скользкая полоса, аквапланирование', phases: ['descent', 'final'], weight: 2, group: 'land', spawn: 'descent',
     desc: 'Полоса мокрая или с шугой: тормоза почти не держат, самолёт «плывёт». Касайтесь точно в зоне, не завышайте скорость, тормозите плавно и держите ось.',

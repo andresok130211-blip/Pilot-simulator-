@@ -399,6 +399,22 @@ function lightDot(x, y, z, col, size, minf = 8) {
   ctx.fillStyle = col; ctx.fillRect(SP.x - r / 2, SP.y - r / 2, r, r);
 }
 
+function drawTraffic(pal, f, t) {
+  for (const a of f.trf) {
+    const dx = a.x - camX; if (Math.abs(dx) > 20000 || Math.abs(a.y - camZ) > 20000) continue;
+    const gx = a.x, hy = a.h, z = a.y, L = 19, d = a.dir || 1;
+    const fus = ['#e9edf3', '#d7dde6', '#e9edf3', '#c9d0da', '#f2f5f9'];
+    boxAt(hy + 0.3, gx - L, gx + L, z - 2.1, z + 2.1, 3.6, fus);
+    boxAt(hy + 1.2, gx - L - 4, gx - L, z - 1.6, z + 1.6, 3, fus);      // нос
+    boxAt(hy + 1.1, gx - 4 + (-d * 2), gx + 4 + (-d * 2), z - 17, z + 17, 0.6, ['#aab2bf']); // крыло
+    boxAt(hy + 3.6, gx + L - 6, gx + L, z - 0.3, z + 0.3, 8, [a.col]);  // киль
+    boxAt(hy + 3.8, gx + L - 5, gx + L, z - 7, z + 7, 0.4, ['#aab2bf']); // стабилизатор
+    const blink = Math.sin(t * 9 + a.id) > 0.8;
+    lightDot(gx - 2, hy + 1.2, z - 17, '#ff3030', 1.8); lightDot(gx - 2, hy + 1.2, z + 17, '#30ff60', 1.8);
+    if (blink || pal.night > 0.3) lightDot(gx + L, hy + 11.5, z, blink ? '#ffffff' : '#ffb0b0', 2.6);
+    if (!a.ground) lightDot(gx - L - 4, hy + 1.2, z, '#fff6d0', 2.4);
+  }
+}
 function drawAirport(pal, x0, len, ap, isDest, f) {
   const far = 14000;
   if (x0 + len + 600 < camX - 200 || x0 - far > camX) return;
@@ -707,6 +723,7 @@ export function drawFlight(c, w, h, f, t, view) {
   drawAirport(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, f.fromAp, false, f);
   drawAirport(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, f.toAp, true, f);
   drawHaze(pal, hy);
+  drawTraffic(pal, f, t);
   drawLights(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, false);
   drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
   if (pal.night > 0.3) for (let i = 0; i < f.world.length; i++) {
@@ -811,6 +828,10 @@ function drawMiniMap(f, view, t) {
     const wxz = (f.fx.ws || f.fx.fog || (f.wx && (f.wx.rainD > 0.3 || f.wx.visD < 5000)));
     if (wxz) { const z = P(f.D - 6000, 0); const r = (f.fx.ws ? 9000 : 14000) * sc; ctx.fillStyle = f.fx.ws ? 'rgba(255,60,60,.28)' : f.fx.fog ? 'rgba(210,215,225,.35)' : 'rgba(80,130,255,.25)'; ctx.beginPath(); ctx.arc(z[0], z[1], Math.max(r, 5 * U), 0, 6.3); ctx.fill(); }
   }
+  // трафик
+  for (const a of f.trf) { const q = P(a.x, a.y); if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp) continue; const near = a.kind === 'cruise' && Math.hypot(a.x - f.x, a.y - f.yPos) < 15000 && Math.abs(a.h - f.h) < 900; ctx.fillStyle = near ? '#ffb347' : '#8ad8ff'; ctx.beginPath(); ctx.moveTo(q[0], q[1] - 4 * U); ctx.lineTo(q[0] + 3 * U, q[1] + 3 * U); ctx.lineTo(q[0] - 3 * U, q[1] + 3 * U); ctx.closePath(); ctx.fill(); if (a.kind === 'cruise') txt((a.h >= f.h ? '+' : '−') + Math.round(Math.abs(a.h - f.h) / 10) * 10, q[0] + 5 * U, q[1] + 3 * U, '#8ad8ff', 7 * U, 'left', '600'); }
+  // схема прибытия (STAR)
+  if (f.starOff && !f.diverted && f.dist > 30000) { ctx.strokeStyle = 'rgba(190,150,255,.8)'; ctx.lineWidth = 1.4; ctx.setLineDash([2 * U, 2 * U]); ctx.beginPath(); let st0 = false; for (let d = Math.min(f.dist, 110000); d >= 30000; d -= 5000) { const q = P(f.D - d, f.starTgt(d)); if (!st0) { ctx.moveTo(q[0], q[1]); st0 = true; } else ctx.lineTo(q[0], q[1]); } ctx.stroke(); ctx.setLineDash([]); const iq = P(f.D - 30000, 0); txt('IAF', iq[0] - 6 * U, iq[1] - 4 * U, 'rgba(190,150,255,.95)', 7 * U, 'right', '700'); }
   // прочие аэродромы
   const showAlt = !!f.ev || f.diverted;
   for (let i = 0; i < f.world.length; i++) {
@@ -828,7 +849,7 @@ function drawMiniMap(f, view, t) {
   { const lx = Math.max(cx - rp + 8 * U, Math.min(cx + rp - 24 * U, dq[0] + 5 * U)), ly = Math.max(cy - rp + 22 * U, Math.min(cy + rp - 6 * U, dq[1] - 4 * U)); txt(f.toAp.id, lx, ly, '#fff', 8.5 * U, 'left', '800'); }
   // направление на цель
   const lim = 0.35;
-  const tgtA = f.dist > 30000 ? Math.atan2(-(f.yPos || 0), Math.max(aimDx, 1)) : Math.max(-lim, Math.min(lim, -(f.yPos || 0) * 0.0015));
+  const tgtA = f.dist > 30000 ? Math.atan2(-((f.yPos || 0) - f.starTgt(f.dist)), Math.max(aimDx, 1)) : Math.max(-lim, Math.min(lim, -(f.yPos || 0) * 0.0015));
   const dTurn = ((tgtA - ps + Math.PI * 3) % (2 * Math.PI)) - Math.PI;
   if (!f.onGround) {
     ctx.strokeStyle = 'rgba(80,220,255,.9)'; ctx.lineWidth = 1.4; ctx.setLineDash([3 * U, 3 * U]);

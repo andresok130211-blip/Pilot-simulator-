@@ -1,6 +1,6 @@
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
 import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } from './data.js';
-import { Flight, settle, FLAP_NAMES } from './sim.js';
+import { Flight, settle, loadInfo, FLAP_NAMES } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { drawFlight, drawMap } from './render.js';
 
@@ -244,20 +244,39 @@ function startFlight(c, drill) {
   const from = apLoc(), to = AP_BY[c.to];
   const brg = bearing(from, to);
   const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg);
-  if (drill || !wx.level) return beginFlight(c, drill, wx);
-  const wc = windComp(wx, brg), hw = Math.round(wc.head), cwv = Math.round(Math.abs(wc.cross));
-  showModal(`<h2>Брифинг перед вылетом</h2>
-    <div class="sub"><b>Вылет:</b> ${metarText(from, wx, 'dep')}<br><b>Назначение:</b> ${metarText(to, wx, 'dst')}<br><br>
-    Для полосы по маршруту: ${hw >= 0 ? 'встречный' : 'попутный'} ветер ${Math.abs(hw)} м/с, боковой ${cwv} м/с${wc.cross > 0.5 ? ' справа' : wc.cross < -0.5 ? ' слева' : ''}.
-    ${wx.vis < 1500 || wx.visD < 1500 ? '<br>⚠ Низкая видимость: заходите по глиссаде (кнопка ПОСАДКА).' : ''}${wx.spd + wx.gust > 12 ? '<br>⚠ Сильный ветер и порывы: держите курс на заходе, возможен снос.' : ''}</div>
-    <div class="mrow"><button class="btn g" id="mNo">Отмена</button><button class="btn go" id="mGo">Лететь ✈</button></div>`);
-  $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx);
+  if (drill) return beginFlight(c, drill, wx, null);
+  const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
+  const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false] };
+  const CKL = ['Двери закрыты, трап убран', 'Топливо и загрузка проверены', 'Закрылки 2 (взлётная конфигурация)', 'Штурвал и приборы проверены', 'Аварийное оборудование, ремни'];
+  const draw = () => {
+    const base = Math.round(c.fuel / (1 + 0.8 * (wx.jet || 0) / 230)), fo = [base, base + p.burnHr * 0.5, base + p.burnHr * 1.0].map(v => Math.min(p.fuelCap, Math.round(v)));
+    const cgv = pf.cg === 'fwd' ? 0.19 : pf.cg === 'aft' ? 0.31 : cgAuto, fuel = fo[pf.fuel], li = loadInfo(p, c, fuel, cgv);
+    const flexOk = from.rwy >= p.minRwy * 1.6 && from.elev < 1200;
+    if (!flexOk) pf.flex = false;
+    const wc = windComp(wx, brg), hw = Math.round(wc.head), cwv = Math.round(Math.abs(wc.cross));
+    const ready = pf.ck.every(Boolean) && !li.over;
+    const opt = (name, k, txt) => `<button class="chip pf" data-k="${name}" data-v="${k}" style="color:#fff;border:${(name === 'fuel' ? pf.fuel === k : name === 'cg' ? pf.cg === k : pf.flex === k) ? '2px solid #7dffb0' : '1px solid rgba(255,255,255,.3)'}">${txt}</button>`;
+    showModal(`<h2>Предполётная подготовка</h2>
+    <div class="sub">${wx.level ? `<b>Вылет:</b> ${metarText(from, wx, 'dep')}<br><b>Назначение:</b> ${metarText(to, wx, 'dst')}<br>Ветер по маршруту: ${hw >= 0 ? 'встречный' : 'попутный'} ${Math.abs(hw)} м/с, боковой ${cwv} м/с${wc.cross > 0.5 ? ' справа' : wc.cross < -0.5 ? ' слева' : ''}.${wx.vis < 1500 || wx.visD < 1500 ? '<br>⚠ Низкая видимость: заходите по глиссаде.' : ''}<br><br>` : ''}
+    ${wx.level ? `Ветер на эшелоне: ${wx.jet >= 0 ? 'попутный' : 'встречный'} ${Math.abs(wx.jet)} м/с (струйное течение). Температура ${wx.temp}°${Math.abs(p.mtow) && wx.temp > 28 ? ' — жарко, взлёт длиннее' : ''}.<br>` : ''}<b>Топливо:</b> ${fuel} кг<br>${opt('fuel', 0, 'Минимум')}${opt('fuel', 1, '+30 мин (станд.)')}${opt('fuel', 2, '+1 ч (запасной)')}<br>
+    <b>Центровка:</b> ${Math.round(cgv * 100)}% САХ ${cgv < 0.2 ? '(передняя — тугой подъём носа)' : cgv > 0.3 ? '(задняя — экономичнее, чувствительный тангаж)' : '(норма)'}<br>${opt('cg', 'fwd', 'Багаж вперёд')}${opt('cg', 'auto', 'Авто')}${opt('cg', 'aft', 'Багаж назад')}<br>
+    <b>Взлётная масса:</b> ${Math.round(li.mass / 100) / 10} т из ${Math.round(p.mtow / 100) / 10} т${li.over ? ' <span style="color:#ff8a7a">⚠ ПЕРЕГРУЗ — уменьшите топливо</span>' : ''}<br>
+    <b>V1 / VR / V2:</b> ${li.v1} / ${li.vr} / ${li.v2} км/ч (закрылки 2)<br>
+    <b>Взлётный режим:</b> ${opt('flex', false, 'TOGA')}${flexOk ? opt('flex', true, 'FLEX (−14% тяги, меньше износ)') : '<span class="d"> FLEX недоступен (короткая/высокогорная полоса)</span>'}<br><br>
+    <b>Чек-лист:</b> <button class="chip" id="pfAll" style="color:#fff">отметить всё</button><br>${CKL.map((t, i) => `<div class="pfc" data-i="${i}" style="cursor:pointer;padding:2px 0">${pf.ck[i] ? '☑' : '☐'} ${t}</div>`).join('')}</div>
+    <div class="mrow"><button class="btn g" id="mNo">Отмена</button><button class="btn go" id="mGo" ${ready ? '' : 'disabled'}>К запуску ✈</button></div>`);
+    modalBox.querySelectorAll('.pf').forEach(b => b.onclick = () => { const k = b.dataset.k, v = b.dataset.v; if (k === 'fuel') pf.fuel = +v; else if (k === 'cg') pf.cg = v; else pf.flex = v === 'true'; draw(); });
+    modalBox.querySelectorAll('.pfc').forEach(b => b.onclick = () => { pf.ck[+b.dataset.i] = !pf.ck[+b.dataset.i]; draw(); });
+    $('pfAll').onclick = () => { pf.ck = pf.ck.map(() => true); draw(); };
+    $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx, { fuel, cg: cgv, flex: pf.flex });
+  };
+  draw();
 }
-function beginFlight(c, drill, wx) {
+function beginFlight(c, drill, wx, pf) {
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+  flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: pf ? pf.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)), cold: !!pf && save.taxiOps, flex: !!(pf && pf.flex), cg: pf ? pf.cg : 0.25,
     taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && wearOf(p.id) >= 60 ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
@@ -349,6 +368,7 @@ function act(a) {
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'map': view.map = view.map === false; break;
+    case 'start': if (f.cold) f.startReq = true; break;
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
@@ -358,13 +378,14 @@ function act(a) {
     case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
   }
 }
-ui.querySelectorAll('#btns button, #ebtns button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
+ui.querySelectorAll('#btns button, #ebtns button, #bStart').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); act(b.dataset.act); }));
 $('mapzone').addEventListener('pointerdown', e => { e.preventDefault(); if (!view) return; view.mapZoom = ((view.mapZoom || 0) + 1) % 10; if (flight) flight.msg(view.mapZoom ? 'Карта: масштаб зафиксирован' : 'Карта: масштаб авто'); });
 $('eact').addEventListener('pointerdown', e => { const b = e.target.closest('button'); if (!b || !flight) return; e.preventDefault(); flight.evAction(b.dataset.k); });
 
 function syncButtons() {
   const f = flight, c = f.c;
   const on = (id, v) => $(id).classList.toggle('on', !!v);
+  $('bStart').style.display = f.cold && !f.startReq ? 'block' : 'none';
   on('bGear', c.gear); $('bGear').textContent = 'ШАССИ ' + (f.gearPos > 0.98 ? '▼' : f.gearPos < 0.02 ? '▲' : '…');
   $('bFlD').textContent = 'ЗАКР − (' + FLAP_NAMES[c.flaps] + ')'; $('bFlU').textContent = 'ЗАКР +';
   thrEls.forEach((el, i) => { el.querySelector('.lb').textContent = c.rev ? 'РЕВ' + (i + 1) : 'ДВ' + (i + 1); });
@@ -397,7 +418,7 @@ function syncButtons() {
 addEventListener('keydown', e => {
   if (mode !== 'flight' || !flight) return;
   keys[e.code] = true;
-  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi', KeyM: 'map', KeyU: 'rev', KeyO: 'abrk' }[e.code];
+  const m = { KeyG: 'gear', KeyF: 'fl+', KeyV: 'fl-', KeyB: 'brake', KeyA: 'ap', KeyT: 'warp', KeyL: 'appr', BracketRight: 'altu', BracketLeft: 'altd', KeyN: 'at', KeyC: 'view', KeyR: 'taxi', KeyM: 'map', KeyU: 'rev', KeyI: 'start', KeyO: 'abrk' }[e.code];
   if (m && !e.repeat) act(m);
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });
@@ -453,7 +474,7 @@ function showResult() {
     if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
     if (r.kind !== 'abort') {
       const id = f.p.id;
-      save.wear[id] = Math.min(100, (save.wear[id] || 0) + r.km / 60 + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
+      save.wear[id] = Math.min(100, (save.wear[id] || 0) + (r.km / 60) * (f.flex ? 0.75 : 1) + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
       const dr = r.kind === 'ok' ? (r.stars - 3) * 2 + (r.sched > 0 ? 1 : r.sched < 0 ? -2 : 0) : r.kind === 'crash' ? -15 : r.kind === 'overrun' ? -6 : -4;
       r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
       if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }

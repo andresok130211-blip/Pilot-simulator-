@@ -17,7 +17,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
   let wantWarp = opts.warp ?? 32;
   while (!f.done && !(opts.stopAtTd && f.td && f.td.onDest && f.v < 24) && t < 14 * 3600 && guard++ < 5e7) {
     if (opts.y0 && f.h > 300 && !opts._y) { f.yPos = opts.y0; opts._y = 1; }
-    if (taxi && !started && f.lined) { c.brake = false; c.thr = 1; started = true; }
+    if (taxi && !started && f.lined && f.clrTo) { c.brake = false; c.thr = 1; started = true; }
     // управление
     if (f.onGround && !f.td) {
       if (f.ias >= f.vr) c.stick = Math.max(0, Math.min(1, (12 * DEG - f.theta) * 5));
@@ -58,6 +58,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       const age = f.time - f.ev.t0, d0 = opts.delay ?? 6, E = f.ev;
       if (ev === 'rto' && !f.airborneOnce && f.ias < f.v1) { c.thr = c.t1 = c.t2 = 0; c.split = false; c.brake = true; }
       if (ev === 'surge' && age > d0) { if (!c.split) { c.t1 = c.t2 = c.thr; c.split = true; } if (E.side) c.t2 = 0.2; else c.t1 = 0.2; }
+      if (ev === 'fuelLeak' && !f.xfeed && age > d0) f.evAction('xfeed');
       if (ev === 'gearStuck' && !f.altGear && age > d0) f.altGearExt();
       if (ev === 'gen' && age > d0) f.evAction('apu');
       if (ev === 'adc' && age > d0) f.evAction('stby');
