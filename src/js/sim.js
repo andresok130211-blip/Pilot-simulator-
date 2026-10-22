@@ -85,7 +85,7 @@ export class Flight {
     this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
-    this.warnings = new Set(); this.incidents = []; this.msgs = [];
+    this.warnings = new Set(); this.incidents = []; this.msgs = []; this.track = []; this.marks = []; this._rec = -9; this.radio = []; this.atcDone = {}; this.copilot = !!o.copilot; this.cs = (o.callsign || ('RA' + (100 + Math.floor((o.km || 500) * 7) % 900)));
     this.stats = { maxG: 1, stallT: 0, overT: 0, gpws: 0, tail: false };
     this.autoDescDone = false; this.autoEngaged = false;
     this.cfgTimer = 0; this.flapMsgT = 0; this.maxV = 0;
@@ -181,6 +181,25 @@ export class Flight {
   computeSpeeds() {
     const vs = stallIAS(this.mass, 2, this.p.S);
     this.vr = vs * 1.15; this.v1 = vs * 1.1; this.v2 = vs * 1.22;
+  }
+  atc(key, text) {
+    if (this.atcDone[key]) return; this.atcDone[key] = 1;
+    this.msgs.push({ t: this.time, text: '📻 ' + text }); if (this.msgs.length > 6) this.msgs.shift();
+    this.radio.push(text); if (this.radio.length > 4) this.radio.shift();
+  }
+  atcTick() {
+    const w = this.wx || { dir: 0, spd: 0 }, c = this.c, dist = this.dist, cs = this.cs;
+    const wind = Math.round(w.dir / 10) * 10 + '° ' + Math.round(w.spd) + ' м/с';
+    const rw = String(Math.round((((this.brg || 0) + 360) % 360) / 10) || 36).padStart(2, '0');
+    if (!this.airborneOnce && this.onGround && this.lined && !this.td) this.atc('to', cs + ', ' + this.fromAp.id + ' вышка, ветер ' + wind + ', взлёт разрешён.');
+    if (this.airborneOnce && this.h > 300 && dist > 60000) this.atc('dep', cs + ', набор разрешён, следуйте по маршруту.');
+    if (this.airborneOnce && this.h > 3000 && dist > 150000 && this.x > 60000) this.atc('trf', cs + ', по трассе встречный борт, эшелон ниже, будьте внимательны.');
+    if (this.airborneOnce && dist < 120000 && dist > 60000 && !this.diverted) this.atc('desc', cs + ', ' + this.toAp.id + ' подход, снижайтесь, ожидайте заход.');
+    if (this.airborneOnce && dist < 45000 && dist > 5000 && !this.diverted) this.atc('app', cs + ', выход на посадочную прямую, ветер ' + wind + ', видимость ' + Math.round(((this.wx && this.wx.visD) || 10000) / 100) / 10 + ' км.');
+    if (this.airborneOnce && dist < 9000 && dist > 0 && this.h < 900 && !this.onGround && !this.diverted && !this.rwyBlocked) this.atc('ldg', cs + ', полоса свободна, посадку разрешаю.');
+    if (this.copilot) { if (this.onGround && !this.airborneOnce && this.ias >= this.vr - 1 && this.ias > 40) this.atc('co1', 'Второй пилот: Ротейт.'); if (this.airborneOnce && !this.onGround && this.h > 5 && this.vs > 2 && this.h < 80) this.atc('co2', 'Второй пилот: Положительный набор.'); if (this.airborneOnce && !this.onGround && this.dist < 8000 && this.h < 130 && this.h > 40 && this.vs < 0) this.atc('co3', 'Второй пилот: Сто футов.'); }
+    if (this.td && this.v < 60) this.atc('vac', cs + ', освободите полосу, на стоянку следуйте за машиной.');
+    if (this.diverted) this.atc('div', cs + ', следуйте на запасной, заход разрешён.');
   }
   msg(t) { this.msgs.push({ t: this.time, text: t }); if (this.msgs.length > 6) this.msgs.shift(); }
   incident(key, text, weight, cd = 20) {
@@ -339,6 +358,8 @@ export class Flight {
     if (this.done) return;
     this.evStep(dt);
     if (this.done) return;
+    this.atcTick();
+    if (this.time - this._rec >= 3) { this._rec = this.time; this.track.push([Math.round(this.x), Math.round(this.yPos || 0), Math.round(this.h), Math.round(this.ias * 3.6), +this.vs.toFixed(1)]); if (this.track.length > 3000) this.track.shift(); }
 
     // актуаторы
     this.gearPos += clamp((c.gear ? 1 : 0) - this.gearPos, -dt / 7, dt / (this.altGear && this.gearPos < 0.98 ? 22 : 7));
@@ -624,7 +645,7 @@ export class Flight {
 
   touchdown() {
     const sink = -this.v * Math.sin(this.gamma);
-    const tdx = this.x;
+    const tdx = this.x; this.marks.push({ i: this.track.length, text: 'Касание' });
     this.h = 0;
     const lat = Math.abs(this.yPos);
     const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e && lat <= 32;
@@ -725,7 +746,7 @@ export class Flight {
   startEvent(id, o) {
     const d = EVENT_DEFS[id];
     const ev = { id, t0: this.time, okT: 0 };
-    this.ev = ev;
+    this.ev = ev; this.marks.push({ i: this.track.length, text: d.short });
     d.start(this, ev, o);
     return ev;
   }
@@ -947,7 +968,8 @@ export class Flight {
 }
 
 // ---------- расчёт итогов рейса ----------
-export function settle(f, contract) {
+export function settle(f, contract, career) {
+  career = career || {};
   const p = f.p, km = f.distM / 1000;
   const fuelUsed = f.fuel0 - f.fuel;
   const res = f.result || { kind: 'abort', reason: '' };
@@ -972,7 +994,13 @@ export function settle(f, contract) {
     const evOk = f.evLog.filter(e => e.outcome === 'ok').length, evLate = f.evLog.filter(e => e.outcome === 'late').length;
     const evB = Math.min(0.35, evOk * 0.12 + evLate * 0.04);
     out.evBonus = evB;
-    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB) * (f.diverted ? 0.4 : 1));
+    const expMin = km / 12.5 + (f.taxiOps ? 30 : 12), tm = f.simTime / 60;
+    const sched = tm <= expMin ? 0.06 : tm > expMin * 1.4 ? -0.08 : 0;
+    out.sched = sched; out.tm = tm; out.expMin = expMin;
+    const repM = 0.9 + (career.rep == null ? 50 : career.rep) / 500;
+    out.repM = repM;
+    revenue = Math.round(contract.revenue * mq * (1 - pen * (career.copilot ? 0.75 : 1)) * (1 + bonus + evB + sched) * repM * (f.diverted ? 0.4 : 1));
+    if (career.copilot) out.coFee = Math.round(revenue * 0.06);
     out.diverted = !!f.diverted;
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
   } else if (res.kind === 'crash') {
@@ -989,6 +1017,6 @@ export function settle(f, contract) {
   out.revenue = revenue; out.fuelCost = fuelCost; out.ops = ops; out.fee = fee; out.repair = repair;
   if (res.kind === 'abort') { out.fuelCost = 0; out.ops = 0; out.fee = 0; out.net = evOkN ? Math.round(contract.revenue * 0.08) : 0; out.evPrem = out.net; }
   else if (res.kind === 'crash') { out.ops = 0; out.fee = 0; out.fuelCost = 0; out.net = -repair; }
-  else out.net = revenue - fuelCost - ops - fee - repair;
+  else out.net = revenue - fuelCost - ops - fee - repair - (out.coFee || 0);
   return out;
 }

@@ -804,6 +804,13 @@ function drawMiniMap(f, view, t) {
     ctx.fillStyle = 'rgba(125,255,176,.9)';
     for (const k of [5000, 10000, 20000]) { const q = P(f.D - k, 0); ctx.beginPath(); ctx.arc(q[0], q[1], 1.8 * U, 0, 6.3); ctx.fill(); }
   }
+  // путевые точки (каждые 50 км) и зона захода
+  { const step = 50000; for (let k = Math.ceil(f.x / step); k * step < f.D - 25000; k++) { const q = P(k * step, 0); if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp) continue; ctx.strokeStyle = 'rgba(150,190,255,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(q[0], q[1] - 3 * U); ctx.lineTo(q[0] + 3 * U, q[1]); ctx.lineTo(q[0], q[1] + 3 * U); ctx.lineTo(q[0] - 3 * U, q[1]); ctx.closePath(); ctx.stroke(); }
+    const iaf = P(f.D - 25000, 0); ctx.strokeStyle = 'rgba(125,255,176,.9)'; ctx.lineWidth = 1.4; ctx.strokeRect(iaf[0] - 3 * U, iaf[1] - 3 * U, 6 * U, 6 * U); txt('FAF', iaf[0] + 6 * U, iaf[1] + 3 * U, 'rgba(125,255,176,.9)', 7 * U, 'left', '700');
+    // зоны плохой погоды у цели: гроза / туман / дождь
+    const wxz = (f.fx.ws || f.fx.fog || (f.wx && (f.wx.rainD > 0.3 || f.wx.visD < 5000)));
+    if (wxz) { const z = P(f.D - 6000, 0); const r = (f.fx.ws ? 9000 : 14000) * sc; ctx.fillStyle = f.fx.ws ? 'rgba(255,60,60,.28)' : f.fx.fog ? 'rgba(210,215,225,.35)' : 'rgba(80,130,255,.25)'; ctx.beginPath(); ctx.arc(z[0], z[1], Math.max(r, 5 * U), 0, 6.3); ctx.fill(); }
+  }
   // прочие аэродромы
   const showAlt = !!f.ev || f.diverted;
   for (let i = 0; i < f.world.length; i++) {
@@ -827,6 +834,9 @@ function drawMiniMap(f, view, t) {
     ctx.strokeStyle = 'rgba(80,220,255,.9)'; ctx.lineWidth = 1.4; ctx.setLineDash([3 * U, 3 * U]);
     ctx.beginPath(); ctx.moveTo(cx, cy + oy); ctx.lineTo(cx + Math.sin(dTurn) * rp * 1.4, cy + oy - Math.cos(dTurn) * rp * 1.4); ctx.stroke(); ctx.setLineDash([]);
   }
+  // стрелка на ближайший запасной аэродром
+  if (showAlt) { let bi = -1, bd = 1e18; for (let i = 0; i < f.world.length; i++) { const w = f.world[i]; if (w.id === f.toAp.id) continue; const d = Math.hypot(apLocal[2 * i] - f.x, apLocal[2 * i + 1] - (f.yPos || 0)); if (d < bd) { bd = d; bi = i; } }
+    if (bi >= 0) { const dx = apLocal[2 * bi] - f.x, dy = apLocal[2 * bi + 1] - (f.yPos || 0); const fw = dx * cp + dy * sp, rt = -dx * sp + dy * cp; const a = Math.atan2(rt, fw); ctx.strokeStyle = 'rgba(255,224,138,.95)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(cx + Math.sin(a) * rp * 0.35, cy + oy - Math.cos(a) * rp * 0.35); ctx.lineTo(cx + Math.sin(a) * rp * 0.8, cy + oy - Math.cos(a) * rp * 0.8); ctx.stroke(); txt(f.world[bi].id + ' ' + Math.round(bd / 1000) + 'км', cx + Math.sin(a) * rp * 0.8, cy + oy - Math.cos(a) * rp * 0.8, 'rgba(255,224,138,.95)', 7.5 * U, 'center', '700'); } }
   ctx.restore();
   // обод и север
   ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.3); ctx.stroke();

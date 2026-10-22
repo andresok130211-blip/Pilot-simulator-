@@ -1397,7 +1397,7 @@ class Flight {
     this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
-    this.warnings = new Set(); this.incidents = []; this.msgs = [];
+    this.warnings = new Set(); this.incidents = []; this.msgs = []; this.track = []; this.marks = []; this._rec = -9; this.radio = []; this.atcDone = {}; this.copilot = !!o.copilot; this.cs = (o.callsign || ('RA' + (100 + Math.floor((o.km || 500) * 7) % 900)));
     this.stats = { maxG: 1, stallT: 0, overT: 0, gpws: 0, tail: false };
     this.autoDescDone = false; this.autoEngaged = false;
     this.cfgTimer = 0; this.flapMsgT = 0; this.maxV = 0;
@@ -1493,6 +1493,25 @@ class Flight {
   computeSpeeds() {
     const vs = stallIAS(this.mass, 2, this.p.S);
     this.vr = vs * 1.15; this.v1 = vs * 1.1; this.v2 = vs * 1.22;
+  }
+  atc(key, text) {
+    if (this.atcDone[key]) return; this.atcDone[key] = 1;
+    this.msgs.push({ t: this.time, text: '📻 ' + text }); if (this.msgs.length > 6) this.msgs.shift();
+    this.radio.push(text); if (this.radio.length > 4) this.radio.shift();
+  }
+  atcTick() {
+    const w = this.wx || { dir: 0, spd: 0 }, c = this.c, dist = this.dist, cs = this.cs;
+    const wind = Math.round(w.dir / 10) * 10 + '° ' + Math.round(w.spd) + ' м/с';
+    const rw = String(Math.round((((this.brg || 0) + 360) % 360) / 10) || 36).padStart(2, '0');
+    if (!this.airborneOnce && this.onGround && this.lined && !this.td) this.atc('to', cs + ', ' + this.fromAp.id + ' вышка, ветер ' + wind + ', взлёт разрешён.');
+    if (this.airborneOnce && this.h > 300 && dist > 60000) this.atc('dep', cs + ', набор разрешён, следуйте по маршруту.');
+    if (this.airborneOnce && this.h > 3000 && dist > 150000 && this.x > 60000) this.atc('trf', cs + ', по трассе встречный борт, эшелон ниже, будьте внимательны.');
+    if (this.airborneOnce && dist < 120000 && dist > 60000 && !this.diverted) this.atc('desc', cs + ', ' + this.toAp.id + ' подход, снижайтесь, ожидайте заход.');
+    if (this.airborneOnce && dist < 45000 && dist > 5000 && !this.diverted) this.atc('app', cs + ', выход на посадочную прямую, ветер ' + wind + ', видимость ' + Math.round(((this.wx && this.wx.visD) || 10000) / 100) / 10 + ' км.');
+    if (this.airborneOnce && dist < 9000 && dist > 0 && this.h < 900 && !this.onGround && !this.diverted && !this.rwyBlocked) this.atc('ldg', cs + ', полоса свободна, посадку разрешаю.');
+    if (this.copilot) { if (this.onGround && !this.airborneOnce && this.ias >= this.vr - 1 && this.ias > 40) this.atc('co1', 'Второй пилот: Ротейт.'); if (this.airborneOnce && !this.onGround && this.h > 5 && this.vs > 2 && this.h < 80) this.atc('co2', 'Второй пилот: Положительный набор.'); if (this.airborneOnce && !this.onGround && this.dist < 8000 && this.h < 130 && this.h > 40 && this.vs < 0) this.atc('co3', 'Второй пилот: Сто футов.'); }
+    if (this.td && this.v < 60) this.atc('vac', cs + ', освободите полосу, на стоянку следуйте за машиной.');
+    if (this.diverted) this.atc('div', cs + ', следуйте на запасной, заход разрешён.');
   }
   msg(t) { this.msgs.push({ t: this.time, text: t }); if (this.msgs.length > 6) this.msgs.shift(); }
   incident(key, text, weight, cd = 20) {
@@ -1651,6 +1670,8 @@ class Flight {
     if (this.done) return;
     this.evStep(dt);
     if (this.done) return;
+    this.atcTick();
+    if (this.time - this._rec >= 3) { this._rec = this.time; this.track.push([Math.round(this.x), Math.round(this.yPos || 0), Math.round(this.h), Math.round(this.ias * 3.6), +this.vs.toFixed(1)]); if (this.track.length > 3000) this.track.shift(); }
 
     // актуаторы
     this.gearPos += clamp((c.gear ? 1 : 0) - this.gearPos, -dt / 7, dt / (this.altGear && this.gearPos < 0.98 ? 22 : 7));
@@ -1936,7 +1957,7 @@ class Flight {
 
   touchdown() {
     const sink = -this.v * Math.sin(this.gamma);
-    const tdx = this.x;
+    const tdx = this.x; this.marks.push({ i: this.track.length, text: 'Касание' });
     this.h = 0;
     const lat = Math.abs(this.yPos);
     const onDest = tdx >= this.rwy1.s - 10 && tdx <= this.rwy1.e && lat <= 32;
@@ -2037,7 +2058,7 @@ class Flight {
   startEvent(id, o) {
     const d = EVENT_DEFS[id];
     const ev = { id, t0: this.time, okT: 0 };
-    this.ev = ev;
+    this.ev = ev; this.marks.push({ i: this.track.length, text: d.short });
     d.start(this, ev, o);
     return ev;
   }
@@ -2259,7 +2280,8 @@ class Flight {
 }
 
 // ---------- расчёт итогов рейса ----------
-function settle(f, contract) {
+function settle(f, contract, career) {
+  career = career || {};
   const p = f.p, km = f.distM / 1000;
   const fuelUsed = f.fuel0 - f.fuel;
   const res = f.result || { kind: 'abort', reason: '' };
@@ -2284,7 +2306,13 @@ function settle(f, contract) {
     const evOk = f.evLog.filter(e => e.outcome === 'ok').length, evLate = f.evLog.filter(e => e.outcome === 'late').length;
     const evB = Math.min(0.35, evOk * 0.12 + evLate * 0.04);
     out.evBonus = evB;
-    revenue = Math.round(contract.revenue * mq * (1 - pen) * (1 + bonus + evB) * (f.diverted ? 0.4 : 1));
+    const expMin = km / 12.5 + (f.taxiOps ? 30 : 12), tm = f.simTime / 60;
+    const sched = tm <= expMin ? 0.06 : tm > expMin * 1.4 ? -0.08 : 0;
+    out.sched = sched; out.tm = tm; out.expMin = expMin;
+    const repM = 0.9 + (career.rep == null ? 50 : career.rep) / 500;
+    out.repM = repM;
+    revenue = Math.round(contract.revenue * mq * (1 - pen * (career.copilot ? 0.75 : 1)) * (1 + bonus + evB + sched) * repM * (f.diverted ? 0.4 : 1));
+    if (career.copilot) out.coFee = Math.round(revenue * 0.06);
     out.diverted = !!f.diverted;
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
   } else if (res.kind === 'crash') {
@@ -2301,7 +2329,7 @@ function settle(f, contract) {
   out.revenue = revenue; out.fuelCost = fuelCost; out.ops = ops; out.fee = fee; out.repair = repair;
   if (res.kind === 'abort') { out.fuelCost = 0; out.ops = 0; out.fee = 0; out.net = evOkN ? Math.round(contract.revenue * 0.08) : 0; out.evPrem = out.net; }
   else if (res.kind === 'crash') { out.ops = 0; out.fee = 0; out.fuelCost = 0; out.net = -repair; }
-  else out.net = revenue - fuelCost - ops - fee - repair;
+  else out.net = revenue - fuelCost - ops - fee - repair - (out.coFee || 0);
   return out;
 }
 
@@ -3114,6 +3142,13 @@ function drawMiniMap(f, view, t) {
     ctx.fillStyle = 'rgba(125,255,176,.9)';
     for (const k of [5000, 10000, 20000]) { const q = P(f.D - k, 0); ctx.beginPath(); ctx.arc(q[0], q[1], 1.8 * U, 0, 6.3); ctx.fill(); }
   }
+  // путевые точки (каждые 50 км) и зона захода
+  { const step = 50000; for (let k = Math.ceil(f.x / step); k * step < f.D - 25000; k++) { const q = P(k * step, 0); if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp) continue; ctx.strokeStyle = 'rgba(150,190,255,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(q[0], q[1] - 3 * U); ctx.lineTo(q[0] + 3 * U, q[1]); ctx.lineTo(q[0], q[1] + 3 * U); ctx.lineTo(q[0] - 3 * U, q[1]); ctx.closePath(); ctx.stroke(); }
+    const iaf = P(f.D - 25000, 0); ctx.strokeStyle = 'rgba(125,255,176,.9)'; ctx.lineWidth = 1.4; ctx.strokeRect(iaf[0] - 3 * U, iaf[1] - 3 * U, 6 * U, 6 * U); txt('FAF', iaf[0] + 6 * U, iaf[1] + 3 * U, 'rgba(125,255,176,.9)', 7 * U, 'left', '700');
+    // зоны плохой погоды у цели: гроза / туман / дождь
+    const wxz = (f.fx.ws || f.fx.fog || (f.wx && (f.wx.rainD > 0.3 || f.wx.visD < 5000)));
+    if (wxz) { const z = P(f.D - 6000, 0); const r = (f.fx.ws ? 9000 : 14000) * sc; ctx.fillStyle = f.fx.ws ? 'rgba(255,60,60,.28)' : f.fx.fog ? 'rgba(210,215,225,.35)' : 'rgba(80,130,255,.25)'; ctx.beginPath(); ctx.arc(z[0], z[1], Math.max(r, 5 * U), 0, 6.3); ctx.fill(); }
+  }
   // прочие аэродромы
   const showAlt = !!f.ev || f.diverted;
   for (let i = 0; i < f.world.length; i++) {
@@ -3137,6 +3172,9 @@ function drawMiniMap(f, view, t) {
     ctx.strokeStyle = 'rgba(80,220,255,.9)'; ctx.lineWidth = 1.4; ctx.setLineDash([3 * U, 3 * U]);
     ctx.beginPath(); ctx.moveTo(cx, cy + oy); ctx.lineTo(cx + Math.sin(dTurn) * rp * 1.4, cy + oy - Math.cos(dTurn) * rp * 1.4); ctx.stroke(); ctx.setLineDash([]);
   }
+  // стрелка на ближайший запасной аэродром
+  if (showAlt) { let bi = -1, bd = 1e18; for (let i = 0; i < f.world.length; i++) { const w = f.world[i]; if (w.id === f.toAp.id) continue; const d = Math.hypot(apLocal[2 * i] - f.x, apLocal[2 * i + 1] - (f.yPos || 0)); if (d < bd) { bd = d; bi = i; } }
+    if (bi >= 0) { const dx = apLocal[2 * bi] - f.x, dy = apLocal[2 * bi + 1] - (f.yPos || 0); const fw = dx * cp + dy * sp, rt = -dx * sp + dy * cp; const a = Math.atan2(rt, fw); ctx.strokeStyle = 'rgba(255,224,138,.95)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(cx + Math.sin(a) * rp * 0.35, cy + oy - Math.cos(a) * rp * 0.35); ctx.lineTo(cx + Math.sin(a) * rp * 0.8, cy + oy - Math.cos(a) * rp * 0.8); ctx.stroke(); txt(f.world[bi].id + ' ' + Math.round(bd / 1000) + 'км', cx + Math.sin(a) * rp * 0.8, cy + oy - Math.cos(a) * rp * 0.8, 'rgba(255,224,138,.95)', 7.5 * U, 'center', '700'); } }
   ctx.restore();
   // обод и север
   ctx.strokeStyle = 'rgba(160,255,200,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.3); ctx.stroke();
@@ -3618,10 +3656,12 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, xp: 0, evOk: 0, evLate: 0, evFail: 0 };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, rep: 50, lease: {}, copilot: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
-if (!PL_BY[save.plane] || !save.owned.includes(save.plane)) { save.plane = save.owned[0] || 'ssj'; }
+const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
+if (!PL_BY[save.plane] || !fleetIds().includes(save.plane)) { save.plane = save.owned[0] || 'ssj'; }
+const wearOf = id => Math.round(save.wear[id] || 0);
 const RANKS = [['Курсант', 0], ['Второй пилот', 500], ['Пилот', 1500], ['Командир', 3500], ['Капитан-инструктор', 7000], ['Легенда авиации', 15000]];
 function rankOf(xp) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (xp >= RANKS[k][1]) i = k; const nx = RANKS[i + 1]; return { name: RANKS[i][0], i, next: nx ? nx[0] : null, from: RANKS[i][1], to: nx ? nx[1] : RANKS[i][1], pct: nx ? (xp - RANKS[i][1]) / (nx[1] - RANKS[i][1]) : 1 }; }
 const EMERG_NAMES = ['выкл', 'редко', 'иногда', 'часто'];
@@ -3657,7 +3697,34 @@ function beep(freq, dur) {
     o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
   } catch (e) { }
 }
+let noiseG = null, noiseF = null, spoken = new Set(), lastVoice = 0, radioN = 0;
+function say(text, pitch) {
+  if (!save.sound || !window.speechSynthesis) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8; speechSynthesis.speak(u); } catch (e) { }
+}
+const VOICE = { gear: 'Шасси', stall: 'Сваливание', pullup: 'Тяните вверх, земля', sink: 'Большая вертикальная скорость', flaps: 'Закрылки', over: 'Превышение скорости', terrain: 'Внимание, земля', lowfuel: 'Мало топлива' };
 function audioTick(f) {
+  if (actx && !noiseG) {
+    try {
+      const n = actx.sampleRate * 2, buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+      noiseF = actx.createBiquadFilter(); noiseF.type = 'bandpass'; noiseF.frequency.value = 900; noiseF.Q.value = 0.6;
+      noiseG = actx.createGain(); noiseG.gain.value = 0; src.connect(noiseF); noiseF.connect(noiseG); noiseG.connect(actx.destination); src.start();
+    } catch (e) { noiseG = null; }
+  }
+  if (noiseG) {
+    const on = save.sound && mode === 'flight' && !paused;
+    const wx = f.wx || {}, rain = f.onGround ? (wx.rain || 0) : (wx.rainD || 0);
+    const air = f.onGround ? Math.min(1, f.v / 80) * 0.5 : Math.min(1, f.v / 250);
+    noiseG.gain.value = on ? Math.min(0.12, 0.012 * (wx.spd || 0) / 4 + 0.05 * rain + 0.035 * air) : 0;
+    noiseF.frequency.value = 500 + 900 * Math.max(rain, air);
+  }
+  if (save.sound && mode === 'flight' && !paused && f.radio && f.radio.length) { const r = f.radio.splice(0); for (const t of r) setTimeout(() => say(t, 0.8), 400); }
+  if (save.sound && mode === 'flight' && !paused && f.warnings) {
+    for (const k of f.warnings) if (VOICE[k] && !spoken.has(k) && tNow - lastVoice > 1.5) { spoken.add(k); lastVoice = tNow; say(VOICE[k], 1.2); }
+    for (const k of [...spoken]) if (!f.warnings.has(k)) spoken.delete(k);
+  }
   if (!actx || !engGain) return;
   const on = save.sound && mode === 'flight' && !paused;
   engGain.gain.value = on ? 0.03 + 0.07 * f.thrAct : 0;
@@ -3724,7 +3791,7 @@ function renderSelect() {
   const ap = apLoc(), p = plane();
   const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
   if (sel && !list.find(c => c.to === sel.to)) sel = null;
-  const owned = save.owned.map(id => PL_BY[id]);
+  const owned = fleetIds().map(id => PL_BY[id]);
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рейсы из ${ap.city}</h1><button class="btn g" id="bBack">‹ Назад</button></div>
     <div class="row">${owned.map(o => `<button class="chip" data-pl="${o.id}" style="border:${o.id === p.id ? '2px solid #7dffb0' : '1px solid rgba(255,255,255,.3)'};color:#fff">${o.short}</button>`).join('')}</div>
@@ -3773,16 +3840,20 @@ function renderHangar() {
   const cur = plane();
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Ангар</h1><button class="btn g" id="bBack">‹ Назад</button></div>
-    <div class="row">${stat('💰', fmtRub(save.money))}</div>
+    <div class="row">${stat('💰', fmtRub(save.money))}${stat('⭐ репутация', Math.round(save.rep))}<button class="chip" id="bCo" style="color:#fff">Второй пилот: ${save.copilot ? 'нанят (−6%)' : 'нет'}</button></div>
     ${PLANES.map(p => {
-      const own = save.owned.includes(p.id);
-      const btn = own ? (p.id === cur.id ? '<span class="chip">выбран</span>' : `<button class="btn" data-use="${p.id}">Выбрать</button>`)
-        : `<button class="btn go" data-buy="${p.id}" ${save.money < p.price ? 'disabled' : ''}>Купить<br>${fmtRub(p.price)}</button>`;
-      return `<div class="card ${own ? '' : ''}"><div><div class="t">${p.name}</div><div class="d">${p.seats} мест · дальность ≈ ${Math.round(maxRangeKm(p) / 100) * 100} км · полоса от ${p.minRwy} м<br>${p.desc}</div></div><div>${btn}</div></div>`;
+      const own = save.owned.includes(p.id), lz = save.lease[p.id] > 0;
+      const w = wearOf(p.id), mc = Math.round(p.value * 0.0003 * w);
+      const btn = (own || lz) ? (p.id === cur.id ? '<span class="chip">выбран</span>' : `<button class="btn" data-use="${p.id}">Выбрать</button>`) + (lz ? `<div class="d">аренда: ещё ${save.lease[p.id]} рейс.</div>` : '') + (w > 0 && own ? `<br><button class="btn g" data-mt="${p.id}" ${save.money < mc ? 'disabled' : ''}>ТО ${fmtRub(mc)}</button>` : '')
+        : `<button class="btn go" data-buy="${p.id}" ${save.money < p.price ? 'disabled' : ''}>Купить<br>${fmtRub(p.price)}</button><br><button class="btn g" data-lease="${p.id}" ${save.money < Math.round(p.price * 0.12) ? 'disabled' : ''}>Аренда 5 рейсов<br>${fmtRub(Math.round(p.price * 0.12))}</button>`;
+      return `<div class="card ${own ? '' : ''}"><div><div class="t">${p.name}</div><div class="d">${own ? 'Износ: ' + w + '%' + (w >= 60 ? ' ⚠ чаще отказы' : '') + ' · ' : ''}${p.seats} мест · дальность ≈ ${Math.round(maxRangeKm(p) / 100) * 100} км · полоса от ${p.minRwy} м<br>${p.desc}</div></div><div>${btn}</div></div>`;
     }).join('')}
   </div>`;
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-use]').forEach(b => b.onclick = () => { save.plane = b.dataset.use; persist(); renderHangar(); });
+  $('bCo').onclick = () => { save.copilot = !save.copilot; persist(); renderHangar(); };
+  menu.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.mt], c = Math.round(p.value * 0.0003 * wearOf(p.id)); if (save.money >= c) { save.money -= c; save.wear[p.id] = 0; persist(); renderHangar(); } });
+  menu.querySelectorAll('[data-lease]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.lease], c = Math.round(p.price * 0.12); if (save.money >= c) { save.money -= c; save.lease[p.id] = 5; save.plane = p.id; persist(); renderHangar(); } });
   menu.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
     const p = PL_BY[b.dataset.buy];
     if (save.money >= p.price) { save.money -= p.price; save.owned.push(p.id); save.plane = p.id; persist(); renderHangar(); }
@@ -3825,7 +3896,7 @@ function beginFlight(c, drill, wx) {
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
   flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
-    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : save.emerg, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && wearOf(p.id) >= 60 ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: true, mapZoom: 0 };
@@ -3994,8 +4065,21 @@ $('quit').onclick = () => {
 };
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'flight' && flight && !flight.done && !modal.classList.contains('on')) $('quit').click(); });
 
+function drawReplay(f, k) {
+  const cv = $('rcv'); if (!cv) return; const g = cv.getContext('2d'), w = cv.width, h = cv.height, T = f.track, n = T.length;
+  g.clearRect(0, 0, w, h);
+  const xs = T.map(p => p[0]), x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 1), hm = Math.max(500, ...T.map(p => p[2])), vm = Math.max(300, ...T.map(p => p[3]));
+  const X = x => 30 + (x - x0) / (x1 - x0) * (w - 40), Y = a => h - 18 - a / hm * (h - 34), V = v => h - 18 - v / vm * (h - 34);
+  g.strokeStyle = 'rgba(160,255,200,.2)'; g.beginPath(); g.moveTo(30, h - 18); g.lineTo(w - 8, h - 18); g.stroke();
+  g.font = '10px sans-serif'; g.fillStyle = '#9fd'; g.fillText(Math.round(hm) + ' м', 2, 12); g.fillStyle = '#fc6'; g.fillText('скорость ' + Math.round(vm) + ' км/ч', w - 110, 12);
+  const m = Math.max(1, Math.floor(n * k));
+  g.lineWidth = 1.6; g.strokeStyle = '#7dffb0'; g.beginPath(); for (let i = 0; i < m; i++) { const p = T[i]; i ? g.lineTo(X(p[0]), Y(p[2])) : g.moveTo(X(p[0]), Y(p[2])); } g.stroke();
+  g.lineWidth = 1; g.strokeStyle = '#fc6'; g.beginPath(); for (let i = 0; i < m; i++) { const p = T[i]; i ? g.lineTo(X(p[0]), V(p[3])) : g.moveTo(X(p[0]), V(p[3])); } g.stroke();
+  for (const mk of f.marks) { if (mk.i > m) continue; const p = T[Math.min(mk.i, n - 1)]; g.fillStyle = mk.text === 'Касание' ? '#7dffb0' : '#ff6a6a'; g.beginPath(); g.arc(X(p[0]), Y(p[2]), 4, 0, 6.3); g.fill(); g.fillStyle = '#fff'; g.fillText(mk.text, Math.min(w - 70, X(p[0]) + 5), Math.max(24, Y(p[2]) - 6)); }
+  const c = T[m - 1]; g.fillStyle = '#fff'; g.beginPath(); g.arc(X(c[0]), Y(c[2]), 3.5, 0, 6.3); g.fill();
+}
 function showResult() {
-  const f = flight, r = settle(f, contract);
+  const f = flight, r = settle(f, contract, { rep: save.rep, copilot: save.copilot });
   const to = f.toAp;
   // применяем итоги
   const drill = !!f.drill;
@@ -4005,6 +4089,13 @@ function showResult() {
     if (r.kind !== 'abort') save.flights++;
     if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = f.locAfter; }
     if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
+    if (r.kind !== 'abort') {
+      const id = f.p.id;
+      save.wear[id] = Math.min(100, (save.wear[id] || 0) + r.km / 60 + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
+      const dr = r.kind === 'ok' ? (r.stars - 3) * 2 + (r.sched > 0 ? 1 : r.sched < 0 ? -2 : 0) : r.kind === 'crash' ? -15 : r.kind === 'overrun' ? -6 : -4;
+      r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
+      if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }
+    }
     save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
     persist();
   }
@@ -4020,6 +4111,8 @@ function showResult() {
     if (r.fuelCost) rows += row('Топливо (' + Math.round(r.fuelUsed) + ' кг)', '−' + fmtRub(r.fuelCost), 'neg');
     if (r.ops) rows += row('Обслуживание', '−' + fmtRub(r.ops), 'neg');
     if (r.fee) rows += row('Аэропортовые сборы', '−' + fmtRub(r.fee), 'neg');
+    if (r.kind === 'ok' && r.sched) rows += row('Расписание (' + Math.round(r.tm) + ' мин, план ' + Math.round(r.expMin) + ')', (r.sched > 0 ? '+' : '−') + Math.abs(Math.round(r.sched * 100)) + '%', r.sched > 0 ? 'pos' : 'neg');
+    if (r.coFee) rows += row('Второй пилот', '−' + fmtRub(r.coFee), 'neg');
     if (r.repair) rows += row('Ремонт самолёта', '−' + fmtRub(r.repair), 'neg');
     rows += row('<b>Итого</b>', (r.net >= 0 ? '+' : '−') + fmtRub(Math.abs(r.net)), r.net >= 0 ? 'pos' : 'neg');
   }
@@ -4033,6 +4126,8 @@ function showResult() {
     ${r.kind === 'ok' ? `<div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</div>` : ''}
     ${r.reason ? `<div class="sub">${r.reason}</div>` : ''}
     ${inc.length ? `<div class="sub">Замечания: ${[...new Set(inc)].join(', ')}</div>` : ''}
+    ${drill ? '' : `<div class="sub">Репутация: ${Math.round(save.rep)}/100${r.repD ? ' (' + (r.repD > 0 ? '+' : '') + r.repD + ')' : ''} · износ ${f.p.short}: ${wearOf(f.p.id)}%</div>`}
+    ${f.track.length > 3 ? '<canvas id="rcv" width="520" height="150" style="width:100%;max-width:520px;background:rgba(8,16,32,.6);border-radius:8px"></canvas><div class="mrow"><button class="btn g" id="bRep">▶ Повтор полёта</button></div>' : ''}
     ${evRows ? `<div class="sub" style="margin-bottom:2px"><b>Аварийные ситуации:</b></div>${evRows}` : ''}
     <table class="res">${rows}</table>
     ${drill ? '' : `<div class="sub">+${r.xp} XP · ${rkAfter.name}${rkAfter.i > rkBefore ? ' — <b style="color:#7dffb0">НОВЫЙ РАНГ!</b>' : ''}</div>`}
@@ -4040,6 +4135,7 @@ function showResult() {
     <div class="mrow"><button class="btn go" id="bAgain">${drill ? 'Ещё тренировка' : 'Следующий рейс'}</button><button class="btn g" id="bHub">В меню</button></div>
   </div>`;
   mode = 'menu'; ui.classList.remove('on'); menu.classList.add('on');
+  drawReplay(f, 1); $('bRep') && ($('bRep').onclick = () => { const t0 = performance.now(), n = f.track.length; const st = () => { const k = Math.min(1, (performance.now() - t0) / 9000); drawReplay(f, k); if (k < 1 && mode === 'menu') requestAnimationFrame(st); }; st(); });
   $('bAgain').onclick = () => setScreen(drill ? 'drill' : 'select');
   $('bHub').onclick = () => setScreen('hub');
   flight = null;
