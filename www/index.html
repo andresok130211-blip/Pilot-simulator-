@@ -24,7 +24,7 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #thrw .tf{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}
 #thrw .lb{position:absolute;top:5px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;letter-spacing:1px;opacity:.95;z-index:2}
 #thrw .tv{position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:13px;font-weight:800;z-index:2}
-#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;width:min(580px,calc(100vw - 360px))}
+#btns{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;width:min(640px,calc(100vw - 340px))}
 #btns button{pointer-events:auto;touch-action:none;height:36px;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:9px;font-size:10.5px;font-weight:800;padding:0 2px;line-height:1.05}
 #btns button.on{background:#1f8f4e;border-color:#7dffb0}
 #btns button.warn{background:#a23232;border-color:#ff9a9a}
@@ -121,6 +121,11 @@ table.res td:last-child{text-align:right;font-weight:700}
 #altp .cl{margin-top:8px;width:100%;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;font-weight:800}
 
 #mapzone{position:absolute;display:none;border-radius:50%;pointer-events:auto;touch-action:none;z-index:2}
+
+#radioP{display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom));background:rgba(8,14,28,.94);border:1px solid rgba(160,255,200,.4);border-radius:10px;padding:8px;grid-template-columns:1fr 1fr;gap:6px;z-index:6}
+#radioP.on{display:grid}
+#radioP button{padding:8px 10px;font-size:13px;border-radius:8px;background:#22304c;color:#fff;border:1px solid rgba(255,255,255,.2)}
+#radioP button.red{background:#8a2530}
 </style>
 </head>
 <body>
@@ -155,8 +160,10 @@ table.res td:last-child{text-align:right;font-weight:700}
     <button id="bRev" data-act="rev">РЕВЕРС</button>
     <button id="bAbrk" data-act="abrk">АВТОТОРМ</button>
     <button id="bView" data-act="view">ВИД</button>
+    <button id="bRadio" data-act="radio">РАДИО</button>
   </div>
   <div id="mapzone"></div>
+  <div id="radioP"></div>
   <div id="evbox"><div id="evp"></div><div id="eact"></div><div id="ebtns">
     <button id="eExt" data-act="ext" class="red">🔥 ТУШЕНИЕ</button>
     <button id="eGear" data-act="altgear" class="red">⚙ ЗАПАС. ШАССИ</button>
@@ -1185,6 +1192,44 @@ const EVENT_DEFS = {
     },
   },
 
+  ash: {
+    title: 'ВУЛКАНИЧЕСКИЙ ПЕПЕЛ', short: 'Вулканический пепел', phases: ['cruise'], weight: 1.5, group: 'eng', spawn: 'cruise',
+    desc: 'Самолёт вошёл в облако пепла: запах серы, дым в кабине, двигатели теряют тягу. Нужно сбросить тягу и развернуться из облака.',
+    ok: f => f.distM >= 400000,
+    start(f, ev) { f.fx.ash = 0.25; f.fx.smoke = 0.2; ev.turned = 0; ev.idled = 0; f.msg('ВУЛКАНИЧЕСКИЙ ПЕПЕЛ! Дым в кабине, двигатели теряют тягу'); },
+    btns: (f, ev) => [...(ev.idled ? [] : [{ k: 'ashIdle', t: '⬇ ТЯГА МИН' }]), ...(ev.turned ? [] : [{ k: 'ashTurn', t: '↩ РАЗВОРОТ ИЗ ОБЛАКА' }])],
+    act(f, ev, k) {
+      if (k === 'ashIdle' && !ev.idled) { ev.idled = f.time; ev.prev = [f.c.thr, f.c.t1, f.c.t2, f.c.split]; ev.prevAt = f.c.atOn; f.c.atOn = false; f.c.thr = f.c.t1 = f.c.t2 = 0.3; f.c.split = false; f.msg('Тяга уменьшена'); }
+      if (k === 'ashTurn' && !ev.turned) { ev.turned = f.time; f.msg('Разворот на 180° — выходим из облака пепла'); }
+    },
+    steps(f, ev) { return [{ t: 'Тяга МИН — кнопка', done: !!ev.idled }, { t: 'РАЗВОРОТ из облака — кнопка', done: !!ev.turned }, { t: 'Выйти из облака (дым исчезнет)', done: f.fx.ash < 0.05 }]; },
+    alert: () => 'ВУЛКАНИЧЕСКИЙ ПЕПЕЛ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (!ev.turned) { f.fx.ash = Math.min(1, f.fx.ash + dt * 0.011); f.fx.smoke = Math.max(f.fx.smoke, 0.15 + f.fx.ash * 0.3); if (f.fx.ash >= 1) { f.fx.ash = 0.5; f.eng[f.rnd() < 0.5 ? 0 : 1] = 0; f.fx.smoke = 0; f.incident('ash', 'Отказ двигателя от пепла', 10, 999); f.resolveEvent(ev, 'fail', 'Двигатель остановился от пепла'); } }
+      else { f.fx.ash = Math.max(0, f.fx.ash - dt * 0.03); f.fx.smoke = Math.max(0, f.fx.smoke - dt * 0.02); if (f.fx.ash < 0.03) { f.fx.ash = 0; f.fx.smoke = 0; if (ev.prev) { if (f.atLock <= 0) f.c.atOn = ev.prevAt; if (!f.c.atOn) [f.c.thr, f.c.t1, f.c.t2, f.c.split] = ev.prev; } f.resolveEvent(ev, ev.turned - ev.t0 < 60 && ev.idled ? 'ok' : 'late', 'Вышли из облака пепла, возвращаемся на трассу'); } }
+    },
+  },
+
+  security: {
+    title: 'УГРОЗА БЕЗОПАСНОСТИ', short: 'Угроза безопасности на борту', phases: ['cruise'], weight: 1, group: 'pax', spawn: 'cruise',
+    desc: 'Тревожная кнопка бортпроводников: угроза на борту. Установите код 7500 на транспондере и садитесь на ближайшем аэродроме.',
+    ok: f => f.distM >= 300000,
+    start(f, ev) { ev.code = 0; f.msg('ТРЕВОЖНАЯ КНОПКА: УГРОЗА БЕЗОПАСНОСТИ НА БОРТУ'); },
+    btns: (f, ev) => [...(ev.code ? [] : [{ k: 'sq7500', t: '📟 КОД 7500' }]), ...(f.diverted ? [] : [{ k: 'secLand', t: '🛬 БЛИЖАЙШИЙ АЭРОДРОМ' }])],
+    act(f, ev, k) {
+      if (k === 'sq7500' && !ev.code) { ev.code = f.time; f.msg('Код 7500 установлен: диспетчер принял, наземные службы оповещены'); f.atc('sq', f.cs + ', код 7500 принял, следуйте на посадку, всё готово.'); }
+      if (k === 'secLand' && !f.diverted) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); else f.msg('Нет подходящего аэродрома рядом — идите на основной'); }
+    },
+    steps(f, ev) { return [{ t: 'Код 7500 — кнопка', done: !!ev.code }, { t: 'Ближайший аэродром: ' + f.altText(), done: f.diverted || f.dist < 120000 }]; },
+    alert: () => 'УГРОЗА БЕЗОПАСНОСТИ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (ev.code && (f.diverted || f.dist < 120000)) f.resolveEvent(ev, age > 240 ? 'late' : 'ok', 'Идём на посадку — службы безопасности ждут на перроне');
+      else if (age > 420) { f.incident('sec', 'Тревога не отработана вовремя', 10, 999); f.resolveEvent(ev, 'fail', 'Слишком поздно...'); }
+    },
+  },
+
   slick: {
     title: 'СКОЛЬЗКАЯ ПОЛОСА / АКВАПЛАНИРОВАНИЕ', short: 'Скользкая полоса, аквапланирование', phases: ['descent', 'final'], weight: 2, group: 'land', spawn: 'descent',
     desc: 'Полоса мокрая или с шугой: тормоза почти не держат, самолёт «плывёт». Касайтесь точно в зоне, не завышайте скорость, тормозите плавно и держите ось.',
@@ -1447,7 +1492,7 @@ class Flight {
     this.dISA = o.wx && o.wx.level ? Math.max(-25, Math.min(25, o.wx.temp - (15 - 0.0065 * o.from.elev))) : 0; this.m0 = 0; this.scN = 0;
     this.cold = !!o.cold; this.startReq = false; this.startT = 0; this.apu = false; this.flex = !!o.flex; this.cg = o.cg || 0.25;
     this.eng = o.cold ? [0, 0] : [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
-    this.closedIds = new Set(); this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.comfort = 100; this.comfortMsg = 0; this.declared = null; this.gate = { board: 0, fuel: 0, bags: 0, done: !(o.cold && o.taxi !== false) }; this.closedIds = new Set(); this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
     this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
@@ -1461,6 +1506,8 @@ class Flight {
     this.computeSpeeds();
     this.aero(); // начальные величины
     this.evq = planEvents(this, o.emerg ?? 0, o.force, this.rnd, !!o.force);
+    if (o.extraEv && o.extraEv.length) this.evq = [...this.evq, ...planEvents(this, 0, o.extraEv, this.rnd, false)];
+    this.fatigue = o.fatigue || 0; this.microT = 120 + this.rnd() * 120;
     if (this.taxiOps) {
       this.c.taxiAuto = !!this.assist.taxi;
       this.setRoute(this.buildOutRoute());
@@ -1542,6 +1589,53 @@ class Flight {
     if (this.atcDone[key]) return; this.atcDone[key] = 1;
     this.msgs.push({ t: this.time, text: '📻 ' + text }); if (this.msgs.length > 6) this.msgs.shift();
     this.radio.push(text); if (this.radio.length > 4) this.radio.shift();
+  }
+  gateTick(dt) {
+    const g = this.gate; if (g.done) return;
+    g.board = Math.min(1, g.board + dt / 22); g.fuel = Math.min(1, g.fuel + dt / 16); g.bags = Math.min(1, g.bags + dt / 18);
+    if (g.board >= 1 && g.fuel >= 1 && g.bags >= 1) { g.done = true; this.msg('Обслуживание завершено: пассажиры на борту, топливо и багаж загружены'); this.atc('gate', this.cs + ', ' + this.fromAp.id + ' земля, буксировка разрешена, запускайтесь по готовности.'); }
+  }
+  microTick(dt) {
+    if (this.fatigue < 80 || !this.airborneOnce || this.onGround || this.c.apOn || this.done) return;
+    this.microT -= dt;
+    if (this.microT <= 0) { this.microT = 100 + this.rnd() * 140; this.fx.rollBias = (this.rnd() < 0.5 ? -1 : 1) * 7; this.microUntil = this.time + 3; this.msg('Вы на секунду отвлеклись — усталость!'); }
+    if (this.microUntil && this.time > this.microUntil) { this.microUntil = 0; if (!this.ev) this.fx.rollBias = 0; }
+  }
+  comfortTick(dt) {
+    this.microTick(dt);
+    if (!this.airborneOnce || this.onGround || this.done) return;
+    const fx = this.fx || {}; let loss = 0;
+    const dn = Math.abs((this.nz || 1) - 1); if (dn > 0.35) loss += (dn - 0.35) * 6;
+    if ((fx.turb || 0) > 0.4) loss += (fx.turb - 0.4) * 0.8;
+    const bank = Math.abs(this.phi) / DEG; if (bank > 33) loss += (bank - 33) * 0.12;
+    if (this.vs < -12 && this.h > 600) loss += 0.6;
+    this.comfort = Math.max(0, this.comfort - loss * dt);
+    if (this.comfort < 70 && !this.comfortMsg) { this.comfortMsg = 1; this.msg('Пассажиры встревожены, в салоне крики'); }
+  }
+  minVis() { const ap = this.toAp, cat = ap.rwy >= 3500 ? 3 : ap.rwy >= 2500 ? 2 : 1; return { cat, need: [0, 800, 350, 120][cat] }; }
+  radioReq(k) {
+    const cs = this.cs, say = t => { this.msgs.push({ t: this.time, text: '📻 ' + t }); if (this.msgs.length > 6) this.msgs.shift(); this.radio.push(t); if (this.radio.length > 4) this.radio.shift(); };
+    this.msgs.push({ t: this.time, text: '🧑‍✈️ ' + ({ taxi: 'Запрашиваю руление', to: 'Запрашиваю взлёт', climb: 'Прошу эшелон выше', land: 'Запрашиваю посадку', pan: 'PAN-PAN, PAN-PAN, PAN-PAN', may: 'MAYDAY, MAYDAY, MAYDAY' }[k] || k) });
+    if (k === 'taxi') { if (this.onGround && !this.airborneOnce) say(cs + ', руление разрешено, держите связь.'); else say(cs + ', отказ, вы в воздухе.'); }
+    else if (k === 'to') {
+      if (!this.onGround || this.airborneOnce) say(cs + ', отказ.');
+      else if (this.rwyBusy('land0')) say(cs + ', ожидайте, на посадке борт.');
+      else { this.clrTo = true; say(cs + ', ветер ' + Math.round(((this.wx && this.wx.dir) || 0) / 10) * 10 + ', взлёт разрешён.'); }
+    } else if (k === 'climb') {
+      if (!this.airborneOnce || this.onGround || this.dist < 150000 || this.ev) say(cs + ', эшелон сейчас недоступен.');
+      else if (this.c.apAlt >= this.ceilLim - 600) say(cs + ', выше набрать нельзя, это ваш потолок.');
+      else { this.c.apAlt = Math.min(this.ceilLim - 400, Math.round((this.c.apAlt + 1200) / 100) * 100); say(cs + ', набор разрешён до ' + this.c.apAlt + ' метров.'); }
+    } else if (k === 'land') {
+      if (this.dist > 25000 || this.onGround) say(cs + ', доложите на дальности двадцать.');
+      else if (this.rwyBusy('land1')) say(cs + ', ожидайте, полоса занята.');
+      else say(cs + ', ветер ' + Math.round(((this.wx && this.wx.dir) || 0) / 10) * 10 + ' ' + Math.round((this.wx && this.wx.spd) || 0) + ' м/с, посадку разрешаю.');
+    } else if (k === 'pan' || k === 'may') {
+      if (this.ev && !this.declared) {
+        this.declared = k; this.trf = []; this.hold = null; this.starOff = 0; this.clrTo = true; this.holdTo = false;
+        say(cs + ', принял ' + (k === 'may' ? 'бедствие' : 'срочное сообщение') + ', полоса в вашем распоряжении, службы готовы. Действуйте по своему усмотрению.');
+      } else if (this.ev) say(cs + ', вас понял, сообщение уже принято.');
+      else { this.incident('false', 'Ложная тревога по радио', 5, 9999); say(cs + ', уточните характер аварии. Вы не в аварийной ситуации?'); }
+    }
   }
   startTick(dt) {
     if (!this.startReq) return;
@@ -1670,6 +1764,7 @@ class Flight {
     this.q = q; this.alpha = alpha; this.alphaS = as; this.CL = CL; this.CD = CD;
     this.L = q * p.S * CL; this.Dr = q * p.S * CD;
     this.Tavail = this.fuel > 0 ? p.T0 * Math.pow(A.sigma, 0.85) * (1 - 0.35 * M) * (this.eng[0] + this.eng[1]) / 2 * (1 - 0.08 * this.fx.ice) * (this.flex && this.eng[0] + this.eng[1] > 1.99 ? 1 - 0.14 * clamp((900 - this.h) / 300, 0, 1) : 1) : 0;
+    this.Tavail *= 1 - 0.45 * (this.fx.ash || 0);
     this.stallWarn = !this.onGround && alpha > as - 2.2 * DEG;
     this.stalled = !this.onGround && alpha > as;
     this.clmaxNow = CL0 + dcl + CLA * as;
@@ -1787,7 +1882,11 @@ class Flight {
     if (this.done) return;
     this.evStep(dt);
     if (this.done) return;
-    this.atcTick();
+    this.atcTick(); this.gateTick(dt); this.comfortTick(dt);
+    if (this.airborneOnce && !this.diverted && !this.td && !this.ga && !this.onGround && this.dist < 3200 && this.dist > 300 && this.h < 70 && this.wx && this.wx.level) {
+      const mv = this.minVis(), eff = this.wx.visD * (1 + 0.8 * this.gaCount);
+      if (eff < mv.need && !this.rwyBlocked) { this.msg('МИНИМУМ! ПОЛОСА НЕ ВИДНА — УХОД НА ВТОРОЙ КРУГ'); this.goAround(); this.atc('min' + this.gaCount, this.cs + ', видимость ' + Math.round(eff) + ' м, ниже минимума. Выполняйте уход, затем решайте: повторный заход или запасной.'); }
+    }
     if (this.closedIds.has(this.toAp.id) && !this.diverted && this.dist < 2500 && !this.td && !this.ga && !this.rwyBlocked && this.airborneOnce) { this.rwyBlocked = true; this.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
     if (this.cold) this.startTick(dt);
     if (this.time - this._rec >= 3) { this._rec = this.time; this.track.push([Math.round(this.x), Math.round(this.yPos || 0), Math.round(this.h), Math.round(this.ias * 3.6), +this.vs.toFixed(1)]); if (this.track.length > 3000) this.track.shift(); }
@@ -2358,7 +2457,7 @@ class Flight {
   hint() {
     const c = this.c, dist = this.dist, kmh = x => Math.round(x * 3.6);
     if (this.done) return '';
-    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : 'Нажмите ЗАПУСК ДВИГАТЕЛЕЙ';
+    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : this.gate.done ? 'Нажмите ЗАПУСК ДВИГАТЕЛЕЙ' : 'Обслуживание: пассажиры ' + Math.round(this.gate.board * 100) + '%, топливо ' + Math.round(this.gate.fuel * 100) + '%, багаж ' + Math.round(this.gate.bags * 100) + '%';
     const eh = this.evHint(); if (eh) return eh;
     if (this.hold) return 'Ожидание: правый круг, крен ≈25° — осталось ' + Math.max(0, Math.round((2 * Math.PI - 0.35 - this.hold.turned) / DEG)) + '°';
     if (this.onGround && this.taxiOps && !this.clrTo && !this.airborneOnce) return 'Ждите перед полосой — садится борт, затем разрешат взлёт';
@@ -2430,7 +2529,7 @@ function settle(f, contract, career) {
   const fuelUsed = f.fuel0 - f.fuel;
   const res = f.result || { kind: 'abort', reason: '' };
   const out = { kind: res.kind, reason: res.reason, km, pax: f.pax, fuelUsed, lines: [], quality: '', stars: 0 };
-  const fuelCost = Math.round(fuelUsed * FUEL_PRICE);
+  const fuelCost = Math.round(fuelUsed * FUEL_PRICE * (career.fuelMul || 1));
   const ops = Math.round(km * p.opPerKm);
   const fee = Math.round(1200 * p.mtow / 1000);
   let revenue = 0, repair = 0, mult = 1;
@@ -2452,10 +2551,11 @@ function settle(f, contract, career) {
     out.evBonus = evB;
     const expMin = km / 12.5 + (f.taxiOps ? 30 : 12), tm = f.simTime / 60;
     const sched = tm <= expMin ? 0.06 : tm > expMin * 1.4 ? -0.08 : 0;
-    out.sched = sched; out.tm = tm; out.expMin = expMin;
+    out.comfort = f.comfort; out.paxStars = Math.max(1, Math.min(5, Math.round(1 + f.comfort / 25 - (s > 2.4 ? 1 : 0) + (s < 1 ? 0.5 : 0)))); out.sched = sched; out.tm = tm; out.expMin = expMin;
     const repM = 0.9 + (career.rep == null ? 50 : career.rep) / 500;
     out.repM = repM;
-    revenue = Math.round(contract.revenue * mq * (1 - pen * (career.copilot ? 0.75 : 1)) * (1 + bonus + evB + sched) * repM * (f.diverted ? 0.4 : 1));
+    const evR = f.declared ? 0.05 : 0;
+    revenue = Math.round(contract.revenue * mq * (1 - pen * (career.copilot ? 0.75 : 1)) * (1 + bonus + evB + evR + sched) * (0.92 + out.paxStars * 0.03) * repM * (f.diverted ? 0.4 : 1));
     if (career.copilot) out.coFee = Math.round(revenue * 0.06);
     out.diverted = !!f.diverted;
     out.quality = q; out.sink = s; out.stars = st; out.pen = pen; out.bonus = bonus; out.mq = mq;
@@ -2469,11 +2569,12 @@ function settle(f, contract, career) {
   out.evLog = f.evLog;
   const evOkN = f.evLog.filter(e => e.outcome === 'ok').length, evLateN = f.evLog.filter(e => e.outcome === 'late').length, evFailN = f.evLog.filter(e => e.outcome === 'fail').length;
   out.evOk = evOkN; out.evLate = evLateN; out.evFail = evFailN;
-  out.xp = res.kind === 'ok' ? Math.round(20 + out.stars * 12 + 80 * evOkN + 25 * evLateN + Math.min(60, km / 15)) : (res.kind === 'abort' && evOkN ? 60 : 0);
+  out.xp = res.kind === 'ok' ? Math.round(20 + out.stars * 12 + 80 * evOkN + 25 * evLateN + (f.declared ? 25 : 0) + Math.min(60, km / 15)) : (res.kind === 'abort' && evOkN ? 60 : 0);
   out.revenue = revenue; out.fuelCost = fuelCost; out.ops = ops; out.fee = fee; out.repair = repair;
   if (res.kind === 'abort') { out.fuelCost = 0; out.ops = 0; out.fee = 0; out.net = evOkN ? Math.round(contract.revenue * 0.08) : 0; out.evPrem = out.net; }
   else if (res.kind === 'crash') { out.ops = 0; out.fee = 0; out.fuelCost = 0; out.net = -repair; }
   else out.net = revenue - fuelCost - ops - fee - repair - (out.coFee || 0);
+  out.crewInc = res.kind === 'ok' && career.crews ? Math.round(revenue * 0.05 * career.crews) : 0; out.net += out.crewInc;
   return out;
 }
 
@@ -3834,7 +3935,7 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, school: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
@@ -3945,7 +4046,7 @@ function renderHub() {
   menu.innerHTML = `<div class="panel">
     <h1>✈ Pilot Sim</h1>
     <div class="sub">Вы — пилот пассажирского лайнера. Берите рейсы, взлетайте, ведите самолёт и мягко садитесь. Деньги тратьте на самолёты побольше.</div>
-    <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', ap.city + ' (' + ap.id + ')')}${stat('🛩', p.short)}</div>
+    <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', ap.city + ' (' + ap.id + ')')}${stat('🛩', p.short)}${stat('😴 усталость', Math.round(save.fatigue || 0) + '%')}${(save.fatigue || 0) >= 25 ? '<button class="chip" id="bRest" style="color:#fff">Отдых · ' + fmtRub(40000) + '</button>' : ''}</div>
     <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
@@ -3956,6 +4057,7 @@ function renderHub() {
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
   $('bDrill').onclick = () => setScreen('drill');
+  if ($('bRest')) $('bRest').onclick = () => { if (save.money >= 40000) { save.money -= 40000; save.fatigue = 0; persist(); renderHub(); } };
   $('bSet').onclick = () => setScreen('settings');
   $('bSchool').onclick = () => setScreen('school'); $('bRec').onclick = () => setScreen('records');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
@@ -4049,15 +4151,17 @@ function applyVol() { if (masterG) masterG.gain.value = save.vol == null ? 1 : s
 function renderSelect() {
   const ap = apLoc(), p = plane();
   const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
+  list.forEach(c => { let h = save.flights * 31; for (const ch of c.to) h = (h * 33 + ch.charCodeAt(0)) % 997; c.dem = 0.8 + (h % 48) / 100; c.revenue = Math.round(c.revenue * c.dem); });
   if (sel && !list.find(c => c.to === sel.to)) sel = null;
   const owned = fleetIds().map(id => PL_BY[id]);
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рейсы из ${ap.city}</h1><button class="btn g" id="bBack">‹ Назад</button></div>
     <div class="row">${owned.map(o => `<button class="chip" data-pl="${o.id}" style="border:${o.id === p.id ? '2px solid #7dffb0' : '1px solid rgba(255,255,255,.3)'};color:#fff">${o.short}</button>`).join('')}</div>
+    <div class="sub">Цена топлива сейчас: ×${(save.fuelMul || 1).toFixed(2)} · репутация ${Math.round(save.rep)}</div>
     <div class="sub">${p.name}: до ${p.seats} пассажиров, дальность ≈ ${Math.round(maxRangeKm(p) / 100) * 100} км, полоса от ${p.minRwy} м.</div>
     <div id="list">${list.length ? list.map(c => {
       const to = AP_BY[c.to];
-      return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}</div></div>`;
+      return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}<div class="d">${c.dem >= 1.1 ? '▲ спрос высокий' : c.dem < 0.9 ? '▼ конкуренты' : 'спрос обычный'}</div></div></div>`;
     }).join('') : '<div class="sub">С этого аэродрома для выбранного самолёта нет подходящих рейсов. Смените самолёт.</div>'}</div>
     <div class="bar" id="opts" style="${sel ? '' : 'display:none'}">
       ${optsHTML()}
@@ -4082,7 +4186,7 @@ function renderHangar() {
   const cur = plane();
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Ангар</h1><button class="btn g" id="bBack">‹ Назад</button></div>
-    <div class="row">${stat('💰', fmtRub(save.money))}${stat('⭐ репутация', Math.round(save.rep))}<button class="chip" id="bCo" style="color:#fff">Второй пилот: ${save.copilot ? 'нанят (−6%)' : 'нет'}</button></div>
+    <div class="row">${stat('💰', fmtRub(save.money))}${stat('⭐ репутация', Math.round(save.rep))}<button class="chip" id="bCrew" style="color:#fff">Экипажи: ${save.crews || 0}/5 · нанять ${fmtRub(400000 + 250000 * (save.crews || 0))}</button><button class="chip" id="bCo" style="color:#fff">Второй пилот: ${save.copilot ? 'нанят (−6%)' : 'нет'}</button></div>
     ${PLANES.map(p => {
       const own = save.owned.includes(p.id), lz = save.lease[p.id] > 0;
       const w = wearOf(p.id), mc = Math.round(p.value * 0.0003 * w);
@@ -4093,6 +4197,7 @@ function renderHangar() {
   </div>`;
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-use]').forEach(b => b.onclick = () => { save.plane = b.dataset.use; persist(); renderHangar(); });
+  $('bCrew').onclick = () => { const cst = 400000 + 250000 * (save.crews || 0); if ((save.crews || 0) < 5 && save.money >= cst) { save.money -= cst; save.crews = (save.crews || 0) + 1; persist(); renderHangar(); } };
   $('bCo').onclick = () => { save.copilot = !save.copilot; persist(); renderHangar(); };
   menu.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.mt], c = Math.round(p.value * 0.0003 * wearOf(p.id)); if (save.money >= c) { save.money -= c; save.wear[p.id] = 0; persist(); renderHangar(); } });
   menu.querySelectorAll('[data-lease]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.lease], c = Math.round(p.price * 0.12); if (save.money >= c) { save.money -= c; save.lease[p.id] = 5; save.plane = p.id; persist(); renderHangar(); } });
@@ -4160,6 +4265,7 @@ function renderDrill() {
 }
 
 // ---------- запуск рейса ----------
+function f_msgNoMoney() { alert('Недостаточно денег на ТО'); }
 function startFlight(c, drill) {
   audioInit(); lessonCur = null;
   const from = apLoc(), to = AP_BY[c.to];
@@ -4167,7 +4273,10 @@ function startFlight(c, drill) {
   const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg, save.season);
   if (drill) return beginFlight(c, drill, wx, null);
   const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
-  const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false] };
+  const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false], defects: [] };
+  { const w = wearOf(p.id), DEF = [{ t: 'нестабильна работа автопилота', ev: 'apFail' }, { t: 'замечание по генератору №2', ev: 'gen' }, { t: 'след утечки гидравлики', ev: 'hyd' }, { t: 'сомнительные датчики воздушных данных', ev: 'adc' }, { t: 'сбои индикации', ev: 'indic' }, { t: 'отказывает автомат тяги', ev: 'atFail' }];
+    const n = w >= 85 ? 2 : (w >= 60 && Math.random() < 0.6) || (w >= 40 && Math.random() < 0.25) ? 1 : 0;
+    while (pf.defects.length < n) { const d = DEF[Math.floor(Math.random() * DEF.length)]; if (!pf.defects.includes(d)) pf.defects.push(d); } }
   const CKL = ['Двери закрыты, трап убран', 'Топливо и загрузка проверены', 'Закрылки 2 (взлётная конфигурация)', 'Штурвал и приборы проверены', 'Аварийное оборудование, ремни'];
   const draw = () => {
     const base = Math.round(c.fuel / (1 + 0.8 * (wx.jet || 0) / 230)), fo = [base, base + p.burnHr * 0.5, base + p.burnHr * 1.0].map(v => Math.min(p.fuelCap, Math.round(v)));
@@ -4182,6 +4291,7 @@ function startFlight(c, drill) {
     ${wx.level ? `Ветер на эшелоне: ${wx.jet >= 0 ? 'попутный' : 'встречный'} ${Math.abs(wx.jet)} м/с (струйное течение). Температура ${wx.temp}°${Math.abs(p.mtow) && wx.temp > 28 ? ' — жарко, взлёт длиннее' : ''}.<br>` : ''}<b>Топливо:</b> ${fuel} кг<br>${opt('fuel', 0, 'Минимум')}${opt('fuel', 1, '+30 мин (станд.)')}${opt('fuel', 2, '+1 ч (запасной)')}<br>
     <b>Центровка:</b> ${Math.round(cgv * 100)}% САХ ${cgv < 0.2 ? '(передняя — тугой подъём носа)' : cgv > 0.3 ? '(задняя — экономичнее, чувствительный тангаж)' : '(норма)'}<br>${opt('cg', 'fwd', 'Багаж вперёд')}${opt('cg', 'auto', 'Авто')}${opt('cg', 'aft', 'Багаж назад')}<br>
     <b>Взлётная масса:</b> ${Math.round(li.mass / 100) / 10} т из ${Math.round(p.mtow / 100) / 10} т${li.over ? ' <span style="color:#ff8a7a">⚠ ПЕРЕГРУЗ — уменьшите топливо</span>' : ''}<br>
+    ${pf.defects.length ? `<div style="margin:4px 0;color:#ffb36b">⚠ Замечания по технике (износ ${wearOf(p.id)}%): ${pf.defects.map(d => d.t).join('; ')}. В полёте это может отказать. <button class="chip" id="pfMt" style="color:#fff">Вызвать ТО (${fmtRub(Math.round(p.value * 0.00012 * wearOf(p.id)))}, −30% износа)</button></div>` : ''}
     <b>V1 / VR / V2:</b> ${li.v1} / ${li.vr} / ${li.v2} км/ч (закрылки 2)<br>
     <b>Взлётный режим:</b> ${opt('flex', false, 'TOGA')}${flexOk ? opt('flex', true, 'FLEX (−14% тяги, меньше износ)') : '<span class="d"> FLEX недоступен (короткая/высокогорная полоса)</span>'}<br><br>
     <b>Чек-лист:</b> <button class="chip" id="pfAll" style="color:#fff">отметить всё</button><br>${CKL.map((t, i) => `<div class="pfc" data-i="${i}" style="cursor:pointer;padding:2px 0">${pf.ck[i] ? '☑' : '☐'} ${t}</div>`).join('')}</div>
@@ -4189,7 +4299,8 @@ function startFlight(c, drill) {
     modalBox.querySelectorAll('.pf').forEach(b => b.onclick = () => { const k = b.dataset.k, v = b.dataset.v; if (k === 'fuel') pf.fuel = +v; else if (k === 'cg') pf.cg = v; else pf.flex = v === 'true'; draw(); });
     modalBox.querySelectorAll('.pfc').forEach(b => b.onclick = () => { pf.ck[+b.dataset.i] = !pf.ck[+b.dataset.i]; draw(); });
     $('pfAll').onclick = () => { pf.ck = pf.ck.map(() => true); draw(); };
-    $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx, { fuel, cg: cgv, flex: pf.flex });
+    if ($('pfMt')) $('pfMt').onclick = () => { const cst = Math.round(p.value * 0.00012 * wearOf(p.id)); if (save.money < cst) { f_msgNoMoney(); return; } save.money -= cst; save.wear[p.id] = Math.max(0, (save.wear[p.id] || 0) - 30); pf.defects = []; persist(); draw(); };
+    $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx, { fuel, cg: cgv, flex: pf.flex, extraEv: pf.defects.map(d => d.ev) });
   };
   draw();
 }
@@ -4198,7 +4309,7 @@ function beginFlight(c, drill, wx, pf) {
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
   flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: pf ? pf.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)), cold: !!pf && save.taxiOps, flex: !!(pf && pf.flex), cg: pf ? pf.cg : 0.25,
-    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && wearOf(p.id) >= 60 ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, fatigue: save.fatigue || 0, extraEv: pf ? pf.extraEv : undefined, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   if (drill && lessonCur) { flight.assist.auto = lessonCur.assist.auto; flight.assist.config = lessonCur.assist.config; }
@@ -4268,6 +4379,12 @@ function renderAlt() {
 }
 
 // ---------- кнопки ----------
+function buildRadio() {
+  const f = flight; if (!f) return; const p = $('radioP');
+  const L = [['taxi', 'Руление', !f.airborneOnce && f.onGround], ['to', 'Взлёт', !f.airborneOnce && f.onGround], ['climb', 'Эшелон выше', f.airborneOnce && !f.onGround], ['land', 'Посадка', f.airborneOnce && !f.onGround], ['pan', 'PAN-PAN', true, 'red'], ['may', 'MAYDAY', true, 'red']];
+  p.innerHTML = L.filter(x => x[2]).map(x => `<button data-r="${x[0]}" class="${x[3] || ''}">${x[1]}</button>`).join('');
+  p.querySelectorAll('button').forEach(b => b.onclick = () => { f.radioReq(b.dataset.r); p.classList.remove('on'); });
+}
 function act(a) {
   if (!flight || flight.done) return;
   const f = flight, c = f.c;
@@ -4290,7 +4407,8 @@ function act(a) {
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'map': view.map = view.map === false; break;
-    case 'start': if (f.cold) f.startReq = true; break;
+    case 'start': if (f.cold) { if (f.gate.done) f.startReq = true; else f.msg('Дождитесь окончания обслуживания'); } break;
+    case 'radio': { const p = $('radioP'); p.classList.toggle('on'); if (p.classList.contains('on')) buildRadio(); break; }
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
@@ -4384,7 +4502,7 @@ function drawReplay(f, k) {
   const c = T[m - 1]; g.fillStyle = '#fff'; g.beginPath(); g.arc(X(c[0]), Y(c[2]), 3.5, 0, 6.3); g.fill();
 }
 function showResult() {
-  const f = flight, r = settle(f, contract, { rep: save.rep, copilot: save.copilot });
+  const f = flight, r = settle(f, contract, { rep: save.rep, copilot: save.copilot, fuelMul: save.fuelMul || 1, crews: save.crews || 0 });
   const to = f.toAp;
   // применяем итоги
   const drill = !!f.drill;
@@ -4400,6 +4518,7 @@ function showResult() {
       const id = f.p.id;
       save.wear[id] = Math.min(100, (save.wear[id] || 0) + (r.km / 60) * (f.flex ? 0.75 : 1) + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
       const dr = r.kind === 'ok' ? (r.stars - 3) * 2 + (r.sched > 0 ? 1 : r.sched < 0 ? -2 : 0) : r.kind === 'crash' ? -15 : r.kind === 'overrun' ? -6 : -4;
+      save.fatigue = Math.min(100, (save.fatigue || 0) + 3 + (f.simTime / 60) * 0.3 * (save.copilot ? 0.6 : 1)); save.fuelMul = Math.max(0.8, Math.min(1.5, (save.fuelMul || 1) + (Math.random() - 0.5) * 0.25));
       r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
       if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }
     }
@@ -4420,7 +4539,9 @@ function showResult() {
     if (r.fuelCost) rows += row('Топливо (' + Math.round(r.fuelUsed) + ' кг)', '−' + fmtRub(r.fuelCost), 'neg');
     if (r.ops) rows += row('Обслуживание', '−' + fmtRub(r.ops), 'neg');
     if (r.fee) rows += row('Аэропортовые сборы', '−' + fmtRub(r.fee), 'neg');
+    if (r.kind === 'ok' && r.paxStars) rows += row('Оценка пассажиров', '★'.repeat(r.paxStars) + '☆'.repeat(5 - r.paxStars), r.paxStars >= 4 ? 'pos' : r.paxStars <= 2 ? 'neg' : '');
     if (r.kind === 'ok' && r.sched) rows += row('Расписание (' + Math.round(r.tm) + ' мин, план ' + Math.round(r.expMin) + ')', (r.sched > 0 ? '+' : '−') + Math.abs(Math.round(r.sched * 100)) + '%', r.sched > 0 ? 'pos' : 'neg');
+    if (r.crewInc) rows += row('Доход ваших экипажей (' + save.crews + ')', '+' + fmtRub(r.crewInc), 'pos');
     if (r.coFee) rows += row('Второй пилот', '−' + fmtRub(r.coFee), 'neg');
     if (r.repair) rows += row('Ремонт самолёта', '−' + fmtRub(r.repair), 'neg');
     rows += row('<b>Итого</b>', (r.net >= 0 ? '+' : '−') + fmtRub(Math.abs(r.net)), r.net >= 0 ? 'pos' : 'neg');

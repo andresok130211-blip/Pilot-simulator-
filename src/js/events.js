@@ -800,6 +800,44 @@ export const EVENT_DEFS = {
     },
   },
 
+  ash: {
+    title: 'ВУЛКАНИЧЕСКИЙ ПЕПЕЛ', short: 'Вулканический пепел', phases: ['cruise'], weight: 1.5, group: 'eng', spawn: 'cruise',
+    desc: 'Самолёт вошёл в облако пепла: запах серы, дым в кабине, двигатели теряют тягу. Нужно сбросить тягу и развернуться из облака.',
+    ok: f => f.distM >= 400000,
+    start(f, ev) { f.fx.ash = 0.25; f.fx.smoke = 0.2; ev.turned = 0; ev.idled = 0; f.msg('ВУЛКАНИЧЕСКИЙ ПЕПЕЛ! Дым в кабине, двигатели теряют тягу'); },
+    btns: (f, ev) => [...(ev.idled ? [] : [{ k: 'ashIdle', t: '⬇ ТЯГА МИН' }]), ...(ev.turned ? [] : [{ k: 'ashTurn', t: '↩ РАЗВОРОТ ИЗ ОБЛАКА' }])],
+    act(f, ev, k) {
+      if (k === 'ashIdle' && !ev.idled) { ev.idled = f.time; ev.prev = [f.c.thr, f.c.t1, f.c.t2, f.c.split]; ev.prevAt = f.c.atOn; f.c.atOn = false; f.c.thr = f.c.t1 = f.c.t2 = 0.3; f.c.split = false; f.msg('Тяга уменьшена'); }
+      if (k === 'ashTurn' && !ev.turned) { ev.turned = f.time; f.msg('Разворот на 180° — выходим из облака пепла'); }
+    },
+    steps(f, ev) { return [{ t: 'Тяга МИН — кнопка', done: !!ev.idled }, { t: 'РАЗВОРОТ из облака — кнопка', done: !!ev.turned }, { t: 'Выйти из облака (дым исчезнет)', done: f.fx.ash < 0.05 }]; },
+    alert: () => 'ВУЛКАНИЧЕСКИЙ ПЕПЕЛ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (!ev.turned) { f.fx.ash = Math.min(1, f.fx.ash + dt * 0.011); f.fx.smoke = Math.max(f.fx.smoke, 0.15 + f.fx.ash * 0.3); if (f.fx.ash >= 1) { f.fx.ash = 0.5; f.eng[f.rnd() < 0.5 ? 0 : 1] = 0; f.fx.smoke = 0; f.incident('ash', 'Отказ двигателя от пепла', 10, 999); f.resolveEvent(ev, 'fail', 'Двигатель остановился от пепла'); } }
+      else { f.fx.ash = Math.max(0, f.fx.ash - dt * 0.03); f.fx.smoke = Math.max(0, f.fx.smoke - dt * 0.02); if (f.fx.ash < 0.03) { f.fx.ash = 0; f.fx.smoke = 0; if (ev.prev) { if (f.atLock <= 0) f.c.atOn = ev.prevAt; if (!f.c.atOn) [f.c.thr, f.c.t1, f.c.t2, f.c.split] = ev.prev; } f.resolveEvent(ev, ev.turned - ev.t0 < 60 && ev.idled ? 'ok' : 'late', 'Вышли из облака пепла, возвращаемся на трассу'); } }
+    },
+  },
+
+  security: {
+    title: 'УГРОЗА БЕЗОПАСНОСТИ', short: 'Угроза безопасности на борту', phases: ['cruise'], weight: 1, group: 'pax', spawn: 'cruise',
+    desc: 'Тревожная кнопка бортпроводников: угроза на борту. Установите код 7500 на транспондере и садитесь на ближайшем аэродроме.',
+    ok: f => f.distM >= 300000,
+    start(f, ev) { ev.code = 0; f.msg('ТРЕВОЖНАЯ КНОПКА: УГРОЗА БЕЗОПАСНОСТИ НА БОРТУ'); },
+    btns: (f, ev) => [...(ev.code ? [] : [{ k: 'sq7500', t: '📟 КОД 7500' }]), ...(f.diverted ? [] : [{ k: 'secLand', t: '🛬 БЛИЖАЙШИЙ АЭРОДРОМ' }])],
+    act(f, ev, k) {
+      if (k === 'sq7500' && !ev.code) { ev.code = f.time; f.msg('Код 7500 установлен: диспетчер принял, наземные службы оповещены'); f.atc('sq', f.cs + ', код 7500 принял, следуйте на посадку, всё готово.'); }
+      if (k === 'secLand' && !f.diverted) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); else f.msg('Нет подходящего аэродрома рядом — идите на основной'); }
+    },
+    steps(f, ev) { return [{ t: 'Код 7500 — кнопка', done: !!ev.code }, { t: 'Ближайший аэродром: ' + f.altText(), done: f.diverted || f.dist < 120000 }]; },
+    alert: () => 'УГРОЗА БЕЗОПАСНОСТИ',
+    tick(f, ev, dt) {
+      const age = f.time - ev.t0;
+      if (ev.code && (f.diverted || f.dist < 120000)) f.resolveEvent(ev, age > 240 ? 'late' : 'ok', 'Идём на посадку — службы безопасности ждут на перроне');
+      else if (age > 420) { f.incident('sec', 'Тревога не отработана вовремя', 10, 999); f.resolveEvent(ev, 'fail', 'Слишком поздно...'); }
+    },
+  },
+
   slick: {
     title: 'СКОЛЬЗКАЯ ПОЛОСА / АКВАПЛАНИРОВАНИЕ', short: 'Скользкая полоса, аквапланирование', phases: ['descent', 'final'], weight: 2, group: 'land', spawn: 'descent',
     desc: 'Полоса мокрая или с шугой: тормоза почти не держат, самолёт «плывёт». Касайтесь точно в зоне, не завышайте скорость, тормозите плавно и держите ось.',

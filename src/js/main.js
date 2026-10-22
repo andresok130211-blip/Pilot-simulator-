@@ -18,7 +18,7 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, school: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
@@ -129,7 +129,7 @@ function renderHub() {
   menu.innerHTML = `<div class="panel">
     <h1>✈ Pilot Sim</h1>
     <div class="sub">Вы — пилот пассажирского лайнера. Берите рейсы, взлетайте, ведите самолёт и мягко садитесь. Деньги тратьте на самолёты побольше.</div>
-    <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', ap.city + ' (' + ap.id + ')')}${stat('🛩', p.short)}</div>
+    <div class="row">${stat('💰', fmtRub(save.money))}${stat('📍', ap.city + ' (' + ap.id + ')')}${stat('🛩', p.short)}${stat('😴 усталость', Math.round(save.fatigue || 0) + '%')}${(save.fatigue || 0) >= 25 ? '<button class="chip" id="bRest" style="color:#fff">Отдых · ' + fmtRub(40000) + '</button>' : ''}</div>
     <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
@@ -140,6 +140,7 @@ function renderHub() {
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
   $('bDrill').onclick = () => setScreen('drill');
+  if ($('bRest')) $('bRest').onclick = () => { if (save.money >= 40000) { save.money -= 40000; save.fatigue = 0; persist(); renderHub(); } };
   $('bSet').onclick = () => setScreen('settings');
   $('bSchool').onclick = () => setScreen('school'); $('bRec').onclick = () => setScreen('records');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
@@ -233,15 +234,17 @@ function applyVol() { if (masterG) masterG.gain.value = save.vol == null ? 1 : s
 function renderSelect() {
   const ap = apLoc(), p = plane();
   const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
+  list.forEach(c => { let h = save.flights * 31; for (const ch of c.to) h = (h * 33 + ch.charCodeAt(0)) % 997; c.dem = 0.8 + (h % 48) / 100; c.revenue = Math.round(c.revenue * c.dem); });
   if (sel && !list.find(c => c.to === sel.to)) sel = null;
   const owned = fleetIds().map(id => PL_BY[id]);
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рейсы из ${ap.city}</h1><button class="btn g" id="bBack">‹ Назад</button></div>
     <div class="row">${owned.map(o => `<button class="chip" data-pl="${o.id}" style="border:${o.id === p.id ? '2px solid #7dffb0' : '1px solid rgba(255,255,255,.3)'};color:#fff">${o.short}</button>`).join('')}</div>
+    <div class="sub">Цена топлива сейчас: ×${(save.fuelMul || 1).toFixed(2)} · репутация ${Math.round(save.rep)}</div>
     <div class="sub">${p.name}: до ${p.seats} пассажиров, дальность ≈ ${Math.round(maxRangeKm(p) / 100) * 100} км, полоса от ${p.minRwy} м.</div>
     <div id="list">${list.length ? list.map(c => {
       const to = AP_BY[c.to];
-      return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}</div></div>`;
+      return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}<div class="d">${c.dem >= 1.1 ? '▲ спрос высокий' : c.dem < 0.9 ? '▼ конкуренты' : 'спрос обычный'}</div></div></div>`;
     }).join('') : '<div class="sub">С этого аэродрома для выбранного самолёта нет подходящих рейсов. Смените самолёт.</div>'}</div>
     <div class="bar" id="opts" style="${sel ? '' : 'display:none'}">
       ${optsHTML()}
@@ -266,7 +269,7 @@ function renderHangar() {
   const cur = plane();
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Ангар</h1><button class="btn g" id="bBack">‹ Назад</button></div>
-    <div class="row">${stat('💰', fmtRub(save.money))}${stat('⭐ репутация', Math.round(save.rep))}<button class="chip" id="bCo" style="color:#fff">Второй пилот: ${save.copilot ? 'нанят (−6%)' : 'нет'}</button></div>
+    <div class="row">${stat('💰', fmtRub(save.money))}${stat('⭐ репутация', Math.round(save.rep))}<button class="chip" id="bCrew" style="color:#fff">Экипажи: ${save.crews || 0}/5 · нанять ${fmtRub(400000 + 250000 * (save.crews || 0))}</button><button class="chip" id="bCo" style="color:#fff">Второй пилот: ${save.copilot ? 'нанят (−6%)' : 'нет'}</button></div>
     ${PLANES.map(p => {
       const own = save.owned.includes(p.id), lz = save.lease[p.id] > 0;
       const w = wearOf(p.id), mc = Math.round(p.value * 0.0003 * w);
@@ -277,6 +280,7 @@ function renderHangar() {
   </div>`;
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-use]').forEach(b => b.onclick = () => { save.plane = b.dataset.use; persist(); renderHangar(); });
+  $('bCrew').onclick = () => { const cst = 400000 + 250000 * (save.crews || 0); if ((save.crews || 0) < 5 && save.money >= cst) { save.money -= cst; save.crews = (save.crews || 0) + 1; persist(); renderHangar(); } };
   $('bCo').onclick = () => { save.copilot = !save.copilot; persist(); renderHangar(); };
   menu.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.mt], c = Math.round(p.value * 0.0003 * wearOf(p.id)); if (save.money >= c) { save.money -= c; save.wear[p.id] = 0; persist(); renderHangar(); } });
   menu.querySelectorAll('[data-lease]').forEach(b => b.onclick = () => { const p = PL_BY[b.dataset.lease], c = Math.round(p.price * 0.12); if (save.money >= c) { save.money -= c; save.lease[p.id] = 5; save.plane = p.id; persist(); renderHangar(); } });
@@ -344,6 +348,7 @@ function renderDrill() {
 }
 
 // ---------- запуск рейса ----------
+function f_msgNoMoney() { alert('Недостаточно денег на ТО'); }
 function startFlight(c, drill) {
   audioInit(); lessonCur = null;
   const from = apLoc(), to = AP_BY[c.to];
@@ -351,7 +356,10 @@ function startFlight(c, drill) {
   const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg, save.season);
   if (drill) return beginFlight(c, drill, wx, null);
   const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
-  const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false] };
+  const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false], defects: [] };
+  { const w = wearOf(p.id), DEF = [{ t: 'нестабильна работа автопилота', ev: 'apFail' }, { t: 'замечание по генератору №2', ev: 'gen' }, { t: 'след утечки гидравлики', ev: 'hyd' }, { t: 'сомнительные датчики воздушных данных', ev: 'adc' }, { t: 'сбои индикации', ev: 'indic' }, { t: 'отказывает автомат тяги', ev: 'atFail' }];
+    const n = w >= 85 ? 2 : (w >= 60 && Math.random() < 0.6) || (w >= 40 && Math.random() < 0.25) ? 1 : 0;
+    while (pf.defects.length < n) { const d = DEF[Math.floor(Math.random() * DEF.length)]; if (!pf.defects.includes(d)) pf.defects.push(d); } }
   const CKL = ['Двери закрыты, трап убран', 'Топливо и загрузка проверены', 'Закрылки 2 (взлётная конфигурация)', 'Штурвал и приборы проверены', 'Аварийное оборудование, ремни'];
   const draw = () => {
     const base = Math.round(c.fuel / (1 + 0.8 * (wx.jet || 0) / 230)), fo = [base, base + p.burnHr * 0.5, base + p.burnHr * 1.0].map(v => Math.min(p.fuelCap, Math.round(v)));
@@ -366,6 +374,7 @@ function startFlight(c, drill) {
     ${wx.level ? `Ветер на эшелоне: ${wx.jet >= 0 ? 'попутный' : 'встречный'} ${Math.abs(wx.jet)} м/с (струйное течение). Температура ${wx.temp}°${Math.abs(p.mtow) && wx.temp > 28 ? ' — жарко, взлёт длиннее' : ''}.<br>` : ''}<b>Топливо:</b> ${fuel} кг<br>${opt('fuel', 0, 'Минимум')}${opt('fuel', 1, '+30 мин (станд.)')}${opt('fuel', 2, '+1 ч (запасной)')}<br>
     <b>Центровка:</b> ${Math.round(cgv * 100)}% САХ ${cgv < 0.2 ? '(передняя — тугой подъём носа)' : cgv > 0.3 ? '(задняя — экономичнее, чувствительный тангаж)' : '(норма)'}<br>${opt('cg', 'fwd', 'Багаж вперёд')}${opt('cg', 'auto', 'Авто')}${opt('cg', 'aft', 'Багаж назад')}<br>
     <b>Взлётная масса:</b> ${Math.round(li.mass / 100) / 10} т из ${Math.round(p.mtow / 100) / 10} т${li.over ? ' <span style="color:#ff8a7a">⚠ ПЕРЕГРУЗ — уменьшите топливо</span>' : ''}<br>
+    ${pf.defects.length ? `<div style="margin:4px 0;color:#ffb36b">⚠ Замечания по технике (износ ${wearOf(p.id)}%): ${pf.defects.map(d => d.t).join('; ')}. В полёте это может отказать. <button class="chip" id="pfMt" style="color:#fff">Вызвать ТО (${fmtRub(Math.round(p.value * 0.00012 * wearOf(p.id)))}, −30% износа)</button></div>` : ''}
     <b>V1 / VR / V2:</b> ${li.v1} / ${li.vr} / ${li.v2} км/ч (закрылки 2)<br>
     <b>Взлётный режим:</b> ${opt('flex', false, 'TOGA')}${flexOk ? opt('flex', true, 'FLEX (−14% тяги, меньше износ)') : '<span class="d"> FLEX недоступен (короткая/высокогорная полоса)</span>'}<br><br>
     <b>Чек-лист:</b> <button class="chip" id="pfAll" style="color:#fff">отметить всё</button><br>${CKL.map((t, i) => `<div class="pfc" data-i="${i}" style="cursor:pointer;padding:2px 0">${pf.ck[i] ? '☑' : '☐'} ${t}</div>`).join('')}</div>
@@ -373,7 +382,8 @@ function startFlight(c, drill) {
     modalBox.querySelectorAll('.pf').forEach(b => b.onclick = () => { const k = b.dataset.k, v = b.dataset.v; if (k === 'fuel') pf.fuel = +v; else if (k === 'cg') pf.cg = v; else pf.flex = v === 'true'; draw(); });
     modalBox.querySelectorAll('.pfc').forEach(b => b.onclick = () => { pf.ck[+b.dataset.i] = !pf.ck[+b.dataset.i]; draw(); });
     $('pfAll').onclick = () => { pf.ck = pf.ck.map(() => true); draw(); };
-    $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx, { fuel, cg: cgv, flex: pf.flex });
+    if ($('pfMt')) $('pfMt').onclick = () => { const cst = Math.round(p.value * 0.00012 * wearOf(p.id)); if (save.money < cst) { f_msgNoMoney(); return; } save.money -= cst; save.wear[p.id] = Math.max(0, (save.wear[p.id] || 0) - 30); pf.defects = []; persist(); draw(); };
+    $('mNo').onclick = hideModal; $('mGo').onclick = () => beginFlight(c, drill, wx, { fuel, cg: cgv, flex: pf.flex, extraEv: pf.defects.map(d => d.ev) });
   };
   draw();
 }
@@ -382,7 +392,7 @@ function beginFlight(c, drill, wx, pf) {
   const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
   flight = new Flight({ wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: pf ? pf.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)), cold: !!pf && save.taxiOps, flex: !!(pf && pf.flex), cg: pf ? pf.cg : 0.25,
-    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && wearOf(p.id) >= 60 ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+    taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, fatigue: save.fatigue || 0, extraEv: pf ? pf.extraEv : undefined, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   if (drill && lessonCur) { flight.assist.auto = lessonCur.assist.auto; flight.assist.config = lessonCur.assist.config; }
@@ -452,6 +462,12 @@ function renderAlt() {
 }
 
 // ---------- кнопки ----------
+function buildRadio() {
+  const f = flight; if (!f) return; const p = $('radioP');
+  const L = [['taxi', 'Руление', !f.airborneOnce && f.onGround], ['to', 'Взлёт', !f.airborneOnce && f.onGround], ['climb', 'Эшелон выше', f.airborneOnce && !f.onGround], ['land', 'Посадка', f.airborneOnce && !f.onGround], ['pan', 'PAN-PAN', true, 'red'], ['may', 'MAYDAY', true, 'red']];
+  p.innerHTML = L.filter(x => x[2]).map(x => `<button data-r="${x[0]}" class="${x[3] || ''}">${x[1]}</button>`).join('');
+  p.querySelectorAll('button').forEach(b => b.onclick = () => { f.radioReq(b.dataset.r); p.classList.remove('on'); });
+}
 function act(a) {
   if (!flight || flight.done) return;
   const f = flight, c = f.c;
@@ -474,7 +490,8 @@ function act(a) {
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен — управляйте газом'); break; } c.atOn = !c.atOn; break;
     case 'nav': if (f.fx.gps) { f.msg('GPS потерян — навигация недоступна'); break; } c.nav = !c.nav; break;
     case 'map': view.map = view.map === false; break;
-    case 'start': if (f.cold) f.startReq = true; break;
+    case 'start': if (f.cold) { if (f.gate.done) f.startReq = true; else f.msg('Дождитесь окончания обслуживания'); } break;
+    case 'radio': { const p = $('radioP'); p.classList.toggle('on'); if (p.classList.contains('on')) buildRadio(); break; }
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
@@ -568,7 +585,7 @@ function drawReplay(f, k) {
   const c = T[m - 1]; g.fillStyle = '#fff'; g.beginPath(); g.arc(X(c[0]), Y(c[2]), 3.5, 0, 6.3); g.fill();
 }
 function showResult() {
-  const f = flight, r = settle(f, contract, { rep: save.rep, copilot: save.copilot });
+  const f = flight, r = settle(f, contract, { rep: save.rep, copilot: save.copilot, fuelMul: save.fuelMul || 1, crews: save.crews || 0 });
   const to = f.toAp;
   // применяем итоги
   const drill = !!f.drill;
@@ -584,6 +601,7 @@ function showResult() {
       const id = f.p.id;
       save.wear[id] = Math.min(100, (save.wear[id] || 0) + (r.km / 60) * (f.flex ? 0.75 : 1) + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
       const dr = r.kind === 'ok' ? (r.stars - 3) * 2 + (r.sched > 0 ? 1 : r.sched < 0 ? -2 : 0) : r.kind === 'crash' ? -15 : r.kind === 'overrun' ? -6 : -4;
+      save.fatigue = Math.min(100, (save.fatigue || 0) + 3 + (f.simTime / 60) * 0.3 * (save.copilot ? 0.6 : 1)); save.fuelMul = Math.max(0.8, Math.min(1.5, (save.fuelMul || 1) + (Math.random() - 0.5) * 0.25));
       r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
       if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }
     }
@@ -604,7 +622,9 @@ function showResult() {
     if (r.fuelCost) rows += row('Топливо (' + Math.round(r.fuelUsed) + ' кг)', '−' + fmtRub(r.fuelCost), 'neg');
     if (r.ops) rows += row('Обслуживание', '−' + fmtRub(r.ops), 'neg');
     if (r.fee) rows += row('Аэропортовые сборы', '−' + fmtRub(r.fee), 'neg');
+    if (r.kind === 'ok' && r.paxStars) rows += row('Оценка пассажиров', '★'.repeat(r.paxStars) + '☆'.repeat(5 - r.paxStars), r.paxStars >= 4 ? 'pos' : r.paxStars <= 2 ? 'neg' : '');
     if (r.kind === 'ok' && r.sched) rows += row('Расписание (' + Math.round(r.tm) + ' мин, план ' + Math.round(r.expMin) + ')', (r.sched > 0 ? '+' : '−') + Math.abs(Math.round(r.sched * 100)) + '%', r.sched > 0 ? 'pos' : 'neg');
+    if (r.crewInc) rows += row('Доход ваших экипажей (' + save.crews + ')', '+' + fmtRub(r.crewInc), 'pos');
     if (r.coFee) rows += row('Второй пилот', '−' + fmtRub(r.coFee), 'neg');
     if (r.repair) rows += row('Ремонт самолёта', '−' + fmtRub(r.repair), 'neg');
     rows += row('<b>Итого</b>', (r.net >= 0 ? '+' : '−') + fmtRub(Math.abs(r.net)), r.net >= 0 ? 'pos' : 'neg');

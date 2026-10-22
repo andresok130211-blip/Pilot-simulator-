@@ -71,6 +71,8 @@ export function fly(planeId, fromId, toId, opts = {}) {
       if (ev === 'unruly' && age > d0) { f.evAction('door'); f.evAction('alarm'); }
       if (ev === 'gps' && age > d0) f.evAction('vor');
       if (ev === 'rwyChg' && age > d0) f.evAction('ack');
+      if (ev === 'ash' && age > d0) { f.evAction('ashIdle'); if (age > d0 + 8) f.evAction('ashTurn'); }
+      if (ev === 'security' && age > d0) { f.evAction('sq7500'); if (age > d0 + 6) f.evAction('secLand'); }
       if (ev === 'tcas' && age > 4 && !E.bot) { E.bot = 1; c.apOn = true; c.apAlt = Math.max(300, f.h + E.ra * 500); }
       if ((ev === 'wshear' || ev === 'goAr') && !f.ga && f.canGoAround()) f.goAround();
       if (ev === 'fog' && !f.ga && f.h < 75 && f.canGoAround()) f.goAround();
