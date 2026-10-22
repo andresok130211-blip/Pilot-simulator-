@@ -99,7 +99,7 @@ export class Flight {
     this.dISA = o.wx && o.wx.level ? Math.max(-25, Math.min(25, o.wx.temp - (15 - 0.0065 * o.from.elev))) : 0; this.m0 = 0; this.scN = 0;
     this.cold = !!o.cold; this.startReq = false; this.startT = 0; this.apu = false; this.flex = !!o.flex; this.cg = o.cg || 0.25;
     this.eng = o.cold ? [0, 0] : [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
-    this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.closedIds = new Set(); this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
     this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
@@ -440,6 +440,7 @@ export class Flight {
     this.evStep(dt);
     if (this.done) return;
     this.atcTick();
+    if (this.closedIds.has(this.toAp.id) && !this.diverted && this.dist < 2500 && !this.td && !this.ga && !this.rwyBlocked && this.airborneOnce) { this.rwyBlocked = true; this.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
     if (this.cold) this.startTick(dt);
     if (this.time - this._rec >= 3) { this._rec = this.time; this.track.push([Math.round(this.x), Math.round(this.yPos || 0), Math.round(this.h), Math.round(this.ias * 3.6), +this.vs.toFixed(1)]); if (this.track.length > 3000) this.track.shift(); }
 
@@ -888,6 +889,7 @@ export class Flight {
     const out = [], p = this.p;
     for (const w of this.world) {
       if (w.id === this.toAp.id && !this.diverted) continue;
+      const isClosed = this.closedIds.has(w.id);
       if (this.diverted && w.id === this.divTo) continue;
       const l = toLocal(this.tf, w.wx, w.wz, { x: 0, z: 0 });
       const dx = l.x - this.x, dz = l.z - this.yPos, d = Math.hypot(dx, dz);
@@ -895,7 +897,8 @@ export class Flight {
       const rel0 = Math.abs(wrapPi(Math.atan2(dz, dx) - this.psi));
       const need = 8000 + 0.8 * (Math.max(0, this.h - 3000) / 9 * 190 + 81000 * Math.min(1, this.h / 3000)) + (rel0 > 1.4 ? 50000 : rel0 > 0.7 ? 15000 : 0);
       let ok = true, why = '';
-      if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
+      if (isClosed) { ok = false; why = 'закрыт'; }
+      else if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
       else if (d < need) { ok = false; why = 'слишком близко/высоко'; }
       else if (this.onGround || this.ga) { ok = false; why = ''; }
       out.push({ w, d, ok, why, lx: l.x, lz: l.z, rel: Math.atan2(dz, dx) - this.psi, label: w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')' });

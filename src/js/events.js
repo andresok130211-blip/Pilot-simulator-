@@ -694,6 +694,7 @@ export const EVENT_DEFS = {
     ok: f => f.distM >= 250000,
     start(f, ev) {
       ev.why = ['авария на полосе', 'аварийно-спасательные работы', 'закрытие по погоде', 'отказ освещения полосы'][Math.floor(f.rnd() * 4)];
+      f.closedIds.add(f.toAp.id);
       f.msg('ДИСПЕТЧЕР: АЭРОПОРТ ЗАКРЫТ (' + ev.why + ')! Следуйте на запасной');
     },
     steps(f, ev) {
@@ -705,9 +706,9 @@ export const EVENT_DEFS = {
     alert: (f, ev) => f.diverted ? null : 'АЭРОПОРТ ЗАКРЫТ',
     tick(f, ev, dt) {
       const age = f.time - ev.t0; ev.needDiv = true;
-      if (f.diverted) { f.rwyBlocked = false; f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Следуем на запасной аэродром'); return; }
+      if (f.diverted) { f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Следуем на запасной аэродром'); return; }
       if (f.dist < 2500 && !f.td && !f.rwyBlocked && !f.ga && f.gaCount === 0) { f.rwyBlocked = true; f.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
-      if (age > 700) { f.rwyBlocked = false; f.resolveEvent(ev, 'fail', 'Аэропорт открыт — но вы потеряли много времени'); }
+      if (age > 700) { f.resolveEvent(ev, 'fail', 'Вы слишком долго не уходили на запасной — аэропорт остаётся закрытым'); }
     },
   },
 

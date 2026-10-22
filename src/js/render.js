@@ -538,6 +538,10 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
 }
 function mixc2(hex, k) { return shadeCol(hex, k); }
 
+function drawClosedMark(x0, len) {
+  const red = ['#d12b2b', '#d12b2b', '#d12b2b', '#d12b2b', '#d12b2b'];
+  for (const xs of [x0 + 40, x0 + len - 110, x0 + len / 2 - 25]) { boxAt(0.14, xs, xs + 70, -20, 20, 0.05, red); boxAt(0.17, xs + 25, xs + 45, -20, 20, 0.05, ['#fff', '#fff', '#fff', '#fff', '#fff']); }
+}
 function drawLights(pal, x0, len, isDest) {
   if (pal.night < 0.3) {
     // днём — только PAPI
@@ -679,9 +683,11 @@ function drawTape(x, side, valuePx, ppu, minor, major, value, fmt, bugs) {
   txt(fmt(value, true), bx + bw / 2, by + bh / 2 + 5.5 * U, GREEN, 15 * U, 'center', '800');
 }
 
+let UK = 1;
+export function setUiScale(k) { UK = k; }
 export function drawFlight(c, w, h, f, t, view) {
   ctx = c; W = w; H = h;
-  U = Math.max(0.75, Math.min(H / 380, W / 720));
+  U = Math.max(0.75, Math.min(H / 380, W / 720)) * UK;
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
   const chase = view.cam === 'chase';
@@ -719,19 +725,21 @@ export function drawFlight(c, w, h, f, t, view) {
     if (a.id === f.toAp.id || (a.id === f.fromAp.id && f.rwy0.s > -1e6)) continue;
     const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
     if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
-    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); camZ = sz;
+    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); if (f.closedIds.has(a.id)) drawClosedMark(lx - a.len / 2, a.len); camZ = sz;
   }
   drawAirport(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, f.fromAp, false, f);
   drawAirport(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, f.toAp, true, f);
+  if (f.closedIds.has(f.toAp.id)) drawClosedMark(f.rwy1.s, f.rwy1.e - f.rwy1.s);
   drawHaze(pal, hy);
   drawTraffic(pal, f, t);
   drawLights(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, false);
-  drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
+  if (!f.closedIds.has(f.toAp.id)) drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
   if (pal.night > 0.3) for (let i = 0; i < f.world.length; i++) {
     const a = f.world[i];
     if (a.id === f.toAp.id || a.id === f.fromAp.id) continue;
     const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
     if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    if (f.closedIds.has(a.id)) continue;
     const sz = camZ; camZ -= lz; drawLights(pal, lx - a.len / 2, a.len, false); camZ = sz;
   }
   let fog = 0;
@@ -840,6 +848,7 @@ function drawMiniMap(f, view, t) {
     const w = f.world[i]; if (w.id === f.toAp.id) continue;
     const q = P(apLocal[2 * i], apLocal[2 * i + 1]);
     if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp * 1.1) continue;
+    if (f.closedIds.has(w.id)) { ctx.strokeStyle = '#ff4a4a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(q[0] - 4 * U, q[1] - 4 * U); ctx.lineTo(q[0] + 4 * U, q[1] + 4 * U); ctx.moveTo(q[0] + 4 * U, q[1] - 4 * U); ctx.lineTo(q[0] - 4 * U, q[1] + 4 * U); ctx.stroke(); txt(w.id + ' ЗАКР', q[0] + 6 * U, q[1] + 3 * U, '#ff6a6a', 8 * U, 'left', '700'); continue; }
     ctx.fillStyle = showAlt ? 'rgba(255,224,138,.95)' : 'rgba(200,210,230,.5)';
     ctx.fillRect(q[0] - 2 * U, q[1] - 2 * U, 4 * U, 4 * U);
     if (showAlt) txt(w.gen ? 'ЗАП' : w.id, q[0] + 4 * U, q[1] + 3 * U, 'rgba(255,224,138,.95)', 8 * U, 'left', '700');

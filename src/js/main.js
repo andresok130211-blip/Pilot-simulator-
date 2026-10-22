@@ -2,7 +2,7 @@
 import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } from './data.js';
 import { Flight, settle, loadInfo, FLAP_NAMES } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
-import { drawFlight, drawMap } from './render.js';
+import { drawFlight, drawMap, setUiScale } from './render.js';
 
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d');
@@ -40,15 +40,16 @@ const plane = () => PL_BY[save.plane];
 const apLoc = () => AP_BY[save.loc];
 
 // ---------- звук (простой, по желанию) ----------
-let actx = null, eng = null, engGain = null, beepT = 0;
+let actx = null, eng = null, engGain = null, beepT = 0, masterG = null;
 function audioInit() {
   if (actx || !save.sound) return;
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
+    masterG = actx.createGain(); masterG.connect(actx.destination); applyVol();
     eng = actx.createOscillator(); eng.type = 'sawtooth'; eng.frequency.value = 60;
     const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
     engGain = actx.createGain(); engGain.gain.value = 0;
-    eng.connect(lp); lp.connect(engGain); engGain.connect(actx.destination); eng.start();
+    eng.connect(lp); lp.connect(engGain); engGain.connect(masterG); eng.start();
   } catch (e) { actx = null; }
 }
 function beep(freq, dur) {
@@ -56,17 +57,17 @@ function beep(freq, dur) {
   try {
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = 'square'; o.frequency.value = freq; g.gain.value = 0.05;
-    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+    o.connect(g); g.connect(masterG || actx.destination); o.start(); o.stop(actx.currentTime + dur);
   } catch (e) { }
 }
 let noiseG = null, noiseF = null, spoken = new Set(), lastVoice = 0, radioN = 0;
 function say(text, pitch) {
-  if (!save.sound || !window.speechSynthesis) return;
-  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8; speechSynthesis.speak(u); } catch (e) { }
+  if (!save.sound || save.voice === false || !window.speechSynthesis) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8 * (save.vol == null ? 1 : save.vol); speechSynthesis.speak(u); } catch (e) { }
 }
 const VOICE = { gear: 'Шасси', stall: 'Сваливание', pullup: 'Тяните вверх, земля', sink: 'Большая вертикальная скорость', flaps: 'Закрылки', over: 'Превышение скорости', terrain: 'Внимание, земля', lowfuel: 'Мало топлива' };
 let vibT = 0, vibTd = null;
-function vib(p) { try { if (save.sound && navigator.vibrate) navigator.vibrate(p); } catch (e) { } }
+function vib(p) { try { if (save.sound && save.vibr !== false && navigator.vibrate) navigator.vibrate(p); } catch (e) { } }
 function vibeTick(f) {
   if (mode !== 'flight' || paused) return;
   if (f.td && f.td !== vibTd) { vibTd = f.td; vib(f.td.sink > 2.4 ? [220, 80, 220] : f.td.sink > 1.4 ? 90 : 40); }
@@ -81,7 +82,7 @@ function audioTick(f) {
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
       const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
       noiseF = actx.createBiquadFilter(); noiseF.type = 'bandpass'; noiseF.frequency.value = 900; noiseF.Q.value = 0.6;
-      noiseG = actx.createGain(); noiseG.gain.value = 0; src.connect(noiseF); noiseF.connect(noiseG); noiseG.connect(actx.destination); src.start();
+      noiseG = actx.createGain(); noiseG.gain.value = 0; src.connect(noiseF); noiseF.connect(noiseG); noiseG.connect(masterG || actx.destination); src.start();
     } catch (e) { noiseG = null; }
   }
   if (noiseG) {
@@ -118,6 +119,7 @@ function renderMenu() {
   else if (screen === 'select') renderSelect();
   else if (screen === 'drill') renderDrill();
   else if (screen === 'school') renderSchool();
+  else if (screen === 'settings') renderSettings();
   else if (screen === 'records') renderRecords();
   else renderHangar();
 }
@@ -131,13 +133,14 @@ function renderHub() {
     <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
-    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bSchool">Лётная школа</button><button class="btn g" id="bRec">Рекорды</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
+    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bSchool">Лётная школа</button><button class="btn g" id="bRec">Рекорды</button><button class="btn g" id="bSet">⚙ Настройки</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
     <div class="sub" style="margin-top:14px;opacity:.6">Данные сохраняются на устройстве. ${save.flights ? '<a href="#" id="bReset" style="color:#ff9a9a">Сбросить прогресс</a>' : ''}</div>
   </div>`;
   $('bFly').onclick = () => { audioInit(); setScreen('select'); };
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
   $('bDrill').onclick = () => setScreen('drill');
+  $('bSet').onclick = () => setScreen('settings');
   $('bSchool').onclick = () => setScreen('school'); $('bRec').onclick = () => setScreen('records');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
   const r = $('bReset');
@@ -161,6 +164,72 @@ function showHelp() {
 
 function etaMin(km) { return Math.round(km / 760 * 60 + 22); }
 
+function optsHTML() {
+  return `
+      <label class="chk"><input type="checkbox" id="oAuto" ${save.assistAuto ? 'checked' : ''}> Помощник: автопилот сам набирает высоту, снижается и ведёт по глиссаде</label>
+      <label class="chk"><input type="checkbox" id="oCfg" ${save.assistCfg ? 'checked' : ''}> Помощник: сам выпускает и убирает шасси и закрылки</label>
+      <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
+      <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
+      <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
+      <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
+      <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
+      <label class="chk">Сезон: <select id="oSe"><option value="0">случайный</option><option value="1">лето</option><option value="2">зима (снег, накат)</option></select></label>
+      <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
+  `;
+}
+function bindOpts() {
+  $('oTod') && ($('oTod').value = String(save.tod));
+  $('oEm') && ($('oEm').value = String(save.emerg));
+  $('oWx') && ($('oWx').value = String(save.wxLvl)); $('oSe') && ($('oSe').value = String(save.season || 0));
+    $('oAuto').onchange = e => { save.assistAuto = e.target.checked; persist(); };
+    $('oCfg').onchange = e => { save.assistCfg = e.target.checked; persist(); };
+    $('oTaxiOps').onchange = e => { save.taxiOps = e.target.checked; persist(); };
+    $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
+    $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
+    $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
+    $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
+    $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
+    $('oSe').onchange = e => { save.season = +e.target.value; persist(); };
+}
+
+// ---------- настройки ----------
+function renderSettings() {
+  menu.innerHTML = `<div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Настройки</h1><button class="btn g" id="bBack">‹ Назад</button></div>
+    <div class="sub"><b>Игра</b></div>
+    <div class="grp">${optsHTML()}</div>
+    <div class="sub" style="margin-top:10px"><b>Звук и отклик</b></div>
+    <div class="grp">
+      <label class="chk"><input type="checkbox" id="sSnd" ${save.sound ? 'checked' : ''}> Звук (двигатели, ветер, сигнализация)</label>
+      <label class="chk">Громкость: <input type="range" id="sVol" min="0" max="100" value="${Math.round((save.vol == null ? 1 : save.vol) * 100)}"></label>
+      <label class="chk"><input type="checkbox" id="sVoice" ${save.voice !== false ? 'checked' : ''}> Голос: диспетчер, бортпроводник, предупреждения</label>
+      <label class="chk"><input type="checkbox" id="sVib" ${save.vibr !== false ? 'checked' : ''}> Вибрация (касание, сваливание, болтанка)</label>
+    </div>
+    <div class="sub" style="margin-top:10px"><b>Экран и управление</b></div>
+    <div class="grp">
+      <label class="chk">Вид по умолчанию: <select id="sCam"><option value="chase">снаружи</option><option value="cockpit">из кабины</option></select></label>
+      <label class="chk">Размер интерфейса: <select id="sUi"><option value="1">обычный</option><option value="1.2">крупный</option><option value="1.4">очень крупный</option></select></label>
+      <label class="chk"><input type="checkbox" id="sMap" ${save.mapOn !== false ? 'checked' : ''}> Показывать мини-карту</label>
+      <label class="chk"><input type="checkbox" id="sSimple" ${save.simple ? 'checked' : ''}> Режим новичка: подсказки по шагам, помощник и автопосадка включены</label>
+    </div>
+    <div class="mrow"><button class="btn g" id="sHelp">Как играть</button><button class="btn g" id="bBack2">Готово</button></div>
+  </div>`;
+  bindOpts();
+  $('sCam').value = save.cam; $('sUi').value = String(save.uiScale || 1);
+  $('bBack').onclick = $('bBack2').onclick = () => setScreen('hub');
+  $('sHelp').onclick = showHelp;
+  $('sSnd').onchange = e => { save.sound = e.target.checked; persist(); if (save.sound) audioInit(); };
+  $('sVol').oninput = e => { save.vol = +e.target.value / 100; persist(); applyVol(); };
+  $('sVoice').onchange = e => { save.voice = e.target.checked; persist(); };
+  $('sVib').onchange = e => { save.vibr = e.target.checked; persist(); };
+  $('sCam').onchange = e => { save.cam = e.target.value; persist(); };
+  $('sUi').onchange = e => { save.uiScale = +e.target.value; persist(); applyUi(); };
+  $('sMap').onchange = e => { save.mapOn = e.target.checked; persist(); };
+  $('sSimple').onchange = e => { save.simple = e.target.checked; if (e.target.checked) { save.assistAuto = true; save.assistCfg = true; save.assistTaxi = true; save.hints = true; } persist(); renderSettings(); };
+}
+function applyUi() { setUiScale(save.uiScale || 1); menu.style.fontSize = (save.uiScale || 1) > 1 ? (save.uiScale * 100) + '%' : ''; }
+function applyVol() { if (masterG) masterG.gain.value = save.vol == null ? 1 : save.vol; }
+
 function renderSelect() {
   const ap = apLoc(), p = plane();
   const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
@@ -175,21 +244,10 @@ function renderSelect() {
       return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}</div></div>`;
     }).join('') : '<div class="sub">С этого аэродрома для выбранного самолёта нет подходящих рейсов. Смените самолёт.</div>'}</div>
     <div class="bar" id="opts" style="${sel ? '' : 'display:none'}">
-      <label class="chk"><input type="checkbox" id="oAuto" ${save.assistAuto ? 'checked' : ''}> Помощник: автопилот сам набирает высоту, снижается и ведёт по глиссаде</label>
-      <label class="chk"><input type="checkbox" id="oCfg" ${save.assistCfg ? 'checked' : ''}> Помощник: сам выпускает и убирает шасси и закрылки</label>
-      <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
-      <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
-      <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
-      <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
-      <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
-      <label class="chk">Сезон: <select id="oSe"><option value="0">случайный</option><option value="1">лето</option><option value="2">зима (снег, накат)</option></select></label>
-      <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
+      ${optsHTML()}
       <button class="btn go big" id="bGo">Лететь ✈</button>
     </div>
   </div>`;
-  $('oTod') && ($('oTod').value = String(save.tod));
-  $('oEm') && ($('oEm').value = String(save.emerg));
-  $('oWx') && ($('oWx').value = String(save.wxLvl)); $('oSe') && ($('oSe').value = String(save.season || 0));
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { save.plane = b.dataset.pl; persist(); sel = null; renderSelect(); });
   menu.querySelectorAll('[data-to]').forEach(el => el.onclick = () => {
@@ -199,15 +257,7 @@ function renderSelect() {
     const pn = menu.querySelector('.panel'); pn.scrollTo({ top: pn.scrollHeight, behavior: 'smooth' });
   });
   if ($('bGo')) {
-    $('oAuto').onchange = e => { save.assistAuto = e.target.checked; persist(); };
-    $('oCfg').onchange = e => { save.assistCfg = e.target.checked; persist(); };
-    $('oTaxiOps').onchange = e => { save.taxiOps = e.target.checked; persist(); };
-    $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
-    $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
-    $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
-    $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
-    $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
-    $('oSe').onchange = e => { save.season = +e.target.value; persist(); };
+    bindOpts();
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
   }
 }
@@ -336,7 +386,7 @@ function beginFlight(c, drill, wx, pf) {
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   if (drill && lessonCur) { flight.assist.auto = lessonCur.assist.auto; flight.assist.config = lessonCur.assist.config; }
-  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: true, mapZoom: 0 };
+  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: save.mapOn !== false, mapZoom: 0 };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = ''; toggleAlt(false);
@@ -628,7 +678,7 @@ function loop(ts) {
   }
 }
 requestAnimationFrame(loop);
-renderMenu();
+applyUi(); renderMenu();
 
 // отладка/тесты
 window.__pilot = { get flight() { return flight; }, save, startFlight, setScreen, act, get mode() { return mode; } };

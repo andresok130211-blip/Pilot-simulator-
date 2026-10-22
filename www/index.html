@@ -65,6 +65,7 @@ table.res td{padding:4px 2px;border-bottom:1px solid rgba(255,255,255,.12)}
 table.res td:last-child{text-align:right;font-weight:700}
 .pos{color:#8dffb4}.neg{color:#ff8a80}
 .bar{position:sticky;bottom:-18px;margin:10px -14px -18px;padding:10px 14px 14px;background:linear-gradient(rgba(6,12,26,0),rgba(6,12,26,.97) 30%)}
+.grp{margin:6px 0 4px;padding:4px 0}
 
 #modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:20;touch-action:pan-y}
 #modal.on{display:flex}
@@ -1078,6 +1079,7 @@ const EVENT_DEFS = {
     ok: f => f.distM >= 250000,
     start(f, ev) {
       ev.why = ['авария на полосе', 'аварийно-спасательные работы', 'закрытие по погоде', 'отказ освещения полосы'][Math.floor(f.rnd() * 4)];
+      f.closedIds.add(f.toAp.id);
       f.msg('ДИСПЕТЧЕР: АЭРОПОРТ ЗАКРЫТ (' + ev.why + ')! Следуйте на запасной');
     },
     steps(f, ev) {
@@ -1089,9 +1091,9 @@ const EVENT_DEFS = {
     alert: (f, ev) => f.diverted ? null : 'АЭРОПОРТ ЗАКРЫТ',
     tick(f, ev, dt) {
       const age = f.time - ev.t0; ev.needDiv = true;
-      if (f.diverted) { f.rwyBlocked = false; f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Следуем на запасной аэродром'); return; }
+      if (f.diverted) { f.resolveEvent(ev, age > 260 ? 'late' : 'ok', 'Следуем на запасной аэродром'); return; }
       if (f.dist < 2500 && !f.td && !f.rwyBlocked && !f.ga && f.gaCount === 0) { f.rwyBlocked = true; f.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
-      if (age > 700) { f.rwyBlocked = false; f.resolveEvent(ev, 'fail', 'Аэропорт открыт — но вы потеряли много времени'); }
+      if (age > 700) { f.resolveEvent(ev, 'fail', 'Вы слишком долго не уходили на запасной — аэропорт остаётся закрытым'); }
     },
   },
 
@@ -1445,7 +1447,7 @@ class Flight {
     this.dISA = o.wx && o.wx.level ? Math.max(-25, Math.min(25, o.wx.temp - (15 - 0.0065 * o.from.elev))) : 0; this.m0 = 0; this.scN = 0;
     this.cold = !!o.cold; this.startReq = false; this.startT = 0; this.apu = false; this.flex = !!o.flex; this.cg = o.cg || 0.25;
     this.eng = o.cold ? [0, 0] : [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
-    this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
+    this.closedIds = new Set(); this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
     this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
@@ -1786,6 +1788,7 @@ class Flight {
     this.evStep(dt);
     if (this.done) return;
     this.atcTick();
+    if (this.closedIds.has(this.toAp.id) && !this.diverted && this.dist < 2500 && !this.td && !this.ga && !this.rwyBlocked && this.airborneOnce) { this.rwyBlocked = true; this.msg('ПОЛОСА ЗАКРЫТА! УХОД НА ВТОРОЙ КРУГ!'); }
     if (this.cold) this.startTick(dt);
     if (this.time - this._rec >= 3) { this._rec = this.time; this.track.push([Math.round(this.x), Math.round(this.yPos || 0), Math.round(this.h), Math.round(this.ias * 3.6), +this.vs.toFixed(1)]); if (this.track.length > 3000) this.track.shift(); }
 
@@ -2234,6 +2237,7 @@ class Flight {
     const out = [], p = this.p;
     for (const w of this.world) {
       if (w.id === this.toAp.id && !this.diverted) continue;
+      const isClosed = this.closedIds.has(w.id);
       if (this.diverted && w.id === this.divTo) continue;
       const l = toLocal(this.tf, w.wx, w.wz, { x: 0, z: 0 });
       const dx = l.x - this.x, dz = l.z - this.yPos, d = Math.hypot(dx, dz);
@@ -2241,7 +2245,8 @@ class Flight {
       const rel0 = Math.abs(wrapPi(Math.atan2(dz, dx) - this.psi));
       const need = 8000 + 0.8 * (Math.max(0, this.h - 3000) / 9 * 190 + 81000 * Math.min(1, this.h / 3000)) + (rel0 > 1.4 ? 50000 : rel0 > 0.7 ? 15000 : 0);
       let ok = true, why = '';
-      if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
+      if (isClosed) { ok = false; why = 'закрыт'; }
+      else if (w.len < p.minRwy) { ok = false; why = 'полоса коротка'; }
       else if (d < need) { ok = false; why = 'слишком близко/высоко'; }
       else if (this.onGround || this.ga) { ok = false; why = ''; }
       out.push({ w, d, ok, why, lx: l.x, lz: l.z, rel: Math.atan2(dz, dx) - this.psi, label: w.gen ? w.ap.city : w.ap.city + ' (' + w.id + ')' });
@@ -3015,6 +3020,10 @@ function drawAirport(pal, x0, len, ap, isDest, f) {
 }
 function mixc2(hex, k) { return shadeCol(hex, k); }
 
+function drawClosedMark(x0, len) {
+  const red = ['#d12b2b', '#d12b2b', '#d12b2b', '#d12b2b', '#d12b2b'];
+  for (const xs of [x0 + 40, x0 + len - 110, x0 + len / 2 - 25]) { boxAt(0.14, xs, xs + 70, -20, 20, 0.05, red); boxAt(0.17, xs + 25, xs + 45, -20, 20, 0.05, ['#fff', '#fff', '#fff', '#fff', '#fff']); }
+}
 function drawLights(pal, x0, len, isDest) {
   if (pal.night < 0.3) {
     // днём — только PAPI
@@ -3156,9 +3165,11 @@ function drawTape(x, side, valuePx, ppu, minor, major, value, fmt, bugs) {
   txt(fmt(value, true), bx + bw / 2, by + bh / 2 + 5.5 * U, GREEN, 15 * U, 'center', '800');
 }
 
+let UK = 1;
+function setUiScale(k) { UK = k; }
 function drawFlight(c, w, h, f, t, view) {
   ctx = c; W = w; H = h;
-  U = Math.max(0.75, Math.min(H / 380, W / 720));
+  U = Math.max(0.75, Math.min(H / 380, W / 720)) * UK;
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
   const chase = view.cam === 'chase';
@@ -3196,19 +3207,21 @@ function drawFlight(c, w, h, f, t, view) {
     if (a.id === f.toAp.id || (a.id === f.fromAp.id && f.rwy0.s > -1e6)) continue;
     const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
     if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
-    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); camZ = sz;
+    const sz = camZ; camZ -= lz; drawAirport(pal, lx - a.len / 2, a.len, a.ap, false, f); if (f.closedIds.has(a.id)) drawClosedMark(lx - a.len / 2, a.len); camZ = sz;
   }
   drawAirport(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, f.fromAp, false, f);
   drawAirport(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, f.toAp, true, f);
+  if (f.closedIds.has(f.toAp.id)) drawClosedMark(f.rwy1.s, f.rwy1.e - f.rwy1.s);
   drawHaze(pal, hy);
   drawTraffic(pal, f, t);
   drawLights(pal, f.rwy0.s, f.rwy0.e - f.rwy0.s, false);
-  drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
+  if (!f.closedIds.has(f.toAp.id)) drawLights(pal, f.rwy1.s, f.rwy1.e - f.rwy1.s, true);
   if (pal.night > 0.3) for (let i = 0; i < f.world.length; i++) {
     const a = f.world[i];
     if (a.id === f.toAp.id || a.id === f.fromAp.id) continue;
     const lx = apLocal[2 * i], lz = apLocal[2 * i + 1];
     if (lx > camX + 16000 || lx < camX - 6000 || Math.abs(lz - camZ) > 16000) continue;
+    if (f.closedIds.has(a.id)) continue;
     const sz = camZ; camZ -= lz; drawLights(pal, lx - a.len / 2, a.len, false); camZ = sz;
   }
   let fog = 0;
@@ -3317,6 +3330,7 @@ function drawMiniMap(f, view, t) {
     const w = f.world[i]; if (w.id === f.toAp.id) continue;
     const q = P(apLocal[2 * i], apLocal[2 * i + 1]);
     if (Math.hypot(q[0] - cx, q[1] - cy - oy) > rp * 1.1) continue;
+    if (f.closedIds.has(w.id)) { ctx.strokeStyle = '#ff4a4a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(q[0] - 4 * U, q[1] - 4 * U); ctx.lineTo(q[0] + 4 * U, q[1] + 4 * U); ctx.moveTo(q[0] + 4 * U, q[1] - 4 * U); ctx.lineTo(q[0] - 4 * U, q[1] + 4 * U); ctx.stroke(); txt(w.id + ' ЗАКР', q[0] + 6 * U, q[1] + 3 * U, '#ff6a6a', 8 * U, 'left', '700'); continue; }
     ctx.fillStyle = showAlt ? 'rgba(255,224,138,.95)' : 'rgba(200,210,230,.5)';
     ctx.fillRect(q[0] - 2 * U, q[1] - 2 * U, 4 * U, 4 * U);
     if (showAlt) txt(w.gen ? 'ЗАП' : w.id, q[0] + 4 * U, q[1] + 3 * U, 'rgba(255,224,138,.95)', 8 * U, 'left', '700');
@@ -3797,14 +3811,14 @@ function drawMap(c, w, h, t, opt) {
   }
 }
 
-return {drawFlight,drawMap};
+return {setUiScale,drawFlight,drawMap};
 })();
 __m.main = (function(){
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
 const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } = __m.data;
 const { Flight, settle, loadInfo, FLAP_NAMES } = __m.sim;
 const { EVENT_DEFS, EVENT_IDS } = __m.events;
-const { drawFlight, drawMap } = __m.render;
+const { drawFlight, drawMap, setUiScale } = __m.render;
 
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d');
@@ -3842,15 +3856,16 @@ const plane = () => PL_BY[save.plane];
 const apLoc = () => AP_BY[save.loc];
 
 // ---------- звук (простой, по желанию) ----------
-let actx = null, eng = null, engGain = null, beepT = 0;
+let actx = null, eng = null, engGain = null, beepT = 0, masterG = null;
 function audioInit() {
   if (actx || !save.sound) return;
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
+    masterG = actx.createGain(); masterG.connect(actx.destination); applyVol();
     eng = actx.createOscillator(); eng.type = 'sawtooth'; eng.frequency.value = 60;
     const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
     engGain = actx.createGain(); engGain.gain.value = 0;
-    eng.connect(lp); lp.connect(engGain); engGain.connect(actx.destination); eng.start();
+    eng.connect(lp); lp.connect(engGain); engGain.connect(masterG); eng.start();
   } catch (e) { actx = null; }
 }
 function beep(freq, dur) {
@@ -3858,17 +3873,17 @@ function beep(freq, dur) {
   try {
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = 'square'; o.frequency.value = freq; g.gain.value = 0.05;
-    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+    o.connect(g); g.connect(masterG || actx.destination); o.start(); o.stop(actx.currentTime + dur);
   } catch (e) { }
 }
 let noiseG = null, noiseF = null, spoken = new Set(), lastVoice = 0, radioN = 0;
 function say(text, pitch) {
-  if (!save.sound || !window.speechSynthesis) return;
-  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8; speechSynthesis.speak(u); } catch (e) { }
+  if (!save.sound || save.voice === false || !window.speechSynthesis) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8 * (save.vol == null ? 1 : save.vol); speechSynthesis.speak(u); } catch (e) { }
 }
 const VOICE = { gear: 'Шасси', stall: 'Сваливание', pullup: 'Тяните вверх, земля', sink: 'Большая вертикальная скорость', flaps: 'Закрылки', over: 'Превышение скорости', terrain: 'Внимание, земля', lowfuel: 'Мало топлива' };
 let vibT = 0, vibTd = null;
-function vib(p) { try { if (save.sound && navigator.vibrate) navigator.vibrate(p); } catch (e) { } }
+function vib(p) { try { if (save.sound && save.vibr !== false && navigator.vibrate) navigator.vibrate(p); } catch (e) { } }
 function vibeTick(f) {
   if (mode !== 'flight' || paused) return;
   if (f.td && f.td !== vibTd) { vibTd = f.td; vib(f.td.sink > 2.4 ? [220, 80, 220] : f.td.sink > 1.4 ? 90 : 40); }
@@ -3883,7 +3898,7 @@ function audioTick(f) {
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
       const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
       noiseF = actx.createBiquadFilter(); noiseF.type = 'bandpass'; noiseF.frequency.value = 900; noiseF.Q.value = 0.6;
-      noiseG = actx.createGain(); noiseG.gain.value = 0; src.connect(noiseF); noiseF.connect(noiseG); noiseG.connect(actx.destination); src.start();
+      noiseG = actx.createGain(); noiseG.gain.value = 0; src.connect(noiseF); noiseF.connect(noiseG); noiseG.connect(masterG || actx.destination); src.start();
     } catch (e) { noiseG = null; }
   }
   if (noiseG) {
@@ -3920,6 +3935,7 @@ function renderMenu() {
   else if (screen === 'select') renderSelect();
   else if (screen === 'drill') renderDrill();
   else if (screen === 'school') renderSchool();
+  else if (screen === 'settings') renderSettings();
   else if (screen === 'records') renderRecords();
   else renderHangar();
 }
@@ -3933,13 +3949,14 @@ function renderHub() {
     <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
-    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bSchool">Лётная школа</button><button class="btn g" id="bRec">Рекорды</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
+    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bSchool">Лётная школа</button><button class="btn g" id="bRec">Рекорды</button><button class="btn g" id="bSet">⚙ Настройки</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
     <div class="sub" style="margin-top:14px;opacity:.6">Данные сохраняются на устройстве. ${save.flights ? '<a href="#" id="bReset" style="color:#ff9a9a">Сбросить прогресс</a>' : ''}</div>
   </div>`;
   $('bFly').onclick = () => { audioInit(); setScreen('select'); };
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
   $('bDrill').onclick = () => setScreen('drill');
+  $('bSet').onclick = () => setScreen('settings');
   $('bSchool').onclick = () => setScreen('school'); $('bRec').onclick = () => setScreen('records');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
   const r = $('bReset');
@@ -3963,6 +3980,72 @@ function showHelp() {
 
 function etaMin(km) { return Math.round(km / 760 * 60 + 22); }
 
+function optsHTML() {
+  return `
+      <label class="chk"><input type="checkbox" id="oAuto" ${save.assistAuto ? 'checked' : ''}> Помощник: автопилот сам набирает высоту, снижается и ведёт по глиссаде</label>
+      <label class="chk"><input type="checkbox" id="oCfg" ${save.assistCfg ? 'checked' : ''}> Помощник: сам выпускает и убирает шасси и закрылки</label>
+      <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
+      <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
+      <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
+      <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
+      <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
+      <label class="chk">Сезон: <select id="oSe"><option value="0">случайный</option><option value="1">лето</option><option value="2">зима (снег, накат)</option></select></label>
+      <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
+  `;
+}
+function bindOpts() {
+  $('oTod') && ($('oTod').value = String(save.tod));
+  $('oEm') && ($('oEm').value = String(save.emerg));
+  $('oWx') && ($('oWx').value = String(save.wxLvl)); $('oSe') && ($('oSe').value = String(save.season || 0));
+    $('oAuto').onchange = e => { save.assistAuto = e.target.checked; persist(); };
+    $('oCfg').onchange = e => { save.assistCfg = e.target.checked; persist(); };
+    $('oTaxiOps').onchange = e => { save.taxiOps = e.target.checked; persist(); };
+    $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
+    $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
+    $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
+    $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
+    $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
+    $('oSe').onchange = e => { save.season = +e.target.value; persist(); };
+}
+
+// ---------- настройки ----------
+function renderSettings() {
+  menu.innerHTML = `<div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Настройки</h1><button class="btn g" id="bBack">‹ Назад</button></div>
+    <div class="sub"><b>Игра</b></div>
+    <div class="grp">${optsHTML()}</div>
+    <div class="sub" style="margin-top:10px"><b>Звук и отклик</b></div>
+    <div class="grp">
+      <label class="chk"><input type="checkbox" id="sSnd" ${save.sound ? 'checked' : ''}> Звук (двигатели, ветер, сигнализация)</label>
+      <label class="chk">Громкость: <input type="range" id="sVol" min="0" max="100" value="${Math.round((save.vol == null ? 1 : save.vol) * 100)}"></label>
+      <label class="chk"><input type="checkbox" id="sVoice" ${save.voice !== false ? 'checked' : ''}> Голос: диспетчер, бортпроводник, предупреждения</label>
+      <label class="chk"><input type="checkbox" id="sVib" ${save.vibr !== false ? 'checked' : ''}> Вибрация (касание, сваливание, болтанка)</label>
+    </div>
+    <div class="sub" style="margin-top:10px"><b>Экран и управление</b></div>
+    <div class="grp">
+      <label class="chk">Вид по умолчанию: <select id="sCam"><option value="chase">снаружи</option><option value="cockpit">из кабины</option></select></label>
+      <label class="chk">Размер интерфейса: <select id="sUi"><option value="1">обычный</option><option value="1.2">крупный</option><option value="1.4">очень крупный</option></select></label>
+      <label class="chk"><input type="checkbox" id="sMap" ${save.mapOn !== false ? 'checked' : ''}> Показывать мини-карту</label>
+      <label class="chk"><input type="checkbox" id="sSimple" ${save.simple ? 'checked' : ''}> Режим новичка: подсказки по шагам, помощник и автопосадка включены</label>
+    </div>
+    <div class="mrow"><button class="btn g" id="sHelp">Как играть</button><button class="btn g" id="bBack2">Готово</button></div>
+  </div>`;
+  bindOpts();
+  $('sCam').value = save.cam; $('sUi').value = String(save.uiScale || 1);
+  $('bBack').onclick = $('bBack2').onclick = () => setScreen('hub');
+  $('sHelp').onclick = showHelp;
+  $('sSnd').onchange = e => { save.sound = e.target.checked; persist(); if (save.sound) audioInit(); };
+  $('sVol').oninput = e => { save.vol = +e.target.value / 100; persist(); applyVol(); };
+  $('sVoice').onchange = e => { save.voice = e.target.checked; persist(); };
+  $('sVib').onchange = e => { save.vibr = e.target.checked; persist(); };
+  $('sCam').onchange = e => { save.cam = e.target.value; persist(); };
+  $('sUi').onchange = e => { save.uiScale = +e.target.value; persist(); applyUi(); };
+  $('sMap').onchange = e => { save.mapOn = e.target.checked; persist(); };
+  $('sSimple').onchange = e => { save.simple = e.target.checked; if (e.target.checked) { save.assistAuto = true; save.assistCfg = true; save.assistTaxi = true; save.hints = true; } persist(); renderSettings(); };
+}
+function applyUi() { setUiScale(save.uiScale || 1); menu.style.fontSize = (save.uiScale || 1) > 1 ? (save.uiScale * 100) + '%' : ''; }
+function applyVol() { if (masterG) masterG.gain.value = save.vol == null ? 1 : save.vol; }
+
 function renderSelect() {
   const ap = apLoc(), p = plane();
   const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
@@ -3977,21 +4060,10 @@ function renderSelect() {
       return `<div class="card ${sel && sel.to === c.to ? 'sel' : ''}" data-to="${c.to}"><div><div class="t">${to.city} (${to.id})</div><div class="d">${Math.round(c.km)} км · ≈${etaMin(c.km)} мин · ${c.pax} пасс.</div></div><div class="r">≈ ${fmtRub(c.revenue)}</div></div>`;
     }).join('') : '<div class="sub">С этого аэродрома для выбранного самолёта нет подходящих рейсов. Смените самолёт.</div>'}</div>
     <div class="bar" id="opts" style="${sel ? '' : 'display:none'}">
-      <label class="chk"><input type="checkbox" id="oAuto" ${save.assistAuto ? 'checked' : ''}> Помощник: автопилот сам набирает высоту, снижается и ведёт по глиссаде</label>
-      <label class="chk"><input type="checkbox" id="oCfg" ${save.assistCfg ? 'checked' : ''}> Помощник: сам выпускает и убирает шасси и закрылки</label>
-      <label class="chk"><input type="checkbox" id="oTaxiOps" ${save.taxiOps ? 'checked' : ''}> Полный цикл: старт с гейта, рулёжная дорожка, полоса, посадка и заруливание на гейт</label>
-      <label class="chk"><input type="checkbox" id="oTaxi" ${save.assistTaxi ? 'checked' : ''}> Помощник: автоматическое руление (сами берёте управление кнопкой АВТО РУЛ)</label>
-      <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
-      <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
-      <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
-      <label class="chk">Сезон: <select id="oSe"><option value="0">случайный</option><option value="1">лето</option><option value="2">зима (снег, накат)</option></select></label>
-      <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
+      ${optsHTML()}
       <button class="btn go big" id="bGo">Лететь ✈</button>
     </div>
   </div>`;
-  $('oTod') && ($('oTod').value = String(save.tod));
-  $('oEm') && ($('oEm').value = String(save.emerg));
-  $('oWx') && ($('oWx').value = String(save.wxLvl)); $('oSe') && ($('oSe').value = String(save.season || 0));
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { save.plane = b.dataset.pl; persist(); sel = null; renderSelect(); });
   menu.querySelectorAll('[data-to]').forEach(el => el.onclick = () => {
@@ -4001,15 +4073,7 @@ function renderSelect() {
     const pn = menu.querySelector('.panel'); pn.scrollTo({ top: pn.scrollHeight, behavior: 'smooth' });
   });
   if ($('bGo')) {
-    $('oAuto').onchange = e => { save.assistAuto = e.target.checked; persist(); };
-    $('oCfg').onchange = e => { save.assistCfg = e.target.checked; persist(); };
-    $('oTaxiOps').onchange = e => { save.taxiOps = e.target.checked; persist(); };
-    $('oTaxi').onchange = e => { save.assistTaxi = e.target.checked; persist(); };
-    $('oHint').onchange = e => { save.hints = e.target.checked; persist(); };
-    $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
-    $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
-    $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
-    $('oSe').onchange = e => { save.season = +e.target.value; persist(); };
+    bindOpts();
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
   }
 }
@@ -4138,7 +4202,7 @@ function beginFlight(c, drill, wx, pf) {
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
   if (drill && lessonCur) { flight.assist.auto = lessonCur.assist.auto; flight.assist.config = lessonCur.assist.config; }
-  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: true, mapZoom: 0 };
+  view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: save.mapOn !== false, mapZoom: 0 };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
   mode = 'flight'; menu.classList.remove('on'); ui.classList.add('on'); $('log').innerHTML = ''; toggleAlt(false);
@@ -4430,7 +4494,7 @@ function loop(ts) {
   }
 }
 requestAnimationFrame(loop);
-renderMenu();
+applyUi(); renderMenu();
 
 // отладка/тесты
 window.__pilot = { get flight() { return flight; }, save, startFlight, setScreen, act, get mode() { return mode; } };
