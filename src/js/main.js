@@ -18,7 +18,7 @@ window.addEventListener('resize', resize); resize();
 
 // ---------- сохранение ----------
 const KEY = 'pilotsim.v2';
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, rep: 50, lease: {}, copilot: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 'chase', hints: true, tod: 'rnd', sound: true, seenHelp: false, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, school: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
 if (!AP_BY[save.loc]) save.loc = 'SVO';
 const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
@@ -65,7 +65,16 @@ function say(text, pitch) {
   try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = pitch || 1; u.volume = 0.8; speechSynthesis.speak(u); } catch (e) { }
 }
 const VOICE = { gear: 'Шасси', stall: 'Сваливание', pullup: 'Тяните вверх, земля', sink: 'Большая вертикальная скорость', flaps: 'Закрылки', over: 'Превышение скорости', terrain: 'Внимание, земля', lowfuel: 'Мало топлива' };
+let vibT = 0, vibTd = null;
+function vib(p) { try { if (save.sound && navigator.vibrate) navigator.vibrate(p); } catch (e) { } }
+function vibeTick(f) {
+  if (mode !== 'flight' || paused) return;
+  if (f.td && f.td !== vibTd) { vibTd = f.td; vib(f.td.sink > 2.4 ? [220, 80, 220] : f.td.sink > 1.4 ? 90 : 40); }
+  if (!f.td) vibTd = null;
+  if (tNow - vibT > 0.8) { if (f.stallWarn) { vibT = tNow; vib(120); } else if ((f.fx.turb || 0) > 0.4 && !f.onGround) { vibT = tNow; vib(35); } }
+}
 function audioTick(f) {
+  vibeTick(f);
   if (actx && !noiseG) {
     try {
       const n = actx.sampleRate * 2, buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
@@ -82,7 +91,7 @@ function audioTick(f) {
     noiseG.gain.value = on ? Math.min(0.12, 0.012 * (wx.spd || 0) / 4 + 0.05 * rain + 0.035 * air) : 0;
     noiseF.frequency.value = 500 + 900 * Math.max(rain, air);
   }
-  if (save.sound && mode === 'flight' && !paused && f.radio && f.radio.length) { const r = f.radio.splice(0); for (const t of r) setTimeout(() => say(t, 0.8), 400); }
+  if (save.sound && mode === 'flight' && !paused && f.radio && f.radio.length) { const r = f.radio.splice(0); for (const t of r) setTimeout(() => say(t.replace('🔊 Бортпроводник: ', ''), t.startsWith('🔊') ? 1.35 : 0.8), 400); }
   if (save.sound && mode === 'flight' && !paused && f.warnings) {
     for (const k of f.warnings) if (VOICE[k] && !spoken.has(k) && tNow - lastVoice > 1.5) { spoken.add(k); lastVoice = tNow; say(VOICE[k], 1.2); }
     for (const k of [...spoken]) if (!f.warnings.has(k)) spoken.delete(k);
@@ -108,6 +117,8 @@ function renderMenu() {
   if (screen === 'hub') renderHub();
   else if (screen === 'select') renderSelect();
   else if (screen === 'drill') renderDrill();
+  else if (screen === 'school') renderSchool();
+  else if (screen === 'records') renderRecords();
   else renderHangar();
 }
 
@@ -120,13 +131,14 @@ function renderHub() {
     <div class="rank"><div class="row" style="justify-content:space-between"><b>🎖 ${rk.name}</b><span class="sub" style="margin:0">${save.xp} XP${rk.next ? ' · до «' + rk.next + '» ' + (rk.to - save.xp) : ''}</span></div><div class="bar2"><i style="width:${Math.round(rk.pct * 100)}%"></i></div></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Пассажиров:', save.pax.toLocaleString('ru-RU'))}${save.bestSink != null ? stat('Лучшая посадка:', save.bestSink.toFixed(2) + ' м/с') : ''}</div>
     <div class="mrow"><button class="btn go big" id="bFly">Выбрать рейс</button></div>
-    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
+    <div class="mrow"><button class="btn g" id="bHangar">Ангар</button><button class="btn g" id="bDrill">Тренажёр ЧП</button><button class="btn g" id="bSchool">Лётная школа</button><button class="btn g" id="bRec">Рекорды</button><button class="btn g" id="bHelp">Как играть</button><button class="btn g" id="bSnd">Звук: ${save.sound ? 'вкл' : 'выкл'}</button></div>
     <div class="sub" style="margin-top:14px;opacity:.6">Данные сохраняются на устройстве. ${save.flights ? '<a href="#" id="bReset" style="color:#ff9a9a">Сбросить прогресс</a>' : ''}</div>
   </div>`;
   $('bFly').onclick = () => { audioInit(); setScreen('select'); };
   $('bHangar').onclick = () => setScreen('hangar');
   $('bHelp').onclick = showHelp;
   $('bDrill').onclick = () => setScreen('drill');
+  $('bSchool').onclick = () => setScreen('school'); $('bRec').onclick = () => setScreen('records');
   $('bSnd').onclick = () => { save.sound = !save.sound; persist(); if (save.sound) audioInit(); renderHub(); };
   const r = $('bReset');
   if (r) r.onclick = e => { e.preventDefault(); showModal(`<h2>Сбросить прогресс?</h2><div class="sub">Деньги, самолёты и статистика будут удалены.</div><div class="mrow"><button class="btn g" id="mNo">Отмена</button><button class="btn" style="background:#a23232" id="mYes">Сбросить</button></div>`);
@@ -170,13 +182,14 @@ function renderSelect() {
       <label class="chk"><input type="checkbox" id="oHint" ${save.hints ? 'checked' : ''}> Подсказки на экране</label>
       <label class="chk">Аварийные ситуации: <select id="oEm"><option value="0">выкл</option><option value="1">редко</option><option value="2">иногда</option><option value="3">часто</option></select> (за грамотные действия — премия и опыт)</label>
       <label class="chk">Погода: <select id="oWx"><option value="0">штиль</option><option value="1">обычная</option><option value="2">сложная</option></select> (ветер, видимость, дождь; перед вылетом — брифинг)</label>
+      <label class="chk">Сезон: <select id="oSe"><option value="0">случайный</option><option value="1">лето</option><option value="2">зима (снег, накат)</option></select></label>
       <label class="chk">Время суток: <select id="oTod"><option value="rnd">случайное</option><option value="0">день</option><option value="1">закат</option><option value="2">ночь</option></select></label>
       <button class="btn go big" id="bGo">Лететь ✈</button>
     </div>
   </div>`;
   $('oTod') && ($('oTod').value = String(save.tod));
   $('oEm') && ($('oEm').value = String(save.emerg));
-  $('oWx') && ($('oWx').value = String(save.wxLvl));
+  $('oWx') && ($('oWx').value = String(save.wxLvl)); $('oSe') && ($('oSe').value = String(save.season || 0));
   $('bBack').onclick = () => setScreen('hub');
   menu.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { save.plane = b.dataset.pl; persist(); sel = null; renderSelect(); });
   menu.querySelectorAll('[data-to]').forEach(el => el.onclick = () => {
@@ -194,6 +207,7 @@ function renderSelect() {
     $('oTod').onchange = e => { save.tod = e.target.value; persist(); };
     $('oEm').onchange = e => { save.emerg = +e.target.value; persist(); };
     $('oWx').onchange = e => { save.wxLvl = +e.target.value; persist(); };
+    $('oSe').onchange = e => { save.season = +e.target.value; persist(); };
     $('bGo').onclick = () => { if (sel) startFlight(sel); };
   }
 }
@@ -222,6 +236,47 @@ function renderHangar() {
   });
 }
 
+// ---------- лётная школа ----------
+let lessonCur = null;
+const LESSONS = [
+  { id: 'l1', title: '1. Первый рейс с автопилотом', desc: 'Взлёт, набор, автозаход и посадка с помощником. Цель — просто долететь и сесть.', wx: 0, assist: { auto: true, config: true }, force: 'none', pass: r => r.kind === 'ok' },
+  { id: 'l2', title: '2. Ручная посадка', desc: 'Автопилот выключен. Держите глиссаду и выровняйте у земли: касание не жёстче 1,6 м/с.', wx: 0, assist: { auto: false, config: true }, force: 'none', pass: r => r.kind === 'ok' && r.sink <= 1.6 },
+  { id: 'l3', title: '3. Боковой ветер', desc: 'Сложная погода, ручное пилотирование. Сядьте, не жёстче 2,4 м/с.', wx: 2, assist: { auto: false, config: true }, force: 'none', pass: r => r.kind === 'ok' && r.sink <= 2.4 },
+  { id: 'l4', title: '4. Отказ двигателя', desc: 'Откажет двигатель. Выполните действия по чек-листу и сядьте.', wx: 0, assist: { auto: true, config: true }, force: 'engFail', pass: r => r.kind === 'ok' && r.evOk >= 1 },
+  { id: 'l5', title: '5. Заход в тумане', desc: 'Низкая видимость: заход строго по глиссаде и курсу (кнопка ПОСАДКА).', wx: 0, assist: { auto: true, config: true }, force: 'fog', pass: r => r.kind === 'ok' },
+  { id: 'l6', title: '6. Экзамен', desc: 'Сложная погода, без автоматики механизации и без автопилота. Нужны 4★ и выше.', wx: 2, assist: { auto: false, config: false }, force: 'none', pass: r => r.kind === 'ok' && r.stars >= 4 },
+];
+function renderSchool() {
+  const done = LESSONS.filter(l => save.school[l.id]).length;
+  menu.innerHTML = `<div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Лётная школа</h1><button class="btn g" id="bBack">‹ Назад</button></div>
+    <div class="sub">Пошаговые уроки (${done}/${LESSONS.length}). Деньги в уроках не начисляются, опыт — за первое прохождение.</div>
+    ${LESSONS.map((l, i) => `<div class="card" data-l="${i}"><div><div class="t">${save.school[l.id] ? '✅ ' : ''}${l.title}</div><div class="d">${l.desc}</div></div><div class="r">▶</div></div>`).join('')}
+  </div>`;
+  $('bBack').onclick = () => setScreen('hub');
+  menu.querySelectorAll('[data-l]').forEach(el => el.onclick = () => {
+    const l = LESSONS[+el.dataset.l], ap = apLoc(), p = plane();
+    const list = contractsFor(p, ap.id, 777 + ap.id.charCodeAt(0));
+    const c = list.find(x => x.km >= 300) || list[list.length - 1];
+    if (!c) { showModal('<h2>Нет рейсов</h2><div class="sub">Смените самолёт или аэропорт.</div><div class="mrow"><button class="btn" id="mOk">Ок</button></div>'); $('mOk').onclick = hideModal; return; }
+    audioInit(); lessonCur = l;
+    beginFlight(c, l.force, makeWeather(Math.random, l.wx, bearing(ap, AP_BY[c.to]), 1), null);
+  });
+}
+function renderRecords() {
+  const st = save.stat, top = (save.top || []).slice(0, 10);
+  const code = `Pilot Sim: ${save.flights} рейсов, ${save.landings} посадок, лучшая посадка ${save.bestSink != null ? save.bestSink.toFixed(2) : '—'} м/с, ранг ${rankOf(save.xp).name}, серия ${st.best}, самый длинный рейс ${Math.round(st.maxKm)} км`;
+  menu.innerHTML = `<div class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рекорды</h1><button class="btn g" id="bBack">‹ Назад</button></div>
+    <div class="row">${stat('Рейсов:', save.flights)}${stat('Налёт, ч:', (st.min / 60).toFixed(1))}${stat('Лучшая серия 4★+:', st.best)}${stat('Дальше всего:', Math.round(st.maxKm) + ' км')}</div>
+    <div class="sub"><b>Лучшие посадки</b></div>
+    ${top.length ? top.map((t, i) => `<div class="evrow"><span>${i + 1}. ${t.pl} · ${t.ap}</span><span>${t.sink.toFixed(2)} м/с</span></div>`).join('') : '<div class="sub">Пока нет посадок.</div>'}
+    <div class="mrow"><button class="btn go" id="bShare">Поделиться результатом</button></div>
+  </div>`;
+  $('bBack').onclick = () => setScreen('hub');
+  $('bShare').onclick = () => { try { if (navigator.share) navigator.share({ text: code }); else { navigator.clipboard.writeText(code); showModal('<h2>Скопировано</h2><div class="sub">' + code + '</div><div class="mrow"><button class="btn" id="mOk">Ок</button></div>'); $('mOk').onclick = hideModal; } } catch (e) { showModal('<h2>Результат</h2><div class="sub">' + code + '</div><div class="mrow"><button class="btn" id="mOk">Ок</button></div>'); $('mOk').onclick = hideModal; } };
+}
+
 function renderDrill() {
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Тренажёр ЧП</h1><button class="btn g" id="bBack">‹ Назад</button></div>
@@ -240,10 +295,10 @@ function renderDrill() {
 
 // ---------- запуск рейса ----------
 function startFlight(c, drill) {
-  audioInit();
+  audioInit(); lessonCur = null;
   const from = apLoc(), to = AP_BY[c.to];
   const brg = bearing(from, to);
-  const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg);
+  const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg, save.season);
   if (drill) return beginFlight(c, drill, wx, null);
   const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
   const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false] };
@@ -280,6 +335,7 @@ function beginFlight(c, drill, wx, pf) {
     taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && wearOf(p.id) >= 60 ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;
   if (drill) { flight.assist.auto = true; flight.assist.config = true; }
+  if (drill && lessonCur) { flight.assist.auto = lessonCur.assist.auto; flight.assist.config = lessonCur.assist.config; }
   view = { bump: 0, turb: 0, rollKick: 0, warp: 1, cam: save.cam, map: true, mapZoom: 0 };
   stick.value = 0; stick.roll = 0; setYoke(); thrSet(0, true);
   endTimer = 0; paused = false; lastMsgCount = 0;
@@ -471,6 +527,8 @@ function showResult() {
     save.money = Math.max(0, save.money + r.net);
     if (r.kind !== 'abort') save.flights++;
     if (r.kind === 'ok' || r.kind === 'overrun') { save.loc = f.locAfter; }
+    { const st = save.stat; st.maxKm = Math.max(st.maxKm, r.km); st.min += f.simTime / 60; if (r.kind === 'ok' && r.stars >= 4) { st.streak++; st.best = Math.max(st.best, st.streak); } else if (r.kind !== 'abort') st.streak = 0;
+      if (r.kind === 'ok') { save.top.push({ sink: r.sink, ap: f.toAp.id, pl: f.p.short }); save.top.sort((a, b) => a.sink - b.sink); save.top = save.top.slice(0, 10); } }
     if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
     if (r.kind !== 'abort') {
       const id = f.p.id;
@@ -483,7 +541,9 @@ function showResult() {
     persist();
   }
   const rkAfter = rankOf(save.xp);
-  const ttl = drill ? 'Тренировка окончена' : { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Рейс отменён' }[r.kind];
+  let lessonMsg = '';
+  if (lessonCur) { const ok = lessonCur.pass(r), first = ok && !save.school[lessonCur.id]; if (first) { save.school[lessonCur.id] = true; save.xp += 60; } persist(); lessonMsg = ok ? '✅ Урок пройден' + (first ? ' (+60 XP)' : '') : '❌ Урок не пройден — попробуйте ещё раз'; }
+  const ttl = lessonCur ? lessonMsg : drill ? 'Тренировка окончена' : { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Рейс отменён' }[r.kind];
   const row = (a, v, cls) => `<tr><td>${a}</td><td class="${cls || ''}">${v}</td></tr>`;
   let rows = '';
   if (r.kind !== 'abort' && !drill) {
@@ -519,7 +579,8 @@ function showResult() {
   </div>`;
   mode = 'menu'; ui.classList.remove('on'); menu.classList.add('on');
   drawReplay(f, 1); $('bRep') && ($('bRep').onclick = () => { const t0 = performance.now(), n = f.track.length; const st = () => { const k = Math.min(1, (performance.now() - t0) / 9000); drawReplay(f, k); if (k < 1 && mode === 'menu') requestAnimationFrame(st); }; st(); });
-  $('bAgain').onclick = () => setScreen(drill ? 'drill' : 'select');
+  const wasLesson = !!lessonCur; lessonCur = null;
+  $('bAgain').onclick = () => setScreen(wasLesson ? 'school' : drill ? 'drill' : 'select');
   $('bHub').onclick = () => setScreen('hub');
   flight = null;
 }

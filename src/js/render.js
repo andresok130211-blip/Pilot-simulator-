@@ -712,6 +712,7 @@ export function drawFlight(c, w, h, f, t, view) {
   drawMountains(pal, hy);
   drawSkyDetail(pal, hy);
   drawTerrain(pal, hy, f);
+  if (f.wx && f.wx.snowG) { const g = ctx.createLinearGradient(0, hy, 0, H); g.addColorStop(0, 'rgba(236,241,250,.55)'); g.addColorStop(1, 'rgba(236,241,250,.35)'); ctx.fillStyle = g; ctx.fillRect(0, hy, W, H - hy); }
   // прочие аэродромы (запасные и соседние)
   for (let i = 0; i < f.world.length; i++) {
     const a = f.world[i];
@@ -743,7 +744,8 @@ export function drawFlight(c, w, h, f, t, view) {
     const fgA = Math.max(fx.fog * 0.84, f.fogBase || 0);
     if (fgA > 0.01) { const hz = pal.haze; c.fillStyle = rgb(hz, fgA); c.fillRect(0, 0, W, H); }
     const rn = f.wxNow ? f.wxNow.rain : 0;
-    if (rn > 0.05 && f.h < 5500) { c.fillStyle = `rgba(20,30,50,${rn * 0.18})`; c.fillRect(0, 0, W, H); c.strokeStyle = `rgba(200,220,255,${0.25 + rn * 0.3})`; c.lineWidth = 1; c.beginPath(); const n = Math.round(30 + rn * 70), sp = (f.v || 0) / 60 + 1; for (let i = 0; i < n; i++) { const hx = (i * 97.13 + t * (60 + i % 7 * 9)) % W, hy = (i * 53.7 + t * (400 + i % 5 * 90) * sp) % H; c.moveTo(hx, hy); c.lineTo(hx - 2 - sp, hy + 10 + sp * 3); } c.stroke(); }
+    if (rn > 0.05 && f.h < 5500 && f.wx && f.wx.snow) { c.fillStyle = `rgba(245,248,255,${0.5 + rn * 0.3})`; const n = Math.round(40 + rn * 110), sp = (f.v || 0) / 90 + 1; for (let i = 0; i < n; i++) { const hx = (i * 97.13 + t * (20 + i % 7 * 6) + Math.sin(t + i) * 20) % W, hy = (i * 53.7 + t * (70 + i % 5 * 20) * sp) % H; c.fillRect(hx, hy, 2, 2); } }
+    else if (rn > 0.05 && f.h < 5500) { c.fillStyle = `rgba(20,30,50,${rn * 0.18})`; c.fillRect(0, 0, W, H); c.strokeStyle = `rgba(200,220,255,${0.25 + rn * 0.3})`; c.lineWidth = 1; c.beginPath(); const n = Math.round(30 + rn * 70), sp = (f.v || 0) / 60 + 1; for (let i = 0; i < n; i++) { const hx = (i * 97.13 + t * (60 + i % 7 * 9)) % W, hy = (i * 53.7 + t * (400 + i % 5 * 90) * sp) % H; c.moveTo(hx, hy); c.lineTo(hx - 2 - sp, hy + 10 + sp * 3); } c.stroke(); }
     if (fx.flash > 0.02) { c.fillStyle = `rgba(235,240,255,${fx.flash * 0.7})`; c.fillRect(0, 0, W, H); }
     if (fx.smoke > 0) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.15, CX, H * 0.5, H * 0.9); g.addColorStop(0, `rgba(60,55,50,${fx.smoke * 0.25})`); g.addColorStop(1, `rgba(25,22,20,${fx.smoke * 0.85})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
     if (fx.ice > 0.05) { const g = c.createRadialGradient(CX, H * 0.5, H * 0.3, CX, H * 0.5, H * 0.85); g.addColorStop(0, 'rgba(220,240,255,0)'); g.addColorStop(1, `rgba(220,240,255,${fx.ice * 0.7})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
@@ -995,6 +997,8 @@ function drawHUD(f, t, view, th) {
   const modes = [['А/П', c.apOn], ['НАВ', c.apOn && c.nav], ['А/Т', c.atOn], ['ГЛС', f.apprCap]];
   let mx = W - 14 * U - W * 0.045;
   for (let i = modes.length - 1; i >= 0; i--) { txt(modes[i][0], mx, 22 * U, modes[i][1] ? GREEN : 'rgba(200,210,230,.4)', 11 * U, 'right', '800'); mx -= 36 * U; }
+  { const ap = c.apOn, lat = ap ? (f.apprCap ? 'LOC' : c.nav ? 'LNAV' : 'HDG') : '—', ver = ap ? (f.apprCap ? 'GS' : c.appr ? 'APPR' : Math.abs(f.h - c.apAlt) < 40 ? 'ALT' : c.apAlt > f.h ? 'VNAV↑' : 'VNAV↓') : '—', thr = c.atOn ? 'SPD' : 'РУЧН';
+    txt(lat + ' · ' + ver + ' · ' + thr, W - 14 * U - W * 0.045, 49 * U, 'rgba(140,255,190,.85)', 9 * U, 'right', '700'); }
   const warpTxt = view.warp > 1 ? '×' + view.warp : '';
   if (warpTxt) txt('УСКОРЕНИЕ ' + warpTxt, W - 14 * U - W * 0.045, 36 * U, AMBER, 10 * U, 'right', '800');
   // состояние двигателей

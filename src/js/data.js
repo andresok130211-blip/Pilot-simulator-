@@ -167,7 +167,15 @@ export const fmtRub = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
 // ---------- погода на рейс ----------
 // dir — откуда дует (истинный курс, °), spd/gust — м/с, vis/visD — видимость в аэропорту вылета/назначения, м, rain/rainD — дождь 0..1
 export const WX_NAMES = ['штиль', 'обычная', 'сложная'];
-export function makeWeather(rnd, level, brg) {
+export function makeWeather(rnd, level, brg, season) {
+  const L = level | 0;
+  const w = makeWeather0(rnd, level, brg);
+  if (!L) return w;
+  const winter = season === 2 || (!season && rnd() < 0.3);
+  if (winter) { w.winter = true; w.temp = Math.round(-26 + rnd() * 28); w.snow = true; w.snowG = true; if (w.temp > 1) w.temp = 1; }
+  return w;
+}
+function makeWeather0(rnd, level, brg) {
   const L = level | 0;
   if (L <= 0) return { dir: brg || 0, spd: 0, gust: 0, vis: 10000, visD: 10000, rain: 0, rainD: 0, temp: 14, qnh: 1013, level: 0 };
   const cfg = L === 1 ? { s: [2, 8], g: [0, 4], bad: 0.15, rain: 0.2 } : { s: [6, 13], g: [3, 8], bad: 0.45, rain: 0.5 };
@@ -184,7 +192,7 @@ export function metarText(ap, wx, which) {
   const dep = which === 'dep', vis = dep ? wx.vis : wx.visD, rain = dep ? wx.rain : wx.rainD;
   const w = wx.spd < 1 ? 'штиль' : `${String(Math.round(wx.dir / 10) * 10 % 360).padStart(3, '0')}° / ${Math.round(wx.spd)} м/с` + (wx.gust > 1.5 ? `, порывы до ${Math.round(wx.spd + wx.gust)}` : '');
   const v = vis >= 9000 ? 'более 9 км' : vis >= 1000 ? (vis / 1000).toFixed(1).replace('.0', '') + ' км' : Math.round(vis / 50) * 50 + ' м';
-  return `${ap.id}: ветер ${w}; видимость ${v}${rain > 0.6 ? '; сильный дождь' : rain > 0.1 ? '; дождь' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
+  return `${ap.id}: ветер ${w}; видимость ${v}${rain > 0.6 ? (wx.snow ? '; сильный снегопад' : '; сильный дождь') : rain > 0.1 ? (wx.snow ? '; снег' : '; дождь') : ''}${wx.snowG ? '; полоса со снежным накатом' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
 }
 export function windComp(wx, brg) {
   const rel = (wx.dir - brg) * Math.PI / 180, S = wx.spd + wx.gust * 0.5;

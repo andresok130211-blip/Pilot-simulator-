@@ -221,7 +221,17 @@ export class Flight {
     this.trf = tl.filter(t => !t.gone);
   }
   rwyBusy(kind) { return this.trf.some(t => t.kind === kind && (t.onRwy || t.tLand > this.time - 0.001 && t.tLand - this.time < 25)); }
+  pa(key, text) { this.atc('pa' + key, '🔊 Бортпроводник: ' + text); }
+  paTick() {
+    const fx = this.fx || {};
+    if (!this.airborneOnce && this.onGround && this.lined && !this.td) this.pa('to', 'Уважаемые пассажиры, наш самолёт готов к взлёту. Пристегните ремни, приведите кресла в вертикальное положение.');
+    if (this.airborneOnce && !this.onGround && this.h > 6000) this.pa('cr', 'Набор высоты завершён. Вы можете отстегнуть ремни, но рекомендуем оставаться пристёгнутыми.');
+    if (this.airborneOnce && !this.diverted && this.dist < 105000 && this.dist > 60000 && this.h > 3000) this.pa('ds', 'Мы начинаем снижение. Просим занять свои места и пристегнуть ремни.');
+    if (this.airborneOnce && !this.onGround && (fx.turb || 0) > 0.35) this.pa('tb' + Math.floor(this.time / 240), 'Самолёт входит в зону турбулентности. Просим всех оставаться на местах.');
+    if (this.td && this.td.onDest && this.v < 25) this.pa('ar', 'Добро пожаловать в ' + this.toAp.city + '. Температура за бортом ' + Math.round((this.wx && this.wx.level ? this.wx.temp : 14)) + ' градусов. Благодарим за полёт!');
+  }
   atcTick() {
+    this.paTick();
     this.trafficTick(1 / 60);
     if (this.airborneOnce && !this.diverted && !this.ev && this.c.apOn && this.c.apAlt >= 6000 && Math.abs(this.c.apAlt - this.h) < 150 && this.dist > 160000 && this.hopt - this.c.apAlt >= 600 && this.c.apAlt + 600 <= this.ceilLim - 300) {
       const na = Math.round((this.c.apAlt + 600) / 100) * 100; this.atc('sc' + this.scN, this.cs + ', разрешаю набор эшелона ' + na + ' м.'); this.scN++;
@@ -639,7 +649,7 @@ export class Flight {
       let mu = paved ? 0.02 : 0.15;
       if (this.gearPos < 0.9) mu = 0.5;
       if (!c.brake && this.td && c.abrk > 0 && this.v > 3) mu += [0.08, 0.14, 0.22][c.abrk - 1] * (this.fx.slick ? 0.55 : this.wxNow.rain > 0.3 ? 0.8 : 1);
-      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : this.wxNow.rain > 0.3 ? 0.24 : 0.30) : 0.2;
+      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : this.wxNow.rain > 0.3 ? 0.24 : (this.wx && this.wx.snowG) ? 0.2 : 0.30) : 0.2;
       let F = T - this.Dr - mu * N;
       if (this.v < 0.3 && F <= 0) { this.v = 0; }
       else {
