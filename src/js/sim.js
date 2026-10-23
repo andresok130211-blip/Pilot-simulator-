@@ -89,7 +89,7 @@ export class Flight {
     this.warnings = new Set(); this.incidents = []; this.msgs = []; this.track = []; this.marks = []; this._rec = -9; this.radio = []; this.atcDone = {}; this.trf = []; this.hold = null; this.trfId = 0; this.clrTo = true; this.trfPlan = {};
     { const r = o.rnd || Math.random; this.starOff = (r() < 0.5 ? -1 : 1) * (5000 + r() * 7000); const lv = (o.wx && o.wx.level) || 0;
       this.holdPlan = !o.force && !o.drill && r() < 0.12 + 0.1 * lv; this.aheadPlan = !o.force && !o.drill && r() < 0.4; this.holdTo = !o.force && !o.drill && o.taxi !== false && r() < 0.3; this.cruiseTrf = !o.force && !o.drill && r() < 0.6; }
-    this.driftK = o.driftK == null ? 0.5 : o.driftK; this.copilot = !!o.copilot; this.cs = (o.callsign || ('RA' + (100 + Math.floor((o.km || 500) * 7) % 900)));
+    this.thk = 0; this.trackHold = o.trackHold !== false; this.driftK = o.driftK == null ? 0.5 : o.driftK; this.copilot = !!o.copilot; this.cs = (o.callsign || ('RA' + (100 + Math.floor((o.km || 500) * 7) % 900)));
     this.stats = { maxG: 1, stallT: 0, overT: 0, gpws: 0, tail: false };
     this.autoDescDone = false; this.autoEngaged = false;
     this.cfgTimer = 0; this.flapMsgT = 0; this.maxV = 0;
@@ -652,7 +652,8 @@ export class Flight {
     if (S < 0.05) { this.wl.x = 0; this.wl.z = 0; }
     else { const th = (wx.dir + 180 - this.brg) * DEG, Wx = S * Math.cos(th), Wz = S * Math.sin(th); this.wl.x = Wx * tf.c + Wz * tf.s; this.wl.z = -Wx * tf.s + Wz * tf.c; }
     const u = clamp(this.diverted ? 1 : this.x / Math.max(this.D, 1), 0, 1), k = u < 0.5 ? 0 : (u - 0.5) * 2;
-    { const hh = Math.max(0, this.h), wm = 1 + 2 * clamp((hh - 300) / 6000, 0, 1); this.wl.x *= wm; this.wl.z *= 1 + 0.6 * clamp((hh - 300) / 6000, 0, 1); this.wl.z *= this.driftK; if (wx.jet) this.wl.x += wx.jet * Math.exp(-(((hh - 10500) / 2800) ** 2)); }
+    { const hh = Math.max(0, this.h), wm = 1 + 2 * clamp((hh - 300) / 6000, 0, 1); this.wl.x *= wm; this.wl.z *= 1 + 0.6 * clamp((hh - 300) / 6000, 0, 1); this.wl.z *= this.driftK;
+      { const hands = !this.c.apOn && !this.onGround && this.h > 150 && Math.abs(this.c.roll || 0) < 0.04 && this.trackHold; this.thk += ((hands ? 1 : 0) - this.thk) * 0.02; this.wl.z *= 1 - 0.9 * this.thk; } if (wx.jet) this.wl.x += wx.jet * Math.exp(-(((hh - 10500) / 2800) ** 2)); }
     this.wxNow.vis = wx.vis + (wx.visD - wx.vis) * k; this.wxNow.rain = wx.rain + (wx.rainD - wx.rain) * k;
     this.fogBase = this.h < 4500 ? clamp((8000 - this.wxNow.vis) / 7000, 0, 1) * 0.85 * clamp((4500 - this.h) / 1500, 0, 1) : 0;
   }

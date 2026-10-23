@@ -1,6 +1,7 @@
 // Отрисовка: вид из кабины (псевдо-3D), HUD, карта для меню.
 import { DEG, GS_TAN, GS_DEG, AIM_OFFSET, FLAP_NAMES, stallIAS, APPR_ALT } from './sim.js';
 import { AIRPORTS, AP_BY } from './data.js';
+import { landF } from './geo.js';
 import { heightW, toWorld, toLocal, wetAt, sstep, worldHash, fbm } from './terrain.js';
 
 const PAL = [
@@ -287,6 +288,7 @@ function drawTerrain(pal, hy, f) {
       const h00 = getH(a, b), h10 = getH(a + 1, b), h11 = getH(a + 1, b + 1), h01 = getH(a, b + 1);
       const avg = (h00 + h10 + h11 + h01) / 4;
       const x0 = (ci + a - n) * s, z0 = (cj + b - n) * s, x1 = x0 + s, z1 = z0 + s;
+      const wi = ci + a - n, wj = cj + b - n; // индексы клетки в мире (не окна!): деревья и дома стоят на месте
       const water = avg < 0.5;
       const y00 = water ? 0 : Math.max(0, h00), y10 = water ? 0 : Math.max(0, h10), y11 = water ? 0 : Math.max(0, h11), y01 = water ? 0 : Math.max(0, h01);
       const fw = tD[k];
@@ -318,10 +320,12 @@ function drawTerrain(pal, hy, f) {
         const ex = dxs * 2.6, ez = dzs * 2.6, nl = Math.hypot(ex, 1, ez), dif = Math.max(0, (-ex * SUN[0] + SUN[1] - ez * SUN[2]) / nl);
         const lk = 0.34 + 0.8 * dif; r *= lk; g *= lk; bl *= lk;
         // города
-        if (lowFlat && li <= 2 && li >= 0) {
+        const gcity = f.world.geo && li <= 2 ? f.world.geo.city(_wp.x, _wp.z) : 0;
+        if ((lowFlat || (gcity > 0.1 && avg > 2 && slope < 0.3)) && li <= 2 && li >= 0) {
           let tw = false; const ts = 450;
-          if (li <= 1) tw = worldHash(Math.floor((x0 + s / 2) / ts), Math.floor((z0 + s / 2) / ts), 99) < 0.014;
-          else { const bi = Math.floor(x0 / ts), bj = Math.floor(z0 / ts); for (let u = 0; u < 3 && !tw; u++) for (let v = 0; v < 3; v++) if (worldHash(bi + u, bj + v, 99) < 0.014) { tw = true; break; } }
+          if (gcity > 0.1) tw = worldHash(Math.floor((x0 + s / 2) / ts), Math.floor((z0 + s / 2) / ts), 97) < Math.min(0.95, gcity * 1.7);
+          if (!tw && !gcity && li <= 1) tw = worldHash(Math.floor((x0 + s / 2) / ts), Math.floor((z0 + s / 2) / ts), 99) < (f.world.geo ? 0.007 : 0.014);
+          else if (!tw && !gcity) { const bi = Math.floor(x0 / ts), bj = Math.floor(z0 / ts); for (let u = 0; u < 3 && !tw; u++) for (let v = 0; v < 3; v++) if (worldHash(bi + u, bj + v, 99) < 0.014) { tw = true; break; } }
           if (tw) {
             let near = true; const cx = x0 + s / 2, cz = z0 + s / 2;
             for (let i = 0; i < apLocal.length; i += 2) if (Math.hypot(apLocal[i] - cx, apLocal[i + 1] - cz) < 5200) { near = false; break; }
@@ -366,18 +370,18 @@ function drawTerrain(pal, hy, f) {
         const cx = x0 + s / 2, cz = z0 + s / 2;
         if (town) {
           if (hv < 0.6) { const bh = 8 + hv * 20, bw = 22 + hv * 10; boxAt(avg, cx - bw, cx + bw, cz - bw * 0.8, cz + bw * 0.8, bh, [pal.build[(hv * 3) | 0], pal.build[1], '#8b7f78'], bh > 14 ? { rows: Math.round(bh / 4), col: night > 0.5 ? '#d9b266' : '#33425c' } : null); boxAt(avg + bh, cx - bw - 1, cx + bw + 1, cz - bw * 0.8 - 1, cz + bw * 0.8 + 1, 1.2, ['#6a625f']); }
-          for (let u = 0; u < 5; u++) { const hx = x0 + worldHash(a, b, 150 + u) * (s - 24), hz = z0 + worldHash(a, b, 160 + u) * (s - 18), hh = 5 + 4 * worldHash(a, b, 170 + u); boxAt(avg, hx, hx + 12 + 8 * worldHash(a, b, 175 + u), hz, hz + 9, hh, ['#d7cdbf', '#b9ad9d', '#cfc4b4']); boxAt(avg + hh, hx - 0.8, hx + 13 + 8 * worldHash(a, b, 175 + u), hz - 0.8, hz + 9.8, 2.2, [u & 1 ? '#8c3b2c' : '#5d6674']); }
+          for (let u = 0; u < 5; u++) { const hx = x0 + worldHash(wi, wj, 150 + u) * (s - 24), hz = z0 + worldHash(wi, wj, 160 + u) * (s - 18), hh = 5 + 4 * worldHash(wi, wj, 170 + u); boxAt(avg, hx, hx + 12 + 8 * worldHash(wi, wj, 175 + u), hz, hz + 9, hh, ['#d7cdbf', '#b9ad9d', '#cfc4b4']); boxAt(avg + hh, hx - 0.8, hx + 13 + 8 * worldHash(wi, wj, 175 + u), hz - 0.8, hz + 9.8, 2.2, [u & 1 ? '#8c3b2c' : '#5d6674']); }
           if (night > 0.5 && toScreen(cx, avg + 6, cz, SP)) { ctx.fillStyle = '#ffd890'; ctx.fillRect(SP.x, SP.y, 2, 2); }
         } else if (g < r + 2 * (r - bl) * 0 + 0 && false) { /* зарезервировано */ }
         else if (hv > 0.35 && (g * 1.0 < 120 && r < 90)) {
           for (let t = 0; t < 3; t++) {
-            const tx = x0 + worldHash(a, b, 21 + t) * s, tz = z0 + worldHash(a, b, 31 + t) * s, ty = avg;
+            const tx = x0 + worldHash(wi, wj, 21 + t) * s, tz = z0 + worldHash(wi, wj, 31 + t) * s, ty = avg;
             if (toScreen(tx, ty + 14, tz, SP)) { const sx = SP.x, sy = SP.y; if (toScreen(tx, ty, tz, SP)) { const w2 = Math.max(1.2, 7 * F / SP.f); ctx.fillStyle = `rgb(${(26 * tint[0] + hz[0] * fg * 0.6) | 0},${(66 * tint[1] + hz[1] * fg * 0.6) | 0},${(34 * tint[2] + hz[2] * fg * 0.6) | 0})`; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(SP.x + w2, SP.y); ctx.lineTo(SP.x - w2, SP.y); ctx.closePath(); ctx.fill(); } }
           }
         }
       } else if (town && night > 0.5 && fw < 25000 && toScreen(x0 + s / 2, avg + 3, z0 + s / 2, SP)) {
         ctx.fillStyle = '#ffcf7a'; const rr = Math.max(1.2, Math.min(5, 300 * F / SP.f / 12));
-        for (let t = 0; t < 4; t++) ctx.fillRect(SP.x + (worldHash(a, b, 41 + t) - 0.5) * s * F / SP.f * 0.7, SP.y + (worldHash(a, b, 51 + t) - 0.5) * 3, rr, rr * 0.8);
+        for (let t = 0; t < 4; t++) ctx.fillRect(SP.x + (worldHash(wi, wj, 41 + t) - 0.5) * s * F / SP.f * 0.7, SP.y + (worldHash(wi, wj, 51 + t) - 0.5) * 3, rr, rr * 0.8);
       }
     }
   }
@@ -394,9 +398,14 @@ function drawHaze(pal, hy) {
 
 function lightDot(x, y, z, col, size, minf = 8) {
   if (!toScreen(x, y, z, SP)) return;
-  if (SP.f > 14000) return;
-  const r = clamp(size * F / SP.f, 0.7, 7 * U);
-  ctx.fillStyle = col; ctx.fillRect(SP.x - r / 2, SP.y - r / 2, r, r);
+  const d = SP.f; if (d > 14000) return;
+  // постоянное ровное свечение: дробные координаты (без «ползания» по пикселям), плавное затухание вдали
+  const a = d > 9000 ? (14000 - d) / 5000 : 1;
+  const r = clamp(size * F / d, 1.4, 6 * U);
+  ctx.globalAlpha = a; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(SP.x, SP.y, r * 0.6, 0, 6.3); ctx.fill();
+  if (r > 2) { ctx.globalAlpha = a * 0.2; ctx.beginPath(); ctx.arc(SP.x, SP.y, r * 1.5, 0, 6.3); ctx.fill(); }
+  ctx.globalAlpha = 1;
 }
 
 function drawTraffic(pal, f, t) {
@@ -409,9 +418,9 @@ function drawTraffic(pal, f, t) {
     boxAt(hy + 1.1, gx - 4 + (-d * 2), gx + 4 + (-d * 2), z - 17, z + 17, 0.6, ['#aab2bf']); // крыло
     boxAt(hy + 3.6, gx + L - 6, gx + L, z - 0.3, z + 0.3, 8, [a.col]);  // киль
     boxAt(hy + 3.8, gx + L - 5, gx + L, z - 7, z + 7, 0.4, ['#aab2bf']); // стабилизатор
-    const blink = Math.sin(t * 9 + a.id) > 0.8;
+    const blink = false;
     lightDot(gx - 2, hy + 1.2, z - 17, '#ff3030', 1.8); lightDot(gx - 2, hy + 1.2, z + 17, '#30ff60', 1.8);
-    if (blink || pal.night > 0.3) lightDot(gx + L, hy + 11.5, z, blink ? '#ffffff' : '#ffb0b0', 2.6);
+    if (pal.night > 0.3) lightDot(gx + L, hy + 11.5, z, '#ffb0b0', 2.6);
     if (!a.ground) lightDot(gx - L - 4, hy + 1.2, z, '#fff6d0', 2.4);
   }
 }
@@ -818,6 +827,18 @@ function drawMiniMap(f, view, t) {
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.3); ctx.fillStyle = 'rgba(8,16,32,.72)'; ctx.fill();
   ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R - 1, 0, 6.3); ctx.clip();
+  // суша и море под самолётом (реальная география)
+  if (f.world && f.world.geo) {
+    const NG = 18, cwid = 2 * rp / NG;
+    for (let a = 0; a < NG; a++) for (let b = 0; b < NG; b++) {
+      const sx = cx - rp + (a + 0.5) * cwid, sy = cy + oy - rp + (b + 0.5) * cwid;
+      const rt = (sx - cx) / sc, fw = (cy + oy - sy) / sc, ldx = fw * cp - rt * sp, ldy = fw * sp + rt * cp;
+      toWorld(f.tf, f.x + ldx, (f.yPos || 0) + ldy, _wp);
+      const lf = f.world.geo.landQ(_wp.x, _wp.z);
+      ctx.fillStyle = lf < 0.5 ? 'rgba(40,110,190,.55)' : 'rgba(70,120,70,.28)';
+      ctx.fillRect(sx - cwid / 2 - 0.5, sy - cwid / 2 - 0.5, cwid + 1, cwid + 1);
+    }
+  }
   // кольца дальности
   ctx.strokeStyle = 'rgba(160,255,200,.22)'; ctx.lineWidth = 1;
   for (const k of [0.5, 1]) { ctx.beginPath(); ctx.arc(cx, cy + oy, rp * k, 0, 6.3); ctx.stroke(); }
@@ -1090,8 +1111,25 @@ function drawGuide(f) {
 
 // ---- модель самолёта для вида от третьего лица ----
 const modelCache = {};
+// реальные габариты и стиль ливреи: длина, диаметр фюзеляжа и двигателя (м), расположение двигателей, оперение
+const LOOK = {
+  ssj: { len: 29.9, dia: 3.46, eng: 1.5, liv: 'tail+' },
+  crj2: { len: 26.8, dia: 2.7, eng: 1.3, rear: true, ttail: true, liv: 'belly' },
+  e190: { len: 36.2, dia: 3.0, eng: 1.9, liv: 'top' },
+  a223: { len: 38.7, dia: 3.7, eng: 2.0, liv: 'belly' },
+  a320: { len: 37.6, dia: 4.14, eng: 2.0, liv: 'stripe' },
+  a321: { len: 44.5, dia: 4.14, eng: 2.0, liv: 'tail+' },
+  b738: { len: 39.5, dia: 3.76, eng: 1.75, liv: 'stripe' },
+  b763: { len: 54.9, dia: 5.03, eng: 2.6, liv: 'top' },
+  a333: { len: 63.7, dia: 5.64, eng: 2.6, liv: 'belly' },
+  b789: { len: 62.8, dia: 5.77, eng: 2.9, liv: 'tail+' },
+  a359: { len: 66.8, dia: 5.96, eng: 3.0, liv: 'stripe' },
+  b77w: { len: 73.9, dia: 6.2, eng: 3.4, liv: 'tail+' },
+};
 function buildModel(p) {
-  const span = Math.sqrt(p.S * p.ar), L = span * (p.seats >= 300 ? 1.12 : 1.07), r = L * 0.052;
+  const lk = LOOK[p.id] || {};
+  const span = Math.sqrt(p.S * p.ar), L = lk.len || span * (p.seats >= 300 ? 1.12 : 1.07), r = lk.dia ? lk.dia / 2 : L * 0.052;
+  const fbT = 0.7 * r, fhT = L * 0.17;
   const gh = r + 1.5, half = span / 2, wy = -0.55 * r;
   const faces = [];
   const add = (pts, col, kind, ex) => { const o = { pts, col, kind: kind || '' }; if (ex) Object.assign(o, ex); faces.push(o); };
@@ -1107,6 +1145,9 @@ function buildModel(p) {
     const j = (i + 1) % N, ang = ((i + 1) * 30) % 360;
     let col = ang > 0 && ang < 180 ? '#f2f5fa' : ang === 0 || ang === 180 ? '#e4e9f1' : '#b4bccb';
     if (q >= 7 && (ang >= 0 && ang <= 180)) col = p.color;                       // хвостовая часть в цвет ливреи
+    if (lk.liv === 'tail+' && q >= 5 && q < 9) col = ang > 0 && ang < 180 ? p.color : '#cfd6e2'; // длинный цветной хвост
+    if (lk.liv === 'belly' && q >= 2 && q <= 9 && ang > 180) col = p.color;          // цветное «брюхо»
+    if (lk.liv === 'top' && q >= 2 && q <= 8 && ang > 0 && ang < 180) col = i === 2 || i === 3 ? '#141c2a' : p.color; // цветная спина
     if (q <= 1) col = ang > 90 && ang < 270 ? '#3b4252' : '#3b4252';             // радиопрозрачный обтекатель
     if (q === 2 && (i === 1 || i === 2 || i === 3)) col = '#141c2a';              // лобовые стёкла
     if (q === 3 && i === 2) col = '#141c2a';
@@ -1145,13 +1186,14 @@ function buildModel(p) {
     add([a, b, [b[0] - L * 0.01, b[1] + hh, b[2]], [a[0] - L * 0.045, a[1] + hh, a[2]]], p.color, 'wing');
     // горизонтальный стабилизатор + руль высоты
     const hs = (t, u) => [-0.40 * L + (-0.49 * L + 0.40 * L) * 0, 0, 0];
-    const sx0 = -0.40 * L, sx1 = -0.49 * L, tx0 = -0.455 * L, tx1 = -0.505 * L, sz0 = sg * r * 0.4, sz1 = sg * half * 0.36;
-    const lp = (u, t) => [(sx0 + (tx0 - sx0) * t) + ((sx1 + (tx1 - sx1) * t) - (sx0 + (tx0 - sx0) * t)) * u, 0.2 * r + 0.1 * r * t, sz0 + (sz1 - sz0) * t];
+    const sx0 = -0.40 * L, sx1 = -0.49 * L, tx0 = -0.455 * L, tx1 = -0.505 * L, sz0 = lk.ttail ? 0 : sg * r * 0.4, sz1 = sg * half * (lk.ttail ? 0.3 : 0.36);
+    const lp = (u, t) => [(sx0 + (tx0 - sx0) * t) + ((sx1 + (tx1 - sx1) * t) - (sx0 + (tx0 - sx0) * t)) * u, (lk.ttail ? fbT + fhT * 0.97 : 0.2 * r) + 0.1 * r * t, sz0 + (sz1 - sz0) * t];
     add([lp(0, 0), lp(0, 1), lp(0.62, 1), lp(0.62, 0)], '#d3d9e6', 'wing');
     add([lp(0.62, 0), lp(0.62, 1), lp(1, 1), lp(1, 0)], '#bfc7d6', 'wing');
     // двигатель с пилоном
-    const tE = 0.4, ez = sg * (r * 0.95 + (half - r * 0.95) * tE) * 0.92, re = L * 0.034, yW = wy + (y1 - wy) * tE, ey = yW - re * 1.08;
-    const ex1 = 0.125 * L, ex2 = 0.07 * L, ex3 = -0.01 * L, ex0 = -0.035 * L;
+    const tE = 0.4, re = lk.eng ? lk.eng / 2 : L * 0.034, ez = lk.rear ? sg * (r + re * 1.25) : sg * (r * 0.95 + (half - r * 0.95) * tE) * 0.92, yW = lk.rear ? r * 0.5 : wy + (y1 - wy) * tE, ey = lk.rear ? r * 0.5 : yW - re * 1.08;
+    const oxe = lk.rear ? -0.32 * L : 0, ex1 = 0.125 * L + oxe, ex2 = 0.07 * L + oxe, ex3 = -0.01 * L + oxe, ex0 = -0.035 * L + oxe;
+    if (lk.rear) add([[ex1, ey, sg * r * 0.95], [ex3, ey, sg * r * 0.95], [ex3, ey, ez], [ex1, ey, ez]], '#c6cdda', 'wing');
     const prof = [[ex1, 0.96], [ex2, 1.03], [ex3, 1.0], [ex0, 0.8]], M2 = 10;
     const nr = prof.map(([x, k]) => { const ring = []; for (let i = 0; i < M2; i++) { const a2 = (i + 0.5) * 2 * Math.PI / M2; ring.push([x, ey + re * k * Math.sin(a2), ez + re * k * Math.cos(a2)]); } return ring; });
     for (let q = 0; q < nr.length - 1; q++) for (let i = 0; i < M2; i++) { const j = (i + 1) % M2, up = Math.sin((i + 1) * 2 * Math.PI / M2) > 0; add([nr[q][i], nr[q][j], nr[q + 1][j], nr[q + 1][i]], q === 0 ? p.color : up ? '#d7dce7' : '#a2abbc', 'nac', { tone: 1 + 0.02 * (i % 2) }); }
@@ -1162,7 +1204,7 @@ function buildModel(p) {
     add([[ex1 - 0.01 * L, yW, ez], [ex3 - 0.02 * L, yW, ez], [ex3, ey + re * 0.75, ez], [ex2, ey + re * 0.85, ez]], '#c6cdda', 'wing');
     // подпалины от выхлопа на крыле
     const sx = WP(tE, 0.8, sg);
-    decal([[ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.55], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.4], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.4], [ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.55]], 'rgba(40,40,48,.5)', 'soot', 0);
+    if (!lk.rear) decal([[ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.55], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez - re * 0.4], [ex0 - 0.09 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.4], [ex0 - 0.01 * L, wy + (y1 - wy) * 0.38 + 0.03, ez + re * 0.55]], 'rgba(40,40,48,.5)', 'soot', 0);
     // шасси
     const mz = sg * span * 0.11, mx = -0.05 * L, wh = 1.15;
     add([[mx - 0.12, -gh + wh, mz], [mx + 0.12, -gh + wh, mz], [mx + 0.12, wy, mz], [mx - 0.12, wy, mz]], '#2b323f', 'gear');
@@ -1172,7 +1214,7 @@ function buildModel(p) {
     }
   }
   // ---- киль: стреловидный, логотип и полоса ----
-  const fb = 0.7 * r, fh = L * 0.17;
+  const fb = fbT, fh = fhT;
   const fz = (y, sg) => sg * (0.34 - 0.3 * (y - fb) / fh);
   for (const sg of [-1, 1]) {
     add([[-0.37 * L, fb, fz(fb, sg) * 1], [-0.5 * L, fb, fz(fb, sg)], [-0.545 * L, fb + fh, fz(fb + fh, sg)], [-0.465 * L, fb + fh, fz(fb + fh, sg)]], p.color, 'fin');
@@ -1289,17 +1331,32 @@ function drawAircraft(f, pal, t) {
 }
 
 // ---- карта для меню ----
+// карта мира: суша из Natural Earth, рисуется один раз в отдельный холст
+const MAP_LON0 = -125, MAP_LON1 = 160, MAP_LAT0 = 72, MAP_LAT1 = -55;
+let landImg = null;
+function getLandImg() {
+  if (landImg) return landImg;
+  const st = 0.35, cw = Math.round((MAP_LON1 - MAP_LON0) / st), ch = Math.round((MAP_LAT0 - MAP_LAT1) / st);
+  const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+  const g = cv.getContext('2d'), im = g.createImageData(cw, ch), d = im.data;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const lf = landF(MAP_LON0 + (x + 0.5) * st, MAP_LAT0 - (y + 0.5) * st), k = (y * cw + x) * 4;
+    d[k] = 52 + 20 * lf; d[k + 1] = 92 + 28 * lf; d[k + 2] = 84; d[k + 3] = Math.round(235 * lf);
+  }
+  g.putImageData(im, 0, 0); landImg = cv; return cv;
+}
 export function drawMap(c, w, h, t, opt) {
   // радар-стиль: сетка, точки аэропортов, маршрут
   const g = c.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, '#071428'); g.addColorStop(1, '#0d2a4a');
   c.fillStyle = g; c.fillRect(0, 0, w, h);
   const mx = w * (opt.left ?? 0.03), mw = w * (opt.width ?? 0.62), my = h * (opt.top ?? 0.2), mh = h * (opt.height ?? 0.5);
-  const X = lon => mx + (lon + 85) / 240 * mw, Y = lat => my + (74 - lat) / 58 * mh;
-  c.strokeStyle = 'rgba(120,170,230,.16)'; c.lineWidth = 1;
+  const X = lon => mx + (lon - MAP_LON0) / (MAP_LON1 - MAP_LON0) * mw, Y = lat => my + (MAP_LAT0 - lat) / (MAP_LAT0 - MAP_LAT1) * mh;
+  try { c.imageSmoothingEnabled = true; c.drawImage(getLandImg(), mx, my, mw, mh); } catch (e) { }
+  c.strokeStyle = 'rgba(120,170,230,.14)'; c.lineWidth = 1;
   c.beginPath();
-  for (let lon = -60; lon <= 150; lon += 30) { c.moveTo(X(lon), my); c.lineTo(X(lon), my + mh); }
-  for (let lat = 20; lat <= 70; lat += 10) { c.moveTo(mx, Y(lat)); c.lineTo(mx + mw, Y(lat)); }
+  for (let lon = -120; lon <= 150; lon += 30) { c.moveTo(X(lon), my); c.lineTo(X(lon), my + mh); }
+  for (let lat = -40; lat <= 70; lat += 10) { c.moveTo(mx, Y(lat)); c.lineTo(mx + mw, Y(lat)); }
   c.stroke();
   // дальность
   const from = AP_BY[opt.from];

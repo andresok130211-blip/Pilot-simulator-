@@ -210,6 +210,7 @@ function renderSettings() {
     <div class="grp">
       <label class="chk">Вид по умолчанию: <select id="sCam"><option value="chase">снаружи</option><option value="cockpit">из кабины</option></select></label>
       <label class="chk">Размер интерфейса: <select id="sUi"><option value="1">обычный</option><option value="1.2">крупный</option><option value="1.4">очень крупный</option></select></label>
+      <label class="chk"><input type="checkbox" id="sTrack" ${save.trackHold !== false ? 'checked' : ''}> Самолёт сам держит трассу, пока вы не трогаете штурвал</label>
       <label class="chk">Снос ветром: <select id="sDrift"><option value="1">полный</option><option value="0.5">ослаблен</option><option value="0.15">минимальный</option><option value="0">нет</option></select></label>
       <label class="chk"><input type="checkbox" id="sLeft" ${save.lefty ? 'checked' : ''}> Для левши: газ справа, штурвал слева</label>
       <label class="chk"><input type="checkbox" id="sMap" ${save.mapOn !== false ? 'checked' : ''}> Показывать мини-карту</label>
@@ -228,6 +229,7 @@ function renderSettings() {
   $('sCam').onchange = e => { save.cam = e.target.value; persist(); };
   $('sUi').onchange = e => { save.uiScale = +e.target.value; persist(); applyUi(); };
   $('sDrift').value = String(save.drift == null ? 0.5 : save.drift); $('sDrift').onchange = e => { save.drift = +e.target.value; persist(); };
+  $('sTrack').onchange = e => { save.trackHold = e.target.checked; persist(); };
   $('sLeft').onchange = e => { save.lefty = e.target.checked; persist(); applyUi(); };
   $('sMap').onchange = e => { save.mapOn = e.target.checked; persist(); };
   $('sSimple').onchange = e => { save.simple = e.target.checked; if (e.target.checked) { save.assistAuto = true; save.assistCfg = true; save.assistTaxi = true; save.hints = true; } persist(); renderSettings(); };
@@ -408,7 +410,7 @@ function beginFlight(c, drill, wx, pf, extra) {
   const from = apLoc(), to = AP_BY[c.to], p = plane();
   const tod = extra && extra.tod != null ? extra.tod : save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   contract = c;
-  flight = new Flight({ rnd: extra && extra.rnd, wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: pf ? pf.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)), driftK: save.drift == null ? 0.5 : save.drift, cold: !!pf && save.taxiOps, flex: !!(pf && pf.flex), cg: pf ? pf.cg : 0.25,
+  flight = new Flight({ rnd: extra && extra.rnd, wx, plane: p, from, to, bearing: bearing(from, to), distM: c.km * 1000, pax: c.pax, fuelKg: pf ? pf.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)), driftK: save.drift == null ? 0.5 : save.drift, trackHold: save.trackHold !== false, cold: !!pf && save.taxiOps, flex: !!(pf && pf.flex), cg: pf ? pf.cg : 0.25,
     taxi: drill ? false : save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined, emerg: drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg), copilot: save.copilot, fatigue: save.fatigue || 0, extraEv: pf ? pf.extraEv : undefined, assist: { auto: save.assistAuto, config: save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   flight.daily = extra && extra.daily;
   flight.c.flaps = 2; flight.flapAct = 2; flight.c.brake = true; flight.c.thr = 0;

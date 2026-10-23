@@ -2,6 +2,7 @@
 // Мировая плоскость (метры): точка вылета — начало координат, ось X — вдоль маршрута, Z — вправо.
 // Система координат самолёта (локальная) связана с мировой поворотом/сдвигом f.tf (меняется при уходе на запасной).
 import { AIRPORTS, distKm, bearing } from './data.js';
+import { makeGeo } from './geo.js';
 
 const smooth = t => t * t * (3 - 2 * t);
 export const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -26,6 +27,7 @@ export const worldHash = hs;
 export function buildWorld(from, to, D, plane) {
   const brg0 = bearing(from, to) * Math.PI / 180;
   const list = [];
+  try { list.geo = makeGeo(from, bearing(from, to), D); } catch (e) { list.geo = null; }
   const push = (id, ap, wx, wz, len, gen) => list.push({ id, ap, wx, wz, len, gen: !!gen });
   push(from.id, from, 0, 0, from.rwy, false);
   push(to.id, to, D, 0, to.rwy, false);
@@ -51,7 +53,10 @@ export function buildWorld(from, to, D, plane) {
   gen(D - near, hs(2, 1, seed) < 0.5 ? 1 : -1, 2);
   const n = Math.floor((D - 2 * near) / 130000);
   for (let k = 0; k < n; k++) gen(near + (k + 0.5) * (D - 2 * near) / n, (k % 2 ? 1 : -1) * (hs(k, 3, seed) < 0.5 ? 1 : -1), 3 + k);
-  alts.forEach((a, i) => {
+  // запасные — только на суше
+  if (list.geo) for (const a of alts) { for (const m of [1, -1, 0.5, -0.5, 0.25, -0.25]) { if (list.geo.landQ(a.x, a.z * m) > 0.95 && list.geo.landQ(a.x, a.z * m * 1.4) > 0.9) { a.z *= m; a.ok = true; break; } } }
+  const altsOk = list.geo ? alts.filter(a => a.ok) : alts;
+  altsOk.forEach((a, i) => {
     const code = 'Z' + (i + 1);
     push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true);
   });
@@ -65,10 +70,13 @@ export function heightW(world, wx, wz) {
     const a = world[i], d = Math.hypot(wx - a.wx, wz - a.wz);
     if (d < dMin) dMin = d;
   }
+  const geo = world.geo;
+  if (geo && dMin > 4500 && geo.landQ(wx, wz) < 0.5) return -400; // море
   const flat = sstep(8000, 26000, dMin), mt = sstep(30000, 85000, dMin);
   if (flat <= 0) return 0;
+  if (geo && dMin > 4500 && geo.river(wx, wz) > 0.3) return -400; // реки
   const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
-  if (flat > 0.7 && mt < 0.3 && Math.abs(fbm(wx / 24000, wz / 24000, 3, 200) - 0.5) < 0.0085) return -400; // реки
+  if (!geo && flat > 0.7 && mt < 0.3 && Math.abs(fbm(wx / 24000, wz / 24000, 3, 200) - 0.5) < 0.0085) return -400; // реки
   const hill = (n1 - 0.38) * 520;
   let r = 0;
   if (mt > 0) {

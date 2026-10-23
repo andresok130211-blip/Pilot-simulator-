@@ -782,7 +782,7 @@ export const EVENT_DEFS = {
     ok: f => f.distM >= 350000,
     extra: f => f.h > 5000 && !f.xfeed,
     start(f, ev) {
-      f.leakSide = f.rnd() < 0.5 ? 0 : 1; f.leak = f.p.burnHr / 3600 * 0.2; ev.xf = 0;
+      f.leakSide = f.rnd() < 0.5 ? 0 : 1; f.leak = f.p.burnHr / 3600 * 2.0; ev.xf = 0;
       f.msg('УТЕЧКА ТОПЛИВА из ' + (f.leakSide ? 'правого' : 'левого') + ' бака! Откройте ПЕРЕКАЧКУ');
     },
     btns: (f, ev) => f.xfeed ? [] : [{ k: 'xfeed', t: '⛽ ПЕРЕКАЧКА' }],

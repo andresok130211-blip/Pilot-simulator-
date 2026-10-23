@@ -72,6 +72,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
       if (ev === 'gps' && age > d0) f.evAction('vor');
       if (ev === 'rwyChg' && age > d0) f.evAction('ack');
       if (ev === 'brakeFail' && age > d0) f.evAction('ebrake');
+      if (ev === 'fuelLeak' && age > d0) { f.evAction('xfeed'); if (!f.diverted && f.fuel < (f.dist / 220) * (f.p.burnHr / 3600) * 2.4 + 600) { const a = f.altList().find(o => o.ok); if (a) f.divertTo(a.w); } }
       if (ev === 'ash' && age > d0) { f.evAction('ashIdle'); if (age > d0 + 8) f.evAction('ashTurn'); }
       if (ev === 'security' && age > d0) { f.evAction('sq7500'); if (age > d0 + 6) f.evAction('secLand'); }
       if (ev === 'tcas' && age > 4 && !E.bot) { E.bot = 1; c.apOn = true; c.apAlt = Math.max(300, f.h + E.ra * 500); }

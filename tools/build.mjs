@@ -2,7 +2,7 @@
 import fs from 'fs';
 const R = p => fs.readFileSync(new URL('../src/' + p, import.meta.url), 'utf8');
 let out = '';
-for (const m of ['data', 'events', 'terrain', 'sim', 'render', 'main']) {
+for (const m of ['data', 'geodata', 'geo', 'events', 'terrain', 'sim', 'render', 'main']) {
   let s = R(`js/${m}.js`);
   const names = [];
   s = s.replace(/^import\s*\{([^}]*)\}\s*from\s*'\.\/(\w+)\.js';?$/gm, (_, list, mod) => `const {${list}} = __m.${mod};`);
