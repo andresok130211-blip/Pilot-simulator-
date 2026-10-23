@@ -100,7 +100,7 @@ export class Flight {
     this.cold = !!o.cold; this.startReq = false; this.startT = 0; this.apu = false; this.flex = !!o.flex; this.cg = o.cg || 0.25;
     this.eng = o.cold ? [0, 0] : [1, 1]; this.fire = null; this.hyd = false; this.altGear = false; this.apLock = 0; this.atLock = 0;
     this.comfort = 100; this.comfortMsg = 0; this.declared = null; this.gate = { board: 0, fuel: 0, bags: 0, done: !(o.cold && o.taxi !== false) }; this.closedIds = new Set(); this.emDescent = false; this.rwyBlocked = false; this.ga = false; this.gaCount = 0; this.fade = 0; this.fadeText = ''; this.diverted = false;
-    this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
+    this.fx = { ice: 0, turb: 0, rollBias: 0, adc: false, iasErr: 0, altErr: 0, gps: false, fog: 0, smoke: 0, ws: 0, slick: 0, brakeFail: 0, ebrake: false, gearOne: 0, tire: 0, gearStuck: false, noRetract: false, flapJam: false, belts: false, anti: false, traffic: null, flash: 0, elec: false };
     this.ev = null; this.evLog = []; this.alerts = new Set(); this.drill = !!o.drill;
     this.rnd = o.rnd || Math.random;
     this.wx = o.wx || { dir: o.bearing || 0, spd: 0, gust: 0, vis: 10000, visD: 10000, rain: 0, rainD: 0, temp: 14, qnh: 1013 };
@@ -704,7 +704,8 @@ export class Flight {
       let mu = paved ? 0.02 : 0.15;
       if (this.gearPos < 0.9) mu = 0.5;
       if (!c.brake && this.td && c.abrk > 0 && this.v > 3) mu += [0.08, 0.14, 0.22][c.abrk - 1] * (this.fx.slick ? 0.55 : this.wxNow.rain > 0.3 ? 0.8 : 1);
-      if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : this.wxNow.rain > 0.3 ? 0.24 : (this.wx && this.wx.snowG) ? 0.2 : 0.30) : 0.2;
+      if (c.brake && this.fx.brakeFail) mu += this.fx.ebrake ? 0.12 : 0.03;
+      else if (c.brake) mu += onRwy ? (this.fx.slick ? 0.15 : this.wxNow.rain > 0.3 ? 0.24 : (this.wx && this.wx.snowG) ? 0.2 : 0.30) : 0.2;
       let F = T - this.Dr - mu * N;
       if (this.v < 0.3 && F <= 0) { this.v = 0; }
       else {
@@ -724,6 +725,7 @@ export class Flight {
       else this.psi -= this.psi * 0.6 * dt;
     }
     if (this.asym && this.v > 3 && !(this.taxiOps && c.taxiAuto)) this.psi -= this.asym * 0.06 * Math.min(1, this.v / 20) * (this.assist.auto ? 0.35 : 1) * dt;
+    if (this.fx.gearOne && this.td && this.v > 3) { this.psi += this.fx.gearOne * 0.012 * dt * Math.min(1, this.v / 25); }
     if (this.fx.slick && this.v > 25) this.psi += this.fx.slick * 0.02 * Math.sin(this.time * 0.8) * dt;
     if (this.v > 20 && (this.wl.x || this.wl.z)) this.psi -= this.wl.z * 0.0015 * clamp((this.v - 20) / 20, 0, 1) * (this.assist.auto ? 0.3 : 1) * dt;
     this.psi = wrapPi(this.psi);

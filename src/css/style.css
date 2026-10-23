@@ -11,6 +11,8 @@ html,body{margin:0;height:100%;background:#0b1220;color:#fff;font-family:system-
 #thrlink{position:absolute;left:0;right:0;bottom:0;height:22px;pointer-events:auto;touch-action:none;border:1px solid rgba(255,255,255,.45);background:rgba(20,30,55,.78);color:#fff;border-radius:8px;font-size:10px;font-weight:800}
 #thrlink.on{background:#1f8f4e;border-color:#7dffb0}
 #yoke{position:absolute;right:calc(8px + env(safe-area-inset-right));bottom:10px;width:min(150px,40vh);height:min(150px,40vh);border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,.06));border:2px solid rgba(255,255,255,.4);overflow:hidden}
+#ui.lefty #thrw{left:auto;right:calc(8px + env(safe-area-inset-right));flex-direction:row-reverse}
+#ui.lefty #yoke{right:auto;left:calc(8px + env(safe-area-inset-left))}
 #yoke svg{position:absolute;inset:6%;width:88%;height:88%;pointer-events:none}
 #yoke .yl{position:absolute;top:4px;left:0;right:0;text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.8;pointer-events:none}
 #thrw .tf{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#ffb347,#ff7a18)}

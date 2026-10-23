@@ -860,6 +860,46 @@ export const EVENT_DEFS = {
     },
   },
 
+  brakeFail: {
+    title: 'ОТКАЗ ТОРМОЗОВ', short: 'Отказ тормозов', phases: ['descent', 'final'], weight: 1.5, group: 'land', spawn: 'descent',
+    desc: 'Основная тормозная система отказала. Используйте реверс и аварийный тормоз, садитесь точно в начале полосы.',
+    ok: f => true,
+    start(f, ev) { f.fx.brakeFail = 1; f.fx.ebrake = false; f.msg('ОТКАЗ ТОРМОЗОВ: после касания — РЕВЕРС и АВАРИЙНЫЙ ТОРМОЗ'); },
+    btns: (f, ev) => f.fx.ebrake ? [] : [{ k: 'ebrake', t: '🛑 АВАР. ТОРМОЗ' }],
+    act(f, ev, k) { if (k === 'ebrake') { f.fx.ebrake = true; f.msg('Аварийный тормоз включён'); } },
+    steps(f, ev) {
+      return [
+        { t: 'Нажмите АВАРИЙНЫЙ ТОРМОЗ', done: !!f.fx.ebrake },
+        { t: 'Коснитесь в первых 500 м, включите РЕВЕРС', done: !!(f.td && f.td.onDest) },
+        { t: 'Остановитесь до конца полосы (осталось ' + Math.max(0, Math.round(f.rwy1.e - f.x)) + ' м)', done: !!(f.td && f.v < 12) },
+      ];
+    },
+    alert: (f, ev) => f.td ? null : 'ТОРМОЗА ОТКАЗАЛИ',
+    tick(f, ev, dt) {
+      if (f.td && f.td.onDest && f.v < 12) f.resolveEvent(ev, f.fx.ebrake && f.x < f.rwy1.e ? 'ok' : 'late', 'Остановились без тормозов');
+      else if (f.td && !f.td.onDest) f.resolveEvent(ev, 'late', '');
+    },
+  },
+
+  gearCollapse: {
+    title: 'ПОДКОС СТОЙКИ ШАССИ', short: 'Подкос стойки шасси', phases: ['descent', 'final'], weight: 1, group: 'land', spawn: 'descent',
+    desc: 'При посадке разрушится одна основная стойка: самолёт потянет в сторону. Держите ось педалями и штурвалом, тормозите плавно.',
+    ok: f => true,
+    start(f, ev) { f.fx.gearOne = f.rnd() < 0.5 ? -1 : 1; f.msg('ВНИМАНИЕ: после касания возможен увод в сторону — готовьтесь держать ось'); },
+    steps(f, ev) {
+      if (f.td && f.td.onDest) return [
+        { t: 'Удерживайте ось полосы', done: Math.abs(f.yPos) < 20 && f.v < 12 },
+        { t: 'Остановитесь на полосе', done: f.v < 12 },
+      ];
+      return [{ t: 'Заходите точно по оси, касание мягко', done: false }];
+    },
+    alert: (f, ev) => null,
+    tick(f, ev, dt) {
+      if (f.td && f.td.onDest && f.v < 12) f.resolveEvent(ev, Math.abs(f.yPos) < 25 ? 'ok' : 'late', 'Остановились на полосе после подкоса стойки');
+      else if (f.td && !f.td.onDest) f.resolveEvent(ev, 'late', '');
+    },
+  },
+
 };
 
 export const EVENT_IDS = Object.keys(EVENT_DEFS);
