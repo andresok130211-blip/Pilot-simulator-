@@ -40,7 +40,8 @@ jobs:
           mkdir -p ~/.android
           cp tools/debug.keystore ~/.android/debug.keystore
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
-          grep -n "versionCode\|versionName" android/app/build.gradle
+          sed -i '0,/^android {/s//android {\n    signingConfigs { debug { storeFile file("..\/..\/tools\/debug.keystore"); storePassword "android"; keyAlias "androiddebugkey"; keyPassword "android" } }/' android/app/build.gradle
+          grep -n "versionCode\|versionName\|signingConfigs\|storeFile" android/app/build.gradle
 
       - name: Build debug APK
         working-directory: android
