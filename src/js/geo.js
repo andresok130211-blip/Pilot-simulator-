@@ -1,10 +1,26 @@
 // Реальная география (Natural Earth): суша/вода, реки, города. Данные — geodata.js.
 import { GEO_RES, GEO_W, GEO_H, GEO_LAND, GEO_RIVERS, GEO_CITIES } from './geodata.js';
 import { inflateRaw } from './inflate.js';
+import { BIO_RES, BIO_W, BIO_H, BIO_DATA } from './geobiome.js';
 import { DEM_W, DEM_H, DEM_UNIT, DEM_DATA } from './geodem.js';
 
 const R_EARTH = 6371000, D2R = Math.PI / 180;
 const b64 = s => { const t = atob(s), a = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) a[i] = t.charCodeAt(i); return a; };
+
+// ---- биомы (0 обычная, 1 пустыня, 2 тундра, 3 ледник, 4 болота, 5 солончак) ----
+let bio = null;
+function initBio() {
+  if (bio) return;
+  const a = b64(BIO_DATA); let p = 0;
+  const rd = () => { let v = 0, sh = 0, b; do { b = a[p++]; v |= (b & 127) << sh; sh += 7; } while (b & 128); return v; };
+  bio = new Uint8Array(BIO_W * BIO_H);
+  for (let r = 0; r < BIO_H; r++) { const n = rd(); let c = r * BIO_W; for (let i = 0; i < n; i++) { const len = rd(), v = rd(); if (v) bio.fill(v, c, c + len); c += len; } }
+}
+export function bioF(lon, lat) {
+  initBio();
+  const col = Math.min(BIO_W - 1, Math.max(0, Math.floor((lon + 180) / BIO_RES))), row = Math.min(BIO_H - 1, Math.max(0, Math.floor((90 - lat) / BIO_RES)));
+  return bio[row * BIO_W + col];
+}
 
 // ---- суша: построчные серии (вода, суша, вода, ...) ----
 let rowOff = null, runs = null;
@@ -111,6 +127,17 @@ export function makeGeo(from, brg0deg, D) {
   g.elevQ = (wx, wz) => {
     const i = Math.floor(wx / 1000), j = Math.floor(wz / 1000), k = i * 100003 + j; let v = ec.get(k);
     if (v === undefined) { g.ll((i + 0.5) * 1000, (j + 0.5) * 1000, tmp); v = demF(tmp.lon, tmp.lat); if (ec.size > 250000) ec.clear(); ec.set(k, v); }
+    return v;
+  };
+  const bc = new Map();
+  g.bioQ = (wx, wz) => {
+    const i = Math.floor(wx / 1500), j = Math.floor(wz / 1500), k = i * 100003 + j; let v = bc.get(k);
+    if (v === undefined) {
+      const x = (i + 0.5) * 1500, z = (j + 0.5) * 1500;
+      // лёгкое искажение, чтобы границы районов не были квадратными
+      g.ll(x + 5200 * Math.sin(z / 6100 + Math.sin(x / 8300) * 2), z + 5200 * Math.sin(x / 7300 + Math.sin(z / 9100) * 2), tmp);
+      v = bioF(tmp.lon, tmp.lat); if (bc.size > 250000) bc.clear(); bc.set(k, v);
+    }
     return v;
   };
   // коридор интереса: вдоль трассы ±450 км

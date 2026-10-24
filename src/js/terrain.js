@@ -83,6 +83,7 @@ export function heightW(world, wx, wz) {
     const ridge = 1 - Math.abs(2 * fbm(wx / 9000, wz / 9000, 4, 77) - 1);
     const amp = Math.max(0, Math.min(700, 0.1 * msl - 40));
     let T = base + (n1 - 0.45) * Math.min(260, 40 + 0.06 * msl) + (ridge * ridge - 0.35) * amp;
+    if (dMin > 6000) T = Math.max(T, 0.9); // суша ниже «нулевой» плоскости маршрута — всё равно суша, а не вода
     T = Math.min(T, 0.045 * Math.max(0, dMin - 6000));
     return Math.max(0, T) * flat;
   }

@@ -302,6 +302,7 @@ function drawTerrain(pal, hy, f) {
         if (fw < 60000) { const kk = 0.25 * (1 - fw / 60000); r += (hz[0] - r) * kk; g += (hz[1] - g) * kk; bl += (hz[2] - bl) * kk; }
       } else {
         const wet = wetAt(_wp.x, _wp.z);
+        const bio = f.world.geo ? f.world.geo.bioQ(_wp.x, _wp.z) : 0;
         const hh = f.world.geo ? f.world.geo.elevQ(_wp.x, _wp.z) / 3 + avg * 0.3 : avg; // шкала растительности/снега по высоте над морем
         const dxs = (h10 + h11 - h00 - h01) / (2 * s), dzs = (h01 + h11 - h00 - h10) / (2 * s);
         const slope = Math.hypot(dxs, dzs);
@@ -310,12 +311,20 @@ function drawTerrain(pal, hy, f) {
         const ky = sstep(0.52, 0.66, f2); fieldK = Math.max(ky, 1 - sstep(0.2, 0.34, f2)); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
         const kp = sstep(0.28, 0.2, f2); r += (124 - r) * kp * 0.4; g += (108 - g) * kp * 0.4; bl += (66 - bl) * kp * 0.4;
         const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6; lowF = lowFlat;
-        if (wet > 0.52 && hh < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, hh)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; forestK = kf; }
-        if (avg < 6 && avg > 0.5) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
+        if (wet > 0.52 && hh < 760 && bio !== 1 && bio !== 2 && bio !== 3 && bio !== 5) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, hh)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; forestK = kf; }
+        if (avg < 6 && avg > 0.5 && (!f.world.geo || f.world.geo.elevQ(_wp.x, _wp.z) < 14)) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
         const kr = Math.max(sstep(430, 760, hh), sstep(0.35, 0.7, slope));
         if (kr > 0) { r += (118 - r) * kr; g += (110 - g) * kr; bl += (100 - bl) * kr; }
         const ks = sstep(820, 980, hh - slope * 120);
         if (ks > 0) { r += (240 - r) * ks; g += (243 - g) * ks; bl += (248 - bl) * ks; }
+        if (bio) {
+          const bn = 0.9 + 0.2 * f1;
+          if (bio === 1) { const k = 0.88; r += (214 * bn - r) * k; g += (186 * bn - g) * k; bl += (132 * bn - bl) * k; }
+          else if (bio === 2) { const k = 0.7; r += (128 * bn - r) * k; g += (134 * bn - g) * k; bl += (104 * bn - bl) * k; }
+          else if (bio === 3) { const k = 0.92; r += (238 - r) * k; g += (243 - g) * k; bl += (250 - bl) * k; }
+          else if (bio === 4) { const k = 0.6; r += (66 - r) * k; g += (98 - g) * k; bl += (82 - bl) * k; }
+          else if (bio === 5) { const k = 0.9; r += (228 - r) * k; g += (224 - g) * k; bl += (212 - bl) * k; }
+        }
         const sh = 0.975 + hv * 0.05; r *= sh; g *= sh; bl *= sh;
         // освещение по склону
         const ex = dxs * 2.6, ez = dzs * 2.6, nl = Math.hypot(ex, 1, ez), dif = Math.max(0, (-ex * SUN[0] + SUN[1] - ez * SUN[2]) / nl);
