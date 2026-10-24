@@ -1,5 +1,7 @@
 // Реальная география (Natural Earth): суша/вода, реки, города. Данные — geodata.js.
 import { GEO_RES, GEO_W, GEO_H, GEO_LAND, GEO_RIVERS, GEO_CITIES } from './geodata.js';
+import { inflateRaw } from './inflate.js';
+import { DEM_W, DEM_H, DEM_UNIT, DEM_DATA } from './geodem.js';
 
 const R_EARTH = 6371000, D2R = Math.PI / 180;
 const b64 = s => { const t = atob(s), a = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) a[i] = t.charCodeAt(i); return a; };
@@ -32,6 +34,20 @@ export function landF(lon, lat) {
   return (a * (1 - fx) + b * fx) * (1 - fy) + (d * (1 - fx) + e * fx) * fy;
 }
 export function isLand(lon, lat) { initLand(); return cell(Math.floor((lon + 180) / GEO_RES), Math.floor((90 - lat) / GEO_RES)) === 1; }
+
+// ---- рельеф суши (ETOPO1, сетка 10'), метры над уровнем моря ----
+let dem = null;
+function initDem() {
+  if (dem) return;
+  const a = b64(DEM_DATA); dem = inflateRaw(a, DEM_W * DEM_H);
+}
+export function demF(lon, lat) {
+  initDem();
+  const x = (lon + 180) * 6, y = (90 - lat) * 6, c = Math.floor(x), r = Math.floor(y), fx = x - c, fy = y - r;
+  const g = (cc, rr) => dem[Math.max(0, Math.min(DEM_H - 1, rr)) * DEM_W + (((cc % DEM_W) + DEM_W) % DEM_W)];
+  const v = (g(c, r) * (1 - fx) + g(c + 1, r) * fx) * (1 - fy) + (g(c, r + 1) * (1 - fx) + g(c + 1, r + 1) * fx) * fy;
+  return v * DEM_UNIT;
+}
 
 // ---- реки и города (общие списки) ----
 let RIV = null, CITY = null;
@@ -88,6 +104,13 @@ export function makeGeo(from, brg0deg, D) {
   g.landQ = (wx, wz) => {
     const i = Math.floor(wx / 400), j = Math.floor(wz / 400), k = i * 100003 + j; let v = lc.get(k);
     if (v === undefined) { v = g.land((i + 0.5) * 400, (j + 0.5) * 400); if (lc.size > 250000) lc.clear(); lc.set(k, v); }
+    return v;
+  };
+  // высота над уровнем моря (м), кэш по клеткам 1 км
+  const ec = new Map();
+  g.elevQ = (wx, wz) => {
+    const i = Math.floor(wx / 1000), j = Math.floor(wz / 1000), k = i * 100003 + j; let v = ec.get(k);
+    if (v === undefined) { g.ll((i + 0.5) * 1000, (j + 0.5) * 1000, tmp); v = demF(tmp.lon, tmp.lat); if (ec.size > 250000) ec.clear(); ec.set(k, v); }
     return v;
   };
   // коридор интереса: вдоль трассы ±450 км

@@ -28,6 +28,7 @@ export function buildWorld(from, to, D, plane) {
   const brg0 = bearing(from, to) * Math.PI / 180;
   const list = [];
   try { list.geo = makeGeo(from, bearing(from, to), D); } catch (e) { list.geo = null; }
+  list.ref = wx => from.elev + (to.elev - from.elev) * Math.max(0, Math.min(1, wx / D)); // «нулевой» уровень по маршруту (м над морем)
   const push = (id, ap, wx, wz, len, gen) => list.push({ id, ap, wx, wz, len, gen: !!gen });
   push(from.id, from, 0, 0, from.rwy, false);
   push(to.id, to, D, 0, to.rwy, false);
@@ -75,6 +76,16 @@ export function heightW(world, wx, wz) {
   const flat = sstep(8000, 26000, dMin), mt = sstep(30000, 85000, dMin);
   if (flat <= 0) return 0;
   if (geo && dMin > 4500 && geo.river(wx, wz) > 0.3) return -400; // реки
+  if (geo) {
+    // реальный рельеф (ETOPO1) + мелкие холмы и хребты; аэродромы стоят в долинах/на равнинах — к ним рельеф плавно сходит на нет
+    const msl = geo.elevQ(wx, wz), base = msl - world.ref(wx);
+    const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
+    const ridge = 1 - Math.abs(2 * fbm(wx / 9000, wz / 9000, 4, 77) - 1);
+    const amp = Math.max(0, Math.min(700, 0.1 * msl - 40));
+    let T = base + (n1 - 0.45) * Math.min(260, 40 + 0.06 * msl) + (ridge * ridge - 0.35) * amp;
+    T = Math.min(T, 0.045 * Math.max(0, dMin - 6000));
+    return Math.max(0, T) * flat;
+  }
   const n1 = fbm(wx / 26000, wz / 26000, 4, 5);
   if (!geo && flat > 0.7 && mt < 0.3 && Math.abs(fbm(wx / 24000, wz / 24000, 3, 200) - 0.5) < 0.0085) return -400; // реки
   const hill = (n1 - 0.38) * 520;

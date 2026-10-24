@@ -302,6 +302,7 @@ function drawTerrain(pal, hy, f) {
         if (fw < 60000) { const kk = 0.25 * (1 - fw / 60000); r += (hz[0] - r) * kk; g += (hz[1] - g) * kk; bl += (hz[2] - bl) * kk; }
       } else {
         const wet = wetAt(_wp.x, _wp.z);
+        const hh = f.world.geo ? f.world.geo.elevQ(_wp.x, _wp.z) / 3 + avg * 0.3 : avg; // шкала растительности/снега по высоте над морем
         const dxs = (h10 + h11 - h00 - h01) / (2 * s), dzs = (h01 + h11 - h00 - h10) / (2 * s);
         const slope = Math.hypot(dxs, dzs);
         const f1 = fbm(_wp.x / 3200, _wp.z / 3200, 3, 61), f2 = fbm(_wp.x / 1500 + 7, _wp.z / 1500, 2, 67);
@@ -309,11 +310,11 @@ function drawTerrain(pal, hy, f) {
         const ky = sstep(0.52, 0.66, f2); fieldK = Math.max(ky, 1 - sstep(0.2, 0.34, f2)); r += (166 - r) * ky * 0.8; g += (150 - g) * ky * 0.7; bl += (92 - bl) * ky * 0.6;
         const kp = sstep(0.28, 0.2, f2); r += (124 - r) * kp * 0.4; g += (108 - g) * kp * 0.4; bl += (66 - bl) * kp * 0.4;
         const lowFlat = avg > 2 && avg < 110 && slope < 0.18 && wet < 0.6; lowF = lowFlat;
-        if (wet > 0.52 && avg < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, avg)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; forestK = kf; }
+        if (wet > 0.52 && hh < 760) { const kf = sstep(0.52, 0.62, wet) * (1 - sstep(520, 760, hh)); r += (38 - r) * kf; g += (80 - g) * kf; bl += (44 - bl) * kf; forestK = kf; }
         if (avg < 6 && avg > 0.5) { const kb = 0.55; r += (192 - r) * kb; g += (180 - g) * kb; bl += (138 - bl) * kb; }
-        const kr = Math.max(sstep(430, 760, avg), sstep(0.35, 0.7, slope));
+        const kr = Math.max(sstep(430, 760, hh), sstep(0.35, 0.7, slope));
         if (kr > 0) { r += (118 - r) * kr; g += (110 - g) * kr; bl += (100 - bl) * kr; }
-        const ks = sstep(820, 980, avg - slope * 120);
+        const ks = sstep(820, 980, hh - slope * 120);
         if (ks > 0) { r += (240 - r) * ks; g += (243 - g) * ks; bl += (248 - bl) * ks; }
         const sh = 0.975 + hv * 0.05; r *= sh; g *= sh; bl *= sh;
         // освещение по склону
