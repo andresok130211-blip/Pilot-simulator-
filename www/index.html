@@ -256,6 +256,21 @@ const PLANES = [
     fuelPerKm: 2.5, burnHr: 1900, opPerKm: 360, price: 3000000, value: 3000000, minRwy: 1700,
     flapLim: [999, 114, 106, 98, 92], gearLim: 128, color: '#2aa3a3',
     desc: 'Региональный лайнер: аккуратный, экономичный, подходит для коротких полос.' },
+  { id: 'e175', name: 'Embraer E175', short: 'E175', seats: 78, oew: 21700, mtow: 38790, fuelCap: 9400,
+    S: 72.7, T0: 2 * 62300, cd0: 0.0235, ar: 9.3, e: 0.8, ceiling: 12400, cruiseM: 0.78,
+    fuelPerKm: 2.2, burnHr: 1650, opPerKm: 320, price: 2200000, value: 2200000, minRwy: 1600,
+    flapLim: [999, 114, 106, 98, 92], gearLim: 128, color: '#3a9ad9',
+    desc: 'Региональный лайнер на 78 мест: лёгкий, манёвренный, любит короткие полосы.' },
+  { id: 'mc21', name: 'Иркут МС-21-300', short: 'МС-21', seats: 211, oew: 50000, mtow: 79250, fuelCap: 21000,
+    S: 123.0, T0: 2 * 140000, cd0: 0.0205, ar: 11.5, e: 0.84, ceiling: 12500, cruiseM: 0.78,
+    fuelPerKm: 3.3, burnHr: 2450, opPerKm: 510, price: 7500000, value: 7500000, minRwy: 2200,
+    flapLim: [999, 118, 110, 100, 98], gearLim: 128, color: '#c8d4e8',
+    desc: 'Российский узкофюзеляжный лайнер с большим композитным крылом: экономичный и устойчивый.' },
+  { id: 't204', name: 'Ту-204-100', short: 'Ту-204', seats: 210, oew: 58300, mtow: 103000, fuelCap: 35000,
+    S: 182.4, T0: 2 * 158000, cd0: 0.0225, ar: 9.0, e: 0.8, ceiling: 12100, cruiseM: 0.78,
+    fuelPerKm: 4.4, burnHr: 3500, opPerKm: 700, price: 9000000, value: 9000000, minRwy: 2300,
+    flapLim: [999, 120, 112, 102, 98], gearLim: 128, color: '#4a8a4a',
+    desc: 'Российский среднемагистральный лайнер с мощным крылом: тяжелее и «инертнее» A320.' },
   { id: 'a320', name: 'Airbus A320', short: 'A320', seats: 180, oew: 42600, mtow: 78000, fuelCap: 19000,
     S: 122.6, T0: 2 * 111000, cd0: 0.022, ar: 9.5, e: 0.8, ceiling: 12000, cruiseM: 0.78,
     fuelPerKm: 3.3, burnHr: 2500, opPerKm: 520, price: 4500000, value: 4500000, minRwy: 2000,
@@ -382,14 +397,39 @@ function metarText(ap, wx, which) {
   const dep = which === 'dep', vis = dep ? wx.vis : wx.visD, rain = dep ? wx.rain : wx.rainD;
   const w = wx.spd < 1 ? 'штиль' : `${String(Math.round(wx.dir / 10) * 10 % 360).padStart(3, '0')}° / ${Math.round(wx.spd)} м/с` + (wx.gust > 1.5 ? `, порывы до ${Math.round(wx.spd + wx.gust)}` : '');
   const v = vis >= 9000 ? 'более 9 км' : vis >= 1000 ? (vis / 1000).toFixed(1).replace('.0', '') + ' км' : Math.round(vis / 50) * 50 + ' м';
-  return `${ap.id}: ветер ${w}; видимость ${v}${rain > 0.6 ? (wx.snow ? '; сильный снегопад' : '; сильный дождь') : rain > 0.1 ? (wx.snow ? '; снег' : '; дождь') : ''}${wx.snowG ? '; полоса со снежным накатом' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
+  return `${ap.id}${dep && wx.live ? ' (реальная погода)' : ''}: ветер ${w}; видимость ${v}${rain > 0.6 ? (wx.snow ? '; сильный снегопад' : '; сильный дождь') : rain > 0.1 ? (wx.snow ? '; снег' : '; дождь') : ''}${wx.snowG ? '; полоса со снежным накатом' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
 }
 function windComp(wx, brg) {
   const rel = (wx.dir - brg) * Math.PI / 180, S = wx.spd + wx.gust * 0.5;
   return { head: Math.cos(rel) * S, cross: Math.sin(rel) * S }; // cross > 0: ветер справа
 }
 
-return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,bearing,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub,WX_NAMES,makeWeather,metarText,windComp};
+// ---------- реальная погода (METAR) ----------
+// Пробуем получить сводку с aviationweather.gov; при любой ошибке/таймауте возвращаем null — игра берёт случайную погоду.
+async function fetchMetar(icao, ms = 3000) {
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    const r = await fetch('https://aviationweather.gov/api/data/metar?format=json&ids=' + icao, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const j = await r.json(), m = Array.isArray(j) ? j[0] : null;
+    if (!m || m.wspd == null) return null;
+    const kt = 0.5144, vis = String(m.visib == null ? '10+' : m.visib), miles = parseFloat(vis) * (vis.includes('+') ? 1 : 1);
+    const wxs = String(m.wxString || '');
+    const out = { dir: (m.wdir === 'VRB' || m.wdir == null) ? 0 : +m.wdir, spd: m.wspd * kt, gust: Math.max(0, ((m.wgst || m.wspd) - m.wspd) * kt),
+      vis: Math.min(10000, Math.round(miles * 1609)), rain: /TS|\+RA|\+SN/.test(wxs) ? 0.9 : /RA|SN|DZ|SH/.test(wxs) ? 0.4 : 0,
+      snow: /SN|SG|PL/.test(wxs), temp: Math.round(m.temp ?? 14), qnh: Math.round(m.altim > 800 ? m.altim : 1013) };
+    return out;
+  } catch (e) { return null; }
+}
+// накладывает живую сводку на случайную погоду (which: 'dep' | 'dst'); ветер берём из вылета, ограничиваем боковую составляющую
+function applyMetar(wx, live, which) {
+  if (!live) return;
+  if (which === 'dep') { wx.dir = live.dir; wx.spd = Math.min(live.spd, 14); wx.gust = Math.min(live.gust, 8); wx.temp = live.temp; wx.qnh = live.qnh; wx.vis = Math.max(500, live.vis); wx.rain = live.rain; if (live.snow && live.rain) { wx.snow = true; wx.snowG = true; } wx.live = true; }
+  else { wx.visD = Math.max(500, live.vis); wx.rainD = live.rain; }
+}
+
+return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,bearing,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub,WX_NAMES,makeWeather,metarText,windComp,fetchMetar,applyMetar};
 })();
 __m.geodata = (function(){
 // Автогенерация: tools/mkgeo.py (данные Natural Earth, общественное достояние). Не править вручную.
@@ -3922,6 +3962,13 @@ function drawHUD(f, t, view, th) {
   txt('Топливо ' + Math.round(f.fuel).toLocaleString('ru-RU') + ' кг', 14 * U + W * 0.045, 22 * U, f.warnings.has('lowfuel') ? RED : 'rgba(230,240,255,.9)', 11 * U, 'left', '600');
   txt('Масса ' + Math.round(f.mass / 100) / 10 + ' т', 14 * U + W * 0.045, 36 * U, 'rgba(230,240,255,.7)', 10 * U, 'left', '600');
   { const hd = Math.round(f.heading !== undefined ? f.heading : 0) % 360; txt('Курс ' + String(hd).padStart(3, '0') + '°', 14 * U + W * 0.045, 50 * U, CYAN, 11 * U, 'left', '700'); }
+  { // DME / RMI: наклонная дальность и пеленг на маяк привода (торец полосы)
+    const dx = Math.max(f.dist, 0), dy = -(f.yPos || 0), rel = Math.atan2(dy, Math.max(dx, 1)) - (f.psi || 0);
+    const dme = Math.hypot(dx, dy, f.h || 0) / 1000, brg = (((f.heading || 0) + rel * 180 / Math.PI) % 360 + 360) % 360;
+    const rx = 14 * U + W * 0.045, ry = 78 * U;
+    txt('DME ' + (dme >= 10 ? Math.round(dme) : dme.toFixed(1)) + ' км · ' + f.toAp.id + ' ' + String(Math.round(brg)).padStart(3, '0') + '°', rx, ry, 'rgba(160,230,255,.9)', 9.5 * U, 'left', '700');
+    const nx = rx + 118 * U, ny = ry - 3 * U; ctx.save(); ctx.translate(nx, ny); ctx.strokeStyle = 'rgba(160,230,255,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 7 * U, 0, 6.283); ctx.stroke(); ctx.rotate(rel); ctx.fillStyle = '#7fe0ff'; ctx.beginPath(); ctx.moveTo(0, -7 * U); ctx.lineTo(3 * U, 2 * U); ctx.lineTo(0, 0); ctx.lineTo(-3 * U, 2 * U); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
   { const wx = f.wx, S = Math.hypot(f.wl.x, f.wl.z);
     if (wx && wx.spd + wx.gust > 0.5) {
       const ax = 14 * U + W * 0.045, ay = 92 * U, ang = Math.atan2(f.wl.z, f.wl.x) - (f.psi || 0);
@@ -4021,6 +4068,9 @@ const LOOK = {
   ssj: { len: 29.9, dia: 3.46, eng: 1.5, liv: 'tail+' },
   crj2: { len: 26.8, dia: 2.7, eng: 1.3, rear: true, ttail: true, liv: 'belly' },
   e190: { len: 36.2, dia: 3.0, eng: 1.9, liv: 'top' },
+  e175: { len: 31.7, dia: 2.95, eng: 1.8, liv: 'top' },
+  mc21: { len: 42.2, dia: 4.06, eng: 2.2, liv: 'tail+' },
+  t204: { len: 46.1, dia: 3.8, eng: 2.0, liv: 'stripe', rear: false },
   a223: { len: 38.7, dia: 3.7, eng: 2.0, liv: 'belly' },
   a320: { len: 37.6, dia: 4.14, eng: 2.0, liv: 'stripe' },
   a321: { len: 44.5, dia: 4.14, eng: 2.0, liv: 'tail+' },
@@ -4295,7 +4345,8 @@ return {setUiScale,drawFlight,drawMap};
 })();
 __m.main = (function(){
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
-const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } = __m.data;
+const { ICAO } = __m.icao;
+const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, fetchMetar, applyMetar, metarText, windComp, WX_NAMES } = __m.data;
 const { Flight, settle, loadInfo, FLAP_NAMES } = __m.sim;
 const { EVENT_DEFS, EVENT_IDS } = __m.events;
 const { drawFlight, drawMap, setUiScale } = __m.render;
@@ -4509,6 +4560,7 @@ function renderSettings() {
       <label class="chk"><input type="checkbox" id="sTrack" ${save.trackHold !== false ? 'checked' : ''}> Самолёт сам держит трассу, пока вы не трогаете штурвал</label>
       <label class="chk">Снос ветром: <select id="sDrift"><option value="1">полный</option><option value="0.5">ослаблен</option><option value="0.15">минимальный</option><option value="0">нет</option></select></label>
       <label class="chk"><input type="checkbox" id="sLeft" ${save.lefty ? 'checked' : ''}> Для левши: газ справа, штурвал слева</label>
+      <label class="chk"><input type="checkbox" id="sLive" ${save.liveWx !== false ? 'checked' : ''}> Реальная погода (METAR), если есть интернет</label>
       <label class="chk"><input type="checkbox" id="sMap" ${save.mapOn !== false ? 'checked' : ''}> Показывать мини-карту</label>
       <label class="chk"><input type="checkbox" id="sSimple" ${save.simple ? 'checked' : ''}> Режим новичка: подсказки по шагам, помощник и автопосадка включены</label>
     </div>
@@ -4526,6 +4578,7 @@ function renderSettings() {
   $('sUi').onchange = e => { save.uiScale = +e.target.value; persist(); applyUi(); };
   $('sDrift').value = String(save.drift == null ? 0.5 : save.drift); $('sDrift').onchange = e => { save.drift = +e.target.value; persist(); };
   $('sTrack').onchange = e => { save.trackHold = e.target.checked; persist(); };
+  $('sLive').onchange = e => { save.liveWx = e.target.checked; persist(); };
   $('sLeft').onchange = e => { save.lefty = e.target.checked; persist(); applyUi(); };
   $('sMap').onchange = e => { save.mapOn = e.target.checked; persist(); };
   $('sSimple').onchange = e => { save.simple = e.target.checked; if (e.target.checked) { save.assistAuto = true; save.assistCfg = true; save.assistTaxi = true; save.hints = true; } persist(); renderSettings(); };
@@ -4664,11 +4717,21 @@ function renderDrill() {
 
 // ---------- запуск рейса ----------
 function f_msgNoMoney() { alert('Недостаточно денег на ТО'); }
-function startFlight(c, drill) {
+async function startFlight(c, drill) {
+  let live = null;
+  if (!drill && save.wxLvl && save.liveWx !== false && typeof navigator !== 'undefined' && navigator.onLine !== false) {
+    const a = apLoc(), b = AP_BY[c.to];
+    const [x, y] = await Promise.all([ICAO[a.id] ? fetchMetar(ICAO[a.id]) : null, ICAO[b.id] ? fetchMetar(ICAO[b.id]) : null]);
+    live = { dep: x, dst: y };
+  }
+  return startFlight_(c, drill, live);
+}
+function startFlight_(c, drill, live) {
   audioInit(); lessonCur = null;
   const from = apLoc(), to = AP_BY[c.to];
   const brg = bearing(from, to);
   const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg, save.season);
+  if (live) { applyMetar(wx, live.dep, 'dep'); applyMetar(wx, live.dst, 'dst'); }
   if (drill) return beginFlight(c, drill, wx, null);
   const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
   const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false], defects: [] };

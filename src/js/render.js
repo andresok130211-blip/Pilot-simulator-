@@ -1018,6 +1018,13 @@ function drawHUD(f, t, view, th) {
   txt('Топливо ' + Math.round(f.fuel).toLocaleString('ru-RU') + ' кг', 14 * U + W * 0.045, 22 * U, f.warnings.has('lowfuel') ? RED : 'rgba(230,240,255,.9)', 11 * U, 'left', '600');
   txt('Масса ' + Math.round(f.mass / 100) / 10 + ' т', 14 * U + W * 0.045, 36 * U, 'rgba(230,240,255,.7)', 10 * U, 'left', '600');
   { const hd = Math.round(f.heading !== undefined ? f.heading : 0) % 360; txt('Курс ' + String(hd).padStart(3, '0') + '°', 14 * U + W * 0.045, 50 * U, CYAN, 11 * U, 'left', '700'); }
+  { // DME / RMI: наклонная дальность и пеленг на маяк привода (торец полосы)
+    const dx = Math.max(f.dist, 0), dy = -(f.yPos || 0), rel = Math.atan2(dy, Math.max(dx, 1)) - (f.psi || 0);
+    const dme = Math.hypot(dx, dy, f.h || 0) / 1000, brg = (((f.heading || 0) + rel * 180 / Math.PI) % 360 + 360) % 360;
+    const rx = 14 * U + W * 0.045, ry = 78 * U;
+    txt('DME ' + (dme >= 10 ? Math.round(dme) : dme.toFixed(1)) + ' км · ' + f.toAp.id + ' ' + String(Math.round(brg)).padStart(3, '0') + '°', rx, ry, 'rgba(160,230,255,.9)', 9.5 * U, 'left', '700');
+    const nx = rx + 118 * U, ny = ry - 3 * U; ctx.save(); ctx.translate(nx, ny); ctx.strokeStyle = 'rgba(160,230,255,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 7 * U, 0, 6.283); ctx.stroke(); ctx.rotate(rel); ctx.fillStyle = '#7fe0ff'; ctx.beginPath(); ctx.moveTo(0, -7 * U); ctx.lineTo(3 * U, 2 * U); ctx.lineTo(0, 0); ctx.lineTo(-3 * U, 2 * U); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
   { const wx = f.wx, S = Math.hypot(f.wl.x, f.wl.z);
     if (wx && wx.spd + wx.gust > 0.5) {
       const ax = 14 * U + W * 0.045, ay = 92 * U, ang = Math.atan2(f.wl.z, f.wl.x) - (f.psi || 0);
@@ -1117,6 +1124,9 @@ const LOOK = {
   ssj: { len: 29.9, dia: 3.46, eng: 1.5, liv: 'tail+' },
   crj2: { len: 26.8, dia: 2.7, eng: 1.3, rear: true, ttail: true, liv: 'belly' },
   e190: { len: 36.2, dia: 3.0, eng: 1.9, liv: 'top' },
+  e175: { len: 31.7, dia: 2.95, eng: 1.8, liv: 'top' },
+  mc21: { len: 42.2, dia: 4.06, eng: 2.2, liv: 'tail+' },
+  t204: { len: 46.1, dia: 3.8, eng: 2.0, liv: 'stripe', rear: false },
   a223: { len: 38.7, dia: 3.7, eng: 2.0, liv: 'belly' },
   a320: { len: 37.6, dia: 4.14, eng: 2.0, liv: 'stripe' },
   a321: { len: 44.5, dia: 4.14, eng: 2.0, liv: 'tail+' },

@@ -1,5 +1,6 @@
 // Интерфейс игры: меню, выбор рейса, ангар, управление в полёте, итоги, сохранение.
-import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, metarText, windComp, WX_NAMES } from './data.js';
+import { ICAO } from './icao.js';
+import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, maxRangeKm, recommendedCruise, fmtRub, makeWeather, fetchMetar, applyMetar, metarText, windComp, WX_NAMES } from './data.js';
 import { Flight, settle, loadInfo, FLAP_NAMES } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { drawFlight, drawMap, setUiScale } from './render.js';
@@ -213,6 +214,7 @@ function renderSettings() {
       <label class="chk"><input type="checkbox" id="sTrack" ${save.trackHold !== false ? 'checked' : ''}> Самолёт сам держит трассу, пока вы не трогаете штурвал</label>
       <label class="chk">Снос ветром: <select id="sDrift"><option value="1">полный</option><option value="0.5">ослаблен</option><option value="0.15">минимальный</option><option value="0">нет</option></select></label>
       <label class="chk"><input type="checkbox" id="sLeft" ${save.lefty ? 'checked' : ''}> Для левши: газ справа, штурвал слева</label>
+      <label class="chk"><input type="checkbox" id="sLive" ${save.liveWx !== false ? 'checked' : ''}> Реальная погода (METAR), если есть интернет</label>
       <label class="chk"><input type="checkbox" id="sMap" ${save.mapOn !== false ? 'checked' : ''}> Показывать мини-карту</label>
       <label class="chk"><input type="checkbox" id="sSimple" ${save.simple ? 'checked' : ''}> Режим новичка: подсказки по шагам, помощник и автопосадка включены</label>
     </div>
@@ -230,6 +232,7 @@ function renderSettings() {
   $('sUi').onchange = e => { save.uiScale = +e.target.value; persist(); applyUi(); };
   $('sDrift').value = String(save.drift == null ? 0.5 : save.drift); $('sDrift').onchange = e => { save.drift = +e.target.value; persist(); };
   $('sTrack').onchange = e => { save.trackHold = e.target.checked; persist(); };
+  $('sLive').onchange = e => { save.liveWx = e.target.checked; persist(); };
   $('sLeft').onchange = e => { save.lefty = e.target.checked; persist(); applyUi(); };
   $('sMap').onchange = e => { save.mapOn = e.target.checked; persist(); };
   $('sSimple').onchange = e => { save.simple = e.target.checked; if (e.target.checked) { save.assistAuto = true; save.assistCfg = true; save.assistTaxi = true; save.hints = true; } persist(); renderSettings(); };
@@ -368,11 +371,21 @@ function renderDrill() {
 
 // ---------- запуск рейса ----------
 function f_msgNoMoney() { alert('Недостаточно денег на ТО'); }
-function startFlight(c, drill) {
+async function startFlight(c, drill) {
+  let live = null;
+  if (!drill && save.wxLvl && save.liveWx !== false && typeof navigator !== 'undefined' && navigator.onLine !== false) {
+    const a = apLoc(), b = AP_BY[c.to];
+    const [x, y] = await Promise.all([ICAO[a.id] ? fetchMetar(ICAO[a.id]) : null, ICAO[b.id] ? fetchMetar(ICAO[b.id]) : null]);
+    live = { dep: x, dst: y };
+  }
+  return startFlight_(c, drill, live);
+}
+function startFlight_(c, drill, live) {
   audioInit(); lessonCur = null;
   const from = apLoc(), to = AP_BY[c.to];
   const brg = bearing(from, to);
   const wx = makeWeather(Math.random, drill ? 0 : save.wxLvl, brg, save.season);
+  if (live) { applyMetar(wx, live.dep, 'dep'); applyMetar(wx, live.dst, 'dst'); }
   if (drill) return beginFlight(c, drill, wx, null);
   const p = plane(), cgAuto = 0.22 + ((c.km * 7) % 7) / 100;
   const pf = { fuel: 1, cg: 'auto', flex: false, ck: [false, false, false, false, false], defects: [] };

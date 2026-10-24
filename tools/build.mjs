@@ -6,7 +6,7 @@ for (const m of ['data', 'geodata', 'inflate', 'geodem', 'geo', 'events', 'terra
   let s = R(`js/${m}.js`);
   const names = [];
   s = s.replace(/^import\s*\{([^}]*)\}\s*from\s*'\.\/(\w+)\.js';?$/gm, (_, list, mod) => `const {${list}} = __m.${mod};`);
-  s = s.replace(/^export\s+(const|let|function|class)\s+(\w+)/gm, (_, k, n) => { names.push(n); return `${k} ${n}`; });
+  s = s.replace(/^export\s+(const|let|async function|function|class)\s+(\w+)/gm, (_, k, n) => { names.push(n); return `${k} ${n}`; });
   out += `__m.${m} = (function(){\n${s}\nreturn {${names.join(',')}};\n})();\n`;
 }
 let html = R('index.html')

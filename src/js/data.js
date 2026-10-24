@@ -66,6 +66,21 @@ export const PLANES = [
     fuelPerKm: 2.5, burnHr: 1900, opPerKm: 360, price: 3000000, value: 3000000, minRwy: 1700,
     flapLim: [999, 114, 106, 98, 92], gearLim: 128, color: '#2aa3a3',
     desc: 'Региональный лайнер: аккуратный, экономичный, подходит для коротких полос.' },
+  { id: 'e175', name: 'Embraer E175', short: 'E175', seats: 78, oew: 21700, mtow: 38790, fuelCap: 9400,
+    S: 72.7, T0: 2 * 62300, cd0: 0.0235, ar: 9.3, e: 0.8, ceiling: 12400, cruiseM: 0.78,
+    fuelPerKm: 2.2, burnHr: 1650, opPerKm: 320, price: 2200000, value: 2200000, minRwy: 1600,
+    flapLim: [999, 114, 106, 98, 92], gearLim: 128, color: '#3a9ad9',
+    desc: 'Региональный лайнер на 78 мест: лёгкий, манёвренный, любит короткие полосы.' },
+  { id: 'mc21', name: 'Иркут МС-21-300', short: 'МС-21', seats: 211, oew: 50000, mtow: 79250, fuelCap: 21000,
+    S: 123.0, T0: 2 * 140000, cd0: 0.0205, ar: 11.5, e: 0.84, ceiling: 12500, cruiseM: 0.78,
+    fuelPerKm: 3.3, burnHr: 2450, opPerKm: 510, price: 7500000, value: 7500000, minRwy: 2200,
+    flapLim: [999, 118, 110, 100, 98], gearLim: 128, color: '#c8d4e8',
+    desc: 'Российский узкофюзеляжный лайнер с большим композитным крылом: экономичный и устойчивый.' },
+  { id: 't204', name: 'Ту-204-100', short: 'Ту-204', seats: 210, oew: 58300, mtow: 103000, fuelCap: 35000,
+    S: 182.4, T0: 2 * 158000, cd0: 0.0225, ar: 9.0, e: 0.8, ceiling: 12100, cruiseM: 0.78,
+    fuelPerKm: 4.4, burnHr: 3500, opPerKm: 700, price: 9000000, value: 9000000, minRwy: 2300,
+    flapLim: [999, 120, 112, 102, 98], gearLim: 128, color: '#4a8a4a',
+    desc: 'Российский среднемагистральный лайнер с мощным крылом: тяжелее и «инертнее» A320.' },
   { id: 'a320', name: 'Airbus A320', short: 'A320', seats: 180, oew: 42600, mtow: 78000, fuelCap: 19000,
     S: 122.6, T0: 2 * 111000, cd0: 0.022, ar: 9.5, e: 0.8, ceiling: 12000, cruiseM: 0.78,
     fuelPerKm: 3.3, burnHr: 2500, opPerKm: 520, price: 4500000, value: 4500000, minRwy: 2000,
@@ -192,9 +207,34 @@ export function metarText(ap, wx, which) {
   const dep = which === 'dep', vis = dep ? wx.vis : wx.visD, rain = dep ? wx.rain : wx.rainD;
   const w = wx.spd < 1 ? 'штиль' : `${String(Math.round(wx.dir / 10) * 10 % 360).padStart(3, '0')}° / ${Math.round(wx.spd)} м/с` + (wx.gust > 1.5 ? `, порывы до ${Math.round(wx.spd + wx.gust)}` : '');
   const v = vis >= 9000 ? 'более 9 км' : vis >= 1000 ? (vis / 1000).toFixed(1).replace('.0', '') + ' км' : Math.round(vis / 50) * 50 + ' м';
-  return `${ap.id}: ветер ${w}; видимость ${v}${rain > 0.6 ? (wx.snow ? '; сильный снегопад' : '; сильный дождь') : rain > 0.1 ? (wx.snow ? '; снег' : '; дождь') : ''}${wx.snowG ? '; полоса со снежным накатом' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
+  return `${ap.id}${dep && wx.live ? ' (реальная погода)' : ''}: ветер ${w}; видимость ${v}${rain > 0.6 ? (wx.snow ? '; сильный снегопад' : '; сильный дождь') : rain > 0.1 ? (wx.snow ? '; снег' : '; дождь') : ''}${wx.snowG ? '; полоса со снежным накатом' : ''}; QNH ${wx.qnh}, t ${wx.temp}°`;
 }
 export function windComp(wx, brg) {
   const rel = (wx.dir - brg) * Math.PI / 180, S = wx.spd + wx.gust * 0.5;
   return { head: Math.cos(rel) * S, cross: Math.sin(rel) * S }; // cross > 0: ветер справа
+}
+
+// ---------- реальная погода (METAR) ----------
+// Пробуем получить сводку с aviationweather.gov; при любой ошибке/таймауте возвращаем null — игра берёт случайную погоду.
+export async function fetchMetar(icao, ms = 3000) {
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    const r = await fetch('https://aviationweather.gov/api/data/metar?format=json&ids=' + icao, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const j = await r.json(), m = Array.isArray(j) ? j[0] : null;
+    if (!m || m.wspd == null) return null;
+    const kt = 0.5144, vis = String(m.visib == null ? '10+' : m.visib), miles = parseFloat(vis) * (vis.includes('+') ? 1 : 1);
+    const wxs = String(m.wxString || '');
+    const out = { dir: (m.wdir === 'VRB' || m.wdir == null) ? 0 : +m.wdir, spd: m.wspd * kt, gust: Math.max(0, ((m.wgst || m.wspd) - m.wspd) * kt),
+      vis: Math.min(10000, Math.round(miles * 1609)), rain: /TS|\+RA|\+SN/.test(wxs) ? 0.9 : /RA|SN|DZ|SH/.test(wxs) ? 0.4 : 0,
+      snow: /SN|SG|PL/.test(wxs), temp: Math.round(m.temp ?? 14), qnh: Math.round(m.altim > 800 ? m.altim : 1013) };
+    return out;
+  } catch (e) { return null; }
+}
+// накладывает живую сводку на случайную погоду (which: 'dep' | 'dst'); ветер берём из вылета, ограничиваем боковую составляющую
+export function applyMetar(wx, live, which) {
+  if (!live) return;
+  if (which === 'dep') { wx.dir = live.dir; wx.spd = Math.min(live.spd, 14); wx.gust = Math.min(live.gust, 8); wx.temp = live.temp; wx.qnh = live.qnh; wx.vis = Math.max(500, live.vis); wx.rain = live.rain; if (live.snow && live.rain) { wx.snow = true; wx.snowG = true; } wx.live = true; }
+  else { wx.visD = Math.max(500, live.vis); wx.rainD = live.rain; }
 }
