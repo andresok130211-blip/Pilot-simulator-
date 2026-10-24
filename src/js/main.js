@@ -101,7 +101,7 @@ function audioTick(f) {
   if (!actx || !engGain) return;
   const on = save.sound && mode === 'flight' && !paused;
   engGain.gain.value = on ? 0.03 + 0.07 * f.thrAct : 0;
-  eng.frequency.value = 55 + 90 * f.thrAct;
+  eng.frequency.value = (55 + 90 * f.thrAct) * Math.max(0.7, Math.min(1.3, 1.3 - f.p.T0 / 1100000)) * (f.engCount === 1 ? 0.9 : 1);
   if (on && f.alerts && f.alerts.size && tNow - beepT > 0.9) { beepT = tNow; beep(950, 0.12); setTimeout(() => beep(650, 0.12), 150); }
   else if (on && f.warnings.size && tNow - beepT > 0.6 && (f.warnings.has('stall') || f.warnings.has('pullup') || f.warnings.has('gear') || f.warnings.has('sink'))) { beepT = tNow; beep(f.warnings.has('pullup') ? 1100 : 780, 0.18); }
 }
