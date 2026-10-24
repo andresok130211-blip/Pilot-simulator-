@@ -1,0 +1,71 @@
+name: Build Godot APK
+
+on:
+  push:
+    branches: [main, master]
+    paths: ['godot/**', '.github/workflows/build-godot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK
+        run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmdline-tools;latest" >/dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+
+      - name: Godot 4.3 и шаблоны экспорта
+        run: |
+          V=4.3-stable
+          curl -sSL -o g.zip https://github.com/godotengine/godot/releases/download/$V/Godot_v${V}_linux.x86_64.zip
+          unzip -q g.zip && mv Godot_v${V}_linux.x86_64 godot-bin && chmod +x godot-bin
+          curl -sSL -o t.tpz https://github.com/godotengine/godot/releases/download/$V/Godot_v${V}_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          unzip -q t.tpz -d tpl && mv tpl/templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.3.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$GITHUB_WORKSPACE/tools/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          sed -i 's/^          //' ~/.config/godot/editor_settings-4.3.tres
+          cat ~/.config/godot/editor_settings-4.3.tres
+
+      - name: Версия
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"0.${{ github.run_number }}\"/" godot/export_presets.cfg
+
+      - name: Импорт и экспорт
+        run: |
+          ./godot-bin --headless --path godot --import || true
+          ./godot-bin --headless --path godot --export-debug "Android" "$GITHUB_WORKSPACE/pilot-sim-3d.apk"
+          ls -la pilot-sim-3d.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pilot-sim-3d-apk
+          path: pilot-sim-3d.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: godot-preview
+          name: Pilot Sim 3D (Godot, предпросмотр)
+          files: pilot-sim-3d.apk
