@@ -528,7 +528,7 @@ function act(a) {
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
-    case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
+    case 'view': save.cam = { chase: 'cockpit', cockpit: 'tower', tower: 'chase' }[save.cam] || 'chase'; view.tw = null; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
@@ -548,7 +548,7 @@ function syncButtons() {
   on('bRev', c.rev); $('bRev').classList.toggle('warn', !!c.rev); $('bAbrk').textContent = 'АВТОТОРМ ' + (c.abrk ? c.abrk : '—'); on('bAbrk', c.abrk > 0);
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
   on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bTaxi', c.taxiAuto && f.onGround); $('bTaxi').disabled = !f.onGround || !f.taxiOps;
-  $('bView').textContent = save.cam === 'chase' ? 'ВИД: СНАРУЖИ' : 'ВИД: КАБИНА'; on('bAppr', c.appr);
+  $('bView').textContent = { chase: 'ВИД: СНАРУЖИ', cockpit: 'ВИД: КАБИНА', tower: 'ВИД: БАШНЯ' }[save.cam] || 'ВИД: СНАРУЖИ'; on('bAppr', c.appr);
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);

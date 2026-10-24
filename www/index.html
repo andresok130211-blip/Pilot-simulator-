@@ -431,6 +431,11 @@ function applyMetar(wx, live, which) {
 
 return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,bearing,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub,WX_NAMES,makeWeather,metarText,windComp,fetchMetar,applyMetar};
 })();
+__m.icao = (function(){
+const ICAO = {"FRA": "EDDF", "LHR": "EGLL", "JNB": "FAOR", "DEN": "KDEN", "JFK": "KJFK", "LAX": "KLAX", "CDG": "LFPG", "INN": "LOWI", "FNC": "LPMA", "IST": "LTFM", "GIB": "LXGB", "MEX": "MMMX", "ZQN": "NZQN", "DXB": "OMDB", "HND": "RJTT", "GRU": "SBGR", "UIO": "SEQM", "LPB": "SLLP", "SXM": "TNCM", "YKS": "UEEE", "KHV": "UHHH", "VVO": "UHWW", "IKT": "UIII", "LED": "ULLI", "MMK": "ULMM", "KGD": "UMKK", "MSQ": "UMMS", "KJA": "UNKL", "OVB": "UNNT", "NSK": "UOOO", "GDZ": "URKG", "KRR": "URKK", "MRV": "URMM", "AER": "URSS", "SVX": "USSS", "DME": "UUDD", "SVO": "UUEE", "GOJ": "UWGG", "KZN": "UWKD", "UFA": "UWUU", "SIN": "WSSS", "SYD": "YSSY", "PEK": "ZBAA", "LXA": "ZULS"};
+
+return {ICAO};
+})();
 __m.geodata = (function(){
 // Автогенерация: tools/mkgeo.py (данные Natural Earth, общественное достояние). Не править вручную.
 const GEO_RES = 0.025;
@@ -3644,7 +3649,7 @@ function drawFlight(c, w, h, f, t, view) {
   U = Math.max(0.75, Math.min(H / 380, W / 720)) * UK;
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
-  const chase = view.cam === 'chase';
+  const chase = view.cam !== 'cockpit', tower = view.cam === 'tower';
   camX = f.x; camY = f.h + 5.5; camZ = f.yPos || 0; camPsi = f.psi || 0; yc = Math.cos(camPsi); ys = Math.sin(camPsi);
   let th = f.theta + (view.bump || 0) * 0.002;
   if (chase) {
@@ -3652,6 +3657,18 @@ function drawFlight(c, w, h, f, t, view) {
     const span = Math.sqrt(f.p.S * f.p.ar), D = span * 1.45, hc = span * 0.3 + 2;
     camX = f.x - D * yc; camZ = (f.yPos || 0) - D * ys; camY = f.h + hc;
     th = -Math.atan((hc - 3) / D) + clamp(f.gamma || 0, -0.3, 0.3) * 0.25 + (view.bump || 0) * 0.001;
+  }
+  if (tower) {
+    // камера наблюдателя: стоит у трассы, провожает самолёт взглядом
+    const tw = view.tw;
+    if (!tw || f.x - tw.x > 700 || tw.x - f.x > 5000 || Math.abs(f.yPos - tw.z) > 3000) {
+      const ahead = Math.max(1200, f.v * 9);
+      view.tw = { x: f.x + ahead, z: (f.yPos || 0) + (view.twSide = -(view.twSide || 1)) * 260 };
+    }
+    const T = view.tw, dx = f.x - T.x, dz = (f.yPos || 0) - T.z, hh = Math.max(9, f.h - 35);
+    camX = T.x; camZ = T.z; camY = hh;
+    camPsi = Math.atan2(dz, dx); yc = Math.cos(camPsi); ys = Math.sin(camPsi);
+    th = Math.atan2(f.h + 3 - hh, Math.max(30, Math.hypot(dx, dz)));
   }
   ct = Math.cos(th); st = Math.sin(th);
   const hz = f.h > 1 ? Math.sqrt(2 * Math.max(f.h, 0) / 6371000) : 0;
@@ -3855,7 +3872,7 @@ function drawMiniMap(f, view, t) {
 }
 
 function drawHUD(f, t, view, th) {
-  const c = f.c, chase = view.cam === 'chase';
+  const c = f.c, chase = view.cam !== 'cockpit';
   const kmh = (f.ias + (f.fx.iasErr || 0)) * 3.6, hAlt = f.h + (f.fx.altErr || 0);
   if (!chase) {
   // шкала тангажа (вращается вместе с горизонтом)
@@ -4193,11 +4210,11 @@ function drawAircraft(f, pal, t) {
   const p = f.p, M = modelCache[p.id] || (modelCache[p.id] = buildModel(p));
   const th = f.theta, ph = f.phi || 0, ps = f.psi || 0;
   const cT = Math.cos(th), sT = Math.sin(th), cP = Math.cos(ph), sP = Math.sin(ph);
-  const X0 = f.x, Z0 = f.yPos || 0, Y0 = f.h + M.gh;
+  const X0 = f.x, Z0 = f.yPos || 0, Y0 = f.h + M.gh, pyc = Math.cos(ps), pys = Math.sin(ps);
   const tr = (x, y, z, out) => {
     const x1 = x * cT - y * sT, y1 = x * sT + y * cT;
     const y2 = y1 * cP - z * sP, z2 = y1 * sP + z * cP;
-    out[0] = X0 + x1 * yc - z2 * ys; out[1] = Y0 + y2; out[2] = Z0 + x1 * ys + z2 * yc;
+    out[0] = X0 + x1 * pyc - z2 * pys; out[1] = Y0 + y2; out[2] = Z0 + x1 * pys + z2 * pyc;
   };
   const gearDown = f.gearPos > 0.5;
   // тень на земле
@@ -4874,7 +4891,7 @@ function act(a) {
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (c.rev) f.msg('Реверс включён: рычагами регулируйте обратную тягу'); else { c.thr = c.t1 = c.t2 = 0; c.split = false; thrSet(0, true); } } else f.msg('Реверс — только на пробеге (скорость выше 55 км/ч)'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
-    case 'view': save.cam = save.cam === 'chase' ? 'cockpit' : 'chase'; view.cam = save.cam; persist(); break;
+    case 'view': save.cam = { chase: 'cockpit', cockpit: 'tower', tower: 'chase' }[save.cam] || 'chase'; view.tw = null; view.cam = save.cam; persist(); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
@@ -4894,7 +4911,7 @@ function syncButtons() {
   on('bRev', c.rev); $('bRev').classList.toggle('warn', !!c.rev); $('bAbrk').textContent = 'АВТОТОРМ ' + (c.abrk ? c.abrk : '—'); on('bAbrk', c.abrk > 0);
   on('bBrake', c.brake); $('bBrake').classList.toggle('warn', c.brake && f.onGround && !f.td && f.v < 1);
   on('bAp', c.apOn); on('bAt', c.atOn); on('bNav', c.nav && c.apOn); on('bTaxi', c.taxiAuto && f.onGround); $('bTaxi').disabled = !f.onGround || !f.taxiOps;
-  $('bView').textContent = save.cam === 'chase' ? 'ВИД: СНАРУЖИ' : 'ВИД: КАБИНА'; on('bAppr', c.appr);
+  $('bView').textContent = { chase: 'ВИД: СНАРУЖИ', cockpit: 'ВИД: КАБИНА', tower: 'ВИД: БАШНЯ' }[save.cam] || 'ВИД: СНАРУЖИ'; on('bAppr', c.appr);
   $('bAltD').textContent = 'ВЫС − ' + (c.apOn ? Math.round(c.apAlt) : '');
   $('bAltU').textContent = 'ВЫС +';
   const w = f.effectiveWarp(); $('bWarp').textContent = '×' + c.warp + (w !== c.warp ? ' (' + w + ')' : ''); on('bWarp', c.warp > 1);

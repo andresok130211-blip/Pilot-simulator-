@@ -700,7 +700,7 @@ export function drawFlight(c, w, h, f, t, view) {
   U = Math.max(0.75, Math.min(H / 380, W / 720)) * UK;
   F = H * 1.15; CX = W / 2; CY = H * 0.46;
   const pal = PAL[f.tod];
-  const chase = view.cam === 'chase';
+  const chase = view.cam !== 'cockpit', tower = view.cam === 'tower';
   camX = f.x; camY = f.h + 5.5; camZ = f.yPos || 0; camPsi = f.psi || 0; yc = Math.cos(camPsi); ys = Math.sin(camPsi);
   let th = f.theta + (view.bump || 0) * 0.002;
   if (chase) {
@@ -708,6 +708,18 @@ export function drawFlight(c, w, h, f, t, view) {
     const span = Math.sqrt(f.p.S * f.p.ar), D = span * 1.45, hc = span * 0.3 + 2;
     camX = f.x - D * yc; camZ = (f.yPos || 0) - D * ys; camY = f.h + hc;
     th = -Math.atan((hc - 3) / D) + clamp(f.gamma || 0, -0.3, 0.3) * 0.25 + (view.bump || 0) * 0.001;
+  }
+  if (tower) {
+    // камера наблюдателя: стоит у трассы, провожает самолёт взглядом
+    const tw = view.tw;
+    if (!tw || f.x - tw.x > 700 || tw.x - f.x > 5000 || Math.abs(f.yPos - tw.z) > 3000) {
+      const ahead = Math.max(1200, f.v * 9);
+      view.tw = { x: f.x + ahead, z: (f.yPos || 0) + (view.twSide = -(view.twSide || 1)) * 260 };
+    }
+    const T = view.tw, dx = f.x - T.x, dz = (f.yPos || 0) - T.z, hh = Math.max(9, f.h - 35);
+    camX = T.x; camZ = T.z; camY = hh;
+    camPsi = Math.atan2(dz, dx); yc = Math.cos(camPsi); ys = Math.sin(camPsi);
+    th = Math.atan2(f.h + 3 - hh, Math.max(30, Math.hypot(dx, dz)));
   }
   ct = Math.cos(th); st = Math.sin(th);
   const hz = f.h > 1 ? Math.sqrt(2 * Math.max(f.h, 0) / 6371000) : 0;
@@ -911,7 +923,7 @@ function drawMiniMap(f, view, t) {
 }
 
 function drawHUD(f, t, view, th) {
-  const c = f.c, chase = view.cam === 'chase';
+  const c = f.c, chase = view.cam !== 'cockpit';
   const kmh = (f.ias + (f.fx.iasErr || 0)) * 3.6, hAlt = f.h + (f.fx.altErr || 0);
   if (!chase) {
   // шкала тангажа (вращается вместе с горизонтом)
@@ -1249,11 +1261,11 @@ function drawAircraft(f, pal, t) {
   const p = f.p, M = modelCache[p.id] || (modelCache[p.id] = buildModel(p));
   const th = f.theta, ph = f.phi || 0, ps = f.psi || 0;
   const cT = Math.cos(th), sT = Math.sin(th), cP = Math.cos(ph), sP = Math.sin(ph);
-  const X0 = f.x, Z0 = f.yPos || 0, Y0 = f.h + M.gh;
+  const X0 = f.x, Z0 = f.yPos || 0, Y0 = f.h + M.gh, pyc = Math.cos(ps), pys = Math.sin(ps);
   const tr = (x, y, z, out) => {
     const x1 = x * cT - y * sT, y1 = x * sT + y * cT;
     const y2 = y1 * cP - z * sP, z2 = y1 * sP + z * cP;
-    out[0] = X0 + x1 * yc - z2 * ys; out[1] = Y0 + y2; out[2] = Z0 + x1 * ys + z2 * yc;
+    out[0] = X0 + x1 * pyc - z2 * pys; out[1] = Y0 + y2; out[2] = Z0 + x1 * pys + z2 * pyc;
   };
   const gearDown = f.gearPos > 0.5;
   // тень на земле
