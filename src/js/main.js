@@ -336,12 +336,28 @@ function startDaily() {
   audioInit(); lessonCur = null;
   beginFlight(c, null, wx, { fuel: Math.min(p.fuelCap, Math.round(c.fuel + p.burnHr * 0.5)), cg: 0.25, flex: false }, { daily: key, tod: h % 3, rnd });
 }
+const RIVALS = [['Капитан Иванов', 5200], ['Е. Смирнова', 3600], ['Ш. Мюллер', 2500], ['Дж. Картер', 1500], ['А. Ямада', 800], ['Новичок Петя', 150]];
+function fleetHtml() {
+  const own = save.owned.map(id => PL_BY[id]).filter(Boolean);
+  const val = own.reduce((a, p) => a + p.value, 0);
+  return `<div class="row">${stat('Самолётов:', own.length)}${stat('Стоимость флота:', fmtRub(val))}${stat('Налёт, ч:', ((save.stat && save.stat.min || 0) / 60).toFixed(1))}</div>` +
+    own.map(p => `<div class="evrow"><span>${p.name}${p.id === save.plane ? ' ✔' : ''}</span><span>${p.seats} мест · износ ${Math.round((save.wear && save.wear[p.id]) || 0)}%</span></div>`).join('');
+}
+function leagueHtml() {
+  const me = ['Вы', save.xp || 0];
+  const all = [...RIVALS, me].sort((a, b) => b[1] - a[1]);
+  return all.map((r, i) => `<div class="evrow"${r === me ? ' style="color:#7dffb0;font-weight:700"' : ''}><span>${i + 1}. ${r[0]}</span><span>${r[1]} XP</span></div>`).join('');
+}
 function renderRecords() {
   const st = save.stat, top = (save.top || []).slice(0, 10);
   const code = `Pilot Sim: ${save.flights} рейсов, ${save.landings} посадок, лучшая посадка ${save.bestSink != null ? save.bestSink.toFixed(2) : '—'} м/с, ранг ${rankOf(save.xp).name}, серия ${st.best}, самый длинный рейс ${Math.round(st.maxKm)} км`;
   menu.innerHTML = `<div class="panel">
     <div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рекорды</h1><button class="btn g" id="bBack">‹ Назад</button></div>
     <div class="row">${stat('Рейсов:', save.flights)}${stat('Налёт, ч:', (st.min / 60).toFixed(1))}${stat('Лучшая серия 4★+:', st.best)}${stat('Дальше всего:', Math.round(st.maxKm) + ' км')}</div>
+    <div class="sub"><b>Авиакомпания</b></div>
+    ${fleetHtml()}
+    <div class="sub"><b>Рейтинг пилотов</b> (соперники — виртуальные, на этом устройстве)</div>
+    ${leagueHtml()}
     <div class="sub"><b>Лучшие посадки</b></div>
     ${top.length ? top.map((t, i) => `<div class="evrow"><span>${i + 1}. ${t.pl} · ${t.ap}</span><span>${t.sink.toFixed(2)} м/с</span></div>`).join('') : '<div class="sub">Пока нет посадок.</div>'}
     <div class="sub"><b>Испытание дня</b> (одинаковые условия для всех в этот день)</div>

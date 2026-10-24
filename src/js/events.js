@@ -900,6 +900,35 @@ export const EVENT_DEFS = {
     },
   },
 
+  dualOut: {
+    title: 'ОТКАЗ ОБОИХ ДВИГАТЕЛЕЙ', short: 'Отказ обоих двигателей', phases: ['descent'], weight: 0.5, group: 'eng', spawn: 'descent',
+    desc: 'Оба двигателя остановились. Держите скорость наилучшего планирования, запустите двигатели в воздухе и тяните к полосе: если не получится — аварийная посадка на ближайшую полосу.',
+    ok: f => f.distM >= 350000,
+    extra: f => f.h > 1700 && f.dist > 30000,
+    spec: (r, ph) => ({ ph, d: 80000 + r() * 12000 }),
+    start(f, ev) { f.eng[0] = 0; f.eng[1] = 0; ev.rs = 0; f.msg('ОТКАЗ ОБОИХ ДВИГАТЕЛЕЙ! Скорость планирования, запуск в воздухе'); },
+    btns: (f, ev) => ev.rs ? [] : [{ k: 'restart', t: '🔁 ЗАПУСК В ВОЗДУХЕ' }],
+    act(f, ev, k) { if (k === 'restart' && !ev.rs) { ev.rs = f.time; f.msg('Запуск двигателей… держите скорость выше ' + kmh(f.minSpd() + 12) + ' км/ч'); } },
+    steps(f, ev) {
+      const sp = f.minSpd() + 12;
+      return [
+        { t: 'Скорость не ниже ' + kmh(sp) + ' км/ч (планирование)', done: f.ias > sp },
+        { t: 'ЗАПУСК В ВОЗДУХЕ — нажмите кнопку', done: !!ev.rs },
+        { t: 'Двигатели запущены', done: f.eng[0] > 0 && f.eng[1] > 0, opt: true },
+      ];
+    },
+    alert: (f, ev) => f.eng[0] > 0 && f.eng[1] > 0 ? null : 'ОБА ДВИГАТЕЛЯ ОТКАЗАЛИ',
+    tick(f, ev, dt) {
+      if (ev.rs && f.ias > f.minSpd() + 8) {
+        const a = f.time - ev.rs;
+        if (a > 25 && !f.eng[0]) { f.eng[0] = 1; f.msg('Двигатель №1 запущен'); }
+        if (a > 50 && !f.eng[1]) { f.eng[1] = 1; f.msg('Двигатель №2 запущен'); }
+      } else if (ev.rs) ev.rs = f.time;
+      if (f.eng[0] > 0 && f.eng[1] > 0) f.resolveEvent(ev, f.time - ev.t0 > 120 ? 'late' : 'ok', 'Оба двигателя запущены в воздухе');
+      else if (f.td) f.resolveEvent(ev, 'late', 'Посадка с остановленными двигателями');
+    },
+  },
+
 };
 
 export const EVENT_IDS = Object.keys(EVENT_DEFS);
