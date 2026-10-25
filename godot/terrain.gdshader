@@ -12,6 +12,9 @@ uniform int apt_n = 0;
 uniform vec4 rwy[4];   // lon, lat (центр), курс (рад), длина (м)
 uniform vec4 rwy2[4];  // ширина, высота, 0, 0
 uniform int rwy_n = 0;
+uniform vec4 aps[8];
+uniform int ap_n = 0;
+varying float v_fl;
 varying vec2 v_ll;
 varying vec3 v_world;
 varying float v_h;
@@ -54,7 +57,7 @@ float land_at(vec2 ll){
   float l = textureLod(coast, vec2((ll.x + 180.0) / 360.0, (90.0 - ll.y) / 180.0), 0.0).r;
   return apt_n > 0 ? max(l, 1.0 - apt_k(ll)) : l;
 }
-float height_at(vec2 ll, float d){
+float height_at(vec2 ll, float d, vec2 xz, out float fl){
   float h = elev(ll);
   float sp = 0.04 * d + 20.0;
   float w1 = 1.0 - smoothstep(350.0, 800.0, sp);      // ~800 м
@@ -77,12 +80,16 @@ void vertex(){
   float d = length(v.xz);
   v_ll = ll_of(v);
   float land = land_at(v_ll);
-  float k = smoothstep(0.3, 0.7, land);
-  float h = height_at(v_ll, d) * k;
+  float fl;
+  float h = height_at(v_ll, d, v.xz, fl);
+  float k = max(smoothstep(0.3, 0.7, land), 1.0 - smoothstep(0.35, 0.65, fl));
+  h *= k;
+  v_fl = fl;
   // нормаль по конечным разностям той же функции высоты
   float e = max(12.0, 0.04 * d);
-  float hx = height_at(ll_of(v + vec3(e, 0.0, 0.0)), d) * k;
-  float hz = height_at(ll_of(v + vec3(0.0, 0.0, e)), d) * k;
+  float f1, f2;
+  float hx = height_at(ll_of(v + vec3(e, 0.0, 0.0)), d, v.xz + vec2(e, 0.0), f1) * k;
+  float hz = height_at(ll_of(v + vec3(0.0, 0.0, e)), d, v.xz + vec2(0.0, e), f2) * k;
   v_nrm = normalize(vec3(-(hx - h) / e, 1.0, -(hz - h) / e));
   v_h = h;
   VERTEX.y = h - d*d/(2.0*R_E);
@@ -91,7 +98,7 @@ void vertex(){
 }
 void fragment(){
   vec2 uvm = vec2((v_ll.x + 180.0) / 360.0, (90.0 - v_ll.y) / 180.0);
-  float land = texture(coast, uvm).r;
+  float land = max(texture(coast, uvm).r, step(0.5, 1.0 - v_fl));
   if (apt_n > 0) land = max(land, 1.0 - apt_k(v_ll));
   float b = texture(bio, uvm).r * 255.0;
   vec3 col;

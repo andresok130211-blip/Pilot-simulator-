@@ -33,7 +33,13 @@ export function sim_start(o) {
     assist: { auto: o.auto !== false, config: o.config !== false, hints: true, taxi: !!o.autotaxi }, km: c.km, cg: 0.25,
   });
   F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
-  return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to.id };
+  const g = F.world.geo, q = { lat: 0, lon: 0 };
+  const aps = F.world.map((w, i) => {
+    const start = i < 2 ? w.wx : w.wx - w.len / 2;
+    g.ll(start, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city };
+  });
+  return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to.id, aps };
 }
 export function sim_step(dt) {
   if (!F || F.done) return 1;
@@ -80,11 +86,12 @@ function llOf(f, x, z) {
 export function sim_state() {
   const f = F; if (!f) return null;
   const c = f.c, g = f.world.geo, p = llOf(f, f.x, f.yPos);
+  toWorld(f.tf, f.x, f.yPos, _w); const ref = f.world.ref(_w.x);
   const rw0 = llOf(f, 0, 0), rw1 = llOf(f, f.D, 0);
   const ev = f.evView();
   return {
     t: f.time, done: f.done, res: f.result, td: f.td ? { sink: f.td.sink, onDest: !!f.td.onDest } : null,
-    lat: p[0], lon: p[1], hdg: f.heading, alt: f.h + f.elev, h: f.h, x: f.x, y: f.yPos, D: f.D, dist: f.dist, brg: f.brg,
+    lat: p[0], lon: p[1], hdg: f.heading, alt: f.h + ref, ref: ref, h: f.h, x: f.x, y: f.yPos, D: f.D, dist: f.dist, brg: f.brg,
     psi: f.psi, phi: f.phi, theta: f.theta, gamma: f.gamma, v: f.v, ias: f.ias, vs: f.vs, mach: f.mach,
     gear: f.gearPos, flaps: f.flapAct, flapsCmd: c.flaps, flapName: FLAP_NAMES[c.flaps], thr: f.thrAct, eng: f.eng,
     onGround: f.onGround, air: f.airborneOnce, fuel: f.fuel, mass: f.mass, vr: f.vr, v1: f.v1, v2: f.v2,
@@ -100,3 +107,11 @@ export function sim_state() {
 }
 // положение точки локальной системы (x вдоль оси, z вправо) в широте/долготе — для отрисовки аэродромов
 export function sim_ll(x, z) { return F ? llOf(F, x, z) : null; }
+// отладка: поставить самолёт в воздух (для скриншотов и тестов)
+export function sim_debug(o) {
+  const f = F; if (!f) return;
+  f.onGround = false; f.airborneOnce = true; f.cold = false; f.eng = [1, 1];
+  f.h = o.h; f.v = o.v || 150; f.x = o.x != null ? o.x : f.x; f.gearPos = o.gear ? 1 : 0; f.c.gear = !!o.gear; f.theta = o.theta || 0.03; f.c.brake = false;
+  f.c.thr = 0.7; f.c.t1 = f.c.t2 = 0.7;
+  for (let i = 0; i < 5; i++) f.step(1 / 30);
+}

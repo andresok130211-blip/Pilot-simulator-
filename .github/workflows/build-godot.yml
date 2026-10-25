@@ -3,7 +3,7 @@ name: Build Godot APK
 on:
   push:
     branches: [main, master]
-    paths: ['godot/**', '.github/workflows/build-godot.yml']
+    paths: ['godot/**', 'src/js/**', 'tools/buildsim.mjs', 'tools/build_ext.sh', '.github/workflows/build-godot.yml']
   workflow_dispatch:
 
 permissions:
@@ -14,6 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Логика игры для встроенного JS (sim.js)
+        run: node tools/buildsim.mjs
 
       - uses: actions/setup-java@v4
         with:
@@ -26,6 +33,13 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmdline-tools;latest" >/dev/null
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+
+      - name: Расширение JSVM (QuickJS) для Android arm64
+        run: |
+          sudo apt-get install -y ninja-build >/dev/null 2>&1 || true
+          echo "NDK: $ANDROID_NDK_ROOT / $ANDROID_NDK_LATEST_HOME"
+          bash tools/build_ext.sh android
+          ls -la godot/bin
 
       - name: Godot 4.3 и шаблоны экспорта
         run: |
