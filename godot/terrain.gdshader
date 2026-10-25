@@ -7,6 +7,11 @@ uniform vec2 center_ll = vec2(37.4, 55.9);
 uniform float dem_unit = 35.0;
 uniform float time_of_day = 1.0;
 uniform vec3 sun_dir = vec3(0.4, 0.8, 0.3);
+uniform vec4 apt[4];   // lon, lat, высота (м), 0
+uniform int apt_n = 0;
+uniform vec4 rwy[4];   // lon, lat (центр), курс (рад), длина (м)
+uniform vec4 rwy2[4];  // ширина, высота, 0, 0
+uniform int rwy_n = 0;
 varying vec2 v_ll;
 varying vec3 v_world;
 varying float v_h;
@@ -34,7 +39,21 @@ float elev(vec2 ll){
   ivec2 i = ivec2(floor(q)); vec2 f = fract(q);
   return mix(mix(dem_px(i), dem_px(i + ivec2(1,0)), f.x), mix(dem_px(i + ivec2(0,1)), dem_px(i + ivec2(1,1)), f.x), f.y);
 }
-float land_at(vec2 ll){ return textureLod(coast, vec2((ll.x + 180.0) / 360.0, (90.0 - ll.y) / 180.0), 0.0).r; }
+vec2 mdelta(vec2 ll, vec2 c){ return vec2((ll.x - c.x) * 111320.0 * cos(radians(c.y)), (ll.y - c.y) * 110574.0); }
+float apt_k(vec2 ll){   // 0 у аэродрома, 1 вдали
+  float k = 1.0;
+  for (int i = 0; i < 4; i++) { if (i >= apt_n) break; k = min(k, smoothstep(3200.0, 11000.0, length(mdelta(ll, apt[i].xy)))); }
+  return k;
+}
+float apt_elev(vec2 ll){
+  float best = 1e9; float e = 0.0;
+  for (int i = 0; i < 4; i++) { if (i >= apt_n) break; float d = length(mdelta(ll, apt[i].xy)); if (d < best) { best = d; e = apt[i].z; } }
+  return e;
+}
+float land_at(vec2 ll){
+  float l = textureLod(coast, vec2((ll.x + 180.0) / 360.0, (90.0 - ll.y) / 180.0), 0.0).r;
+  return apt_n > 0 ? max(l, 1.0 - apt_k(ll)) : l;
+}
 float height_at(vec2 ll, float d){
   float h = elev(ll);
   float sp = 0.04 * d + 20.0;
@@ -49,6 +68,7 @@ float height_at(vec2 ll, float d){
             + (r2 - 0.35) * amp * 0.8 * w2 + (r1 - 0.35) * amp * 0.45 * w1
             + (fbm(ll*420.0) - 0.5) * min(160.0, 0.06*h) * w3;
   h = max(0.0, h + det * smoothstep(0.0, 400.0, h));
+  if (apt_n > 0) h = mix(apt_elev(ll), h, apt_k(ll));
   return h;
 }
 varying vec3 v_nrm;
@@ -72,6 +92,7 @@ void vertex(){
 void fragment(){
   vec2 uvm = vec2((v_ll.x + 180.0) / 360.0, (90.0 - v_ll.y) / 180.0);
   float land = texture(coast, uvm).r;
+  if (apt_n > 0) land = max(land, 1.0 - apt_k(v_ll));
   float b = texture(bio, uvm).r * 255.0;
   vec3 col;
   float n1 = fbm(v_ll * 900.0), n2 = fbm(v_ll * 3200.0);
@@ -102,6 +123,50 @@ void fragment(){
     // пляж
     col = mix(col, vec3(0.78, 0.72, 0.52), (1.0 - smoothstep(2.0, 14.0, h)) * 0.7);
     ROUGHNESS = 0.95; SPECULAR = 0.05;
+  }
+
+  // ВПП, рулёжные дорожки и перрон (рисуются прямо на земле)
+  for (int i = 0; i < 4; i++) {
+    if (i >= rwy_n) break;
+    vec2 dd = mdelta(v_ll, rwy[i].xy);
+    float hd = rwy[i].z; float sh = sin(hd), ch = cos(hd);
+    float u = dd.x * sh + dd.y * ch;          // вдоль полосы от центра
+    float w = dd.x * ch - dd.y * sh;          // вправо от оси
+    float Ln = rwy[i].w * 0.5, Wd = rwy2[i].x * 0.5;
+    if (abs(u) > Ln + 250.0 || w < -Wd - 40.0 || w > 300.0) continue;
+    float aa = max(fwidth(w), fwidth(u)) * 0.7 + 0.001;
+    float ul = u + Ln;                         // от торца
+    vec3 asp = vec3(0.20, 0.20, 0.21);
+    float tw = step(abs(ul - 0.06 * rwy[i].w - 12.0), 0.0);
+    // перрон
+    if (ul > rwy[i].w * 0.28 && ul < rwy[i].w * 0.62 && w > 116.0 && w < 235.0) col = mix(col, vec3(0.42, 0.42, 0.43), 0.95);
+    // рулёжная дорожка
+    if (ul > -40.0 && ul < rwy[i].w + 40.0 && w > 95.0 && w < 117.0) col = mix(col, asp * 1.15, 0.95);
+    for (int k = 0; k < 3; k++) {
+      float cu = rwy[i].w * (k == 0 ? 0.06 : (k == 1 ? 0.5 : 0.93)) + 12.0;
+      if (abs(ul - cu) < 11.0 && w > Wd && w < 100.0) col = mix(col, asp * 1.15, 0.95);
+    }
+    // обочина и полоса
+    if (abs(u) < Ln + 60.0 && abs(w) < Wd + 12.0) col = mix(col, vec3(0.45, 0.46, 0.42), 0.6);
+    if (abs(u) < Ln && abs(w) < Wd) {
+      col = asp;
+      float fade = 1.0 - smoothstep(0.6, 3.0, aa);
+      float edge = (1.0 - smoothstep(0.0, aa + 0.4, abs(abs(w) - (Wd - 1.5)))) ;
+      float cl = 1.0 - smoothstep(0.3, 0.3 + aa, abs(w));
+      float dash = smoothstep(0.0, aa / 60.0 + 0.001, fract(ul / 60.0)) * (1.0 - smoothstep(0.5, 0.5 + aa / 60.0 + 0.001, fract(ul / 60.0)));
+      float cdash = cl * dash * step(60.0, ul) * step(ul, rwy[i].w - 60.0) * fade;
+      float thr = 0.0;
+      for (int e = 0; e < 2; e++) {
+        float ue = e == 0 ? ul : (rwy[i].w - ul);
+        float f3 = fract(w / 3.6 + 0.5);
+        float bars = smoothstep(0.2, 0.2 + aa / 3.6 + 0.001, f3) * (1.0 - smoothstep(0.6, 0.6 + aa / 3.6 + 0.001, f3));
+        thr = max(thr, bars * step(8.0, ue) * step(ue, 38.0) * step(abs(w), Wd - 3.0) * fade);
+        float zone = (1.0 - smoothstep(0.0, aa + 0.3, abs(abs(w) - 9.0) - 1.5)) * fade;
+        thr = max(thr, zone * (step(abs(ue - 300.0), 22.0) + step(abs(ue - 450.0), 11.0)));
+      }
+      edge = edge * (0.4 + 0.6 * fade);
+      col = mix(col, vec3(0.92), clamp(max(edge, max(cdash, thr)), 0.0, 1.0));
+    }
   }
   if (land > 0.5) NORMAL = normalize((VIEW_MATRIX * vec4(normalize(v_nrm), 0.0)).xyz);
   ALBEDO = col;

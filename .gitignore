@@ -1,1 +1,6 @@
 godot/.godot/
+godot/ext/build/
+godot/ext/build-android/
+godot/ext/third_party/
+godot/bin/*.so
+godot/*.apk
