@@ -35,6 +35,7 @@ func _args() -> bool:
 		elif s.begins_with("--cam="): world.cam_mode = int(s.substr(6))
 		elif s.begins_with("--orbit="):
 			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
+		elif s.begins_with("--mode="): Sim.g("game_opt", "\"mode\",%s" % s.substr(7))
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
 		elif s.begins_with("--screen="): screen_arg = s.substr(9)
 	for s in a:
@@ -65,6 +66,7 @@ func _start(to := "", drill := ""):
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
+	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
 	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)))
 	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
 	for a in r.aps:
@@ -102,6 +104,7 @@ func _process(delta: float):
 	var s := Sim.state()
 	if s.is_empty(): return
 	world.update_state(s, dt)
+	hud.cockpit = world.cam_mode == 1
 	hud.update_state(s)
 	if s.get("done", false):
 		end_t += delta

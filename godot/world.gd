@@ -114,104 +114,26 @@ func _mk(mesh: Mesh, col: Color, pos: Vector3, rot := Vector3.ZERO) -> MeshInsta
 	var sm := StandardMaterial3D.new(); sm.albedo_color = col; sm.roughness = 0.5; mi.material_override = sm
 	mi.position = pos; mi.rotation_degrees = rot; return mi
 
-# стреловидное крыло (правая половина; левая — зеркалом)
-func _wing(half: float, root: float, tip: float, sweep: float, thick: float, dih: float, col: Color, z0: float) -> MeshInstance3D:
-	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var ty := half * dih
-	var v := [
-		Vector3(0, thick, z0), Vector3(0, thick, z0 + root), Vector3(half, ty + thick * 0.4, z0 + sweep + tip), Vector3(half, ty + thick * 0.4, z0 + sweep),
-		Vector3(0, -thick, z0), Vector3(0, -thick, z0 + root), Vector3(half, ty - thick * 0.4, z0 + sweep + tip), Vector3(half, ty - thick * 0.4, z0 + sweep)]
-	var f := [[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6], [0, 3, 7], [0, 7, 4], [1, 5, 6], [1, 6, 2], [3, 2, 6], [3, 6, 7]]
-	for t in f:
-		for i in t: st.add_vertex(v[i])
-	st.generate_normals()
-	var mi := MeshInstance3D.new(); mi.mesh = st.commit()
-	var sm := StandardMaterial3D.new(); sm.albedo_color = col; sm.roughness = 0.45; sm.metallic = 0.2; sm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mi.material_override = sm; return mi
-
-func _both(parent: Node3D, mi: MeshInstance3D, x := 0.0, y := 0.0):
-	mi.position = Vector3(x, y, mi.position.z); parent.add_child(mi)
-	var m2 := mi.duplicate() as MeshInstance3D; m2.scale = Vector3(-1, 1, 1); m2.position = Vector3(-x, y, mi.position.z); parent.add_child(m2)
-
-func _fuselage(L: float, R: float, col: Color) -> ArrayMesh:
-	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var nz := 40; var ns := 28
-	var rows := []
-	for i in range(nz + 1):
-		var t := float(i) / nz            # 0 нос .. 1 хвост
-		var z := -L * 0.5 + t * L
-		var r := R; var cy := 0.0
-		if t < 0.12: r = R * sqrt(maxf(0.0, 1.0 - pow((0.12 - t) / 0.12, 2.0))) ; r = maxf(r, R * 0.06); cy = -R * 0.12 * (1.0 - t / 0.12)
-		elif t > 0.68:
-			var u := (t - 0.68) / 0.32
-			r = R * lerpf(1.0, 0.14, pow(u, 1.25)); cy = R * 0.95 * u * u
-		rows.append([z, r, cy])
-	var wl := Color(0.97, 0.97, 0.99); var dark := Color(0.08, 0.11, 0.18)
-	for i in range(nz):
-		for j in range(ns):
-			for q in [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]:
-				var ii: int = i + q[0]; var jj: int = j + q[1]
-				var ang := TAU * jj / ns
-				var rw = rows[ii]
-				var p := Vector3(cos(ang) * rw[1], sin(ang) * rw[1] + rw[2], rw[0])
-				var t := float(ii) / nz
-				var c := wl
-				if sin(ang) < -0.55 and t > 0.1 and t < 0.8: c = col                       # нижняя полоса ливреи
-				if t > 0.8 and sin(ang) < 0.2: c = col.lerp(wl, 0.3)
-				if t > 0.045 and t < 0.1 and sin(ang) > 0.35 and absf(cos(ang)) < 0.75: c = dark   # стёкла кабины
-				if t > 0.14 and t < 0.66 and absf(sin(ang) - 0.28) < 0.1 and absf(cos(ang)) > 0.9: c = dark.lerp(wl, 0.3)   # ряд иллюминаторов
-				st.set_color(c); st.set_normal(Vector3(cos(ang), sin(ang), 0).normalized()); st.add_vertex(p)
-	return st.commit()
+# модели самолётов: amvlab/aircraft-models (CC BY 4.0), см. assets/planes/LICENSE-CC-BY-4.0.txt
+const MODELS := {"ssj": "A320", "crj2": "A320", "e190": "A320", "e175": "A320", "mc21": "A320", "t204": "B737", "a320": "A320", "b738": "B737",
+	"a223": "A320", "a321": "A320", "b763": "B787", "a333": "B787", "b789": "B787", "a359": "A350", "b77w": "A350"}
+const MODEL_LEN := {"A320": 37.7, "B737": 37.9, "B787": 56.6, "A350": 67.4}
+const MODEL_YAW := 90.0   # нос модели направлен по +X
 
 func build_plane(pid: String, color: Color):
 	if plane: plane.queue_free()
 	plane_id = pid
 	plane = Node3D.new(); add_child(plane)
-	var info := {}
+	var seats := 150.0
 	for p in Sim.data.planes:
-		if p.id == pid: info = p
-	var seats: float = info.get("seats", 150)
-	var L := clampf(28.0 + seats * 0.075, 26.0, 62.0)   # длина фюзеляжа
-	var R := clampf(1.5 + seats * 0.0025, 1.6, 3.1)
-	var span := L * 0.92
-	var body := Color(0.97, 0.97, 0.99)
-	var wing_c := Color(0.82, 0.85, 0.90)
-	# фюзеляж: единая поверхность вращения (нос -Z), плавный нос и поджатый хвост
-	var fm := MeshInstance3D.new(); fm.mesh = _fuselage(L, R, color)
-	var fmt := StandardMaterial3D.new(); fmt.vertex_color_use_as_albedo = true; fmt.roughness = 0.35; fmt.metallic = 0.15
-	fm.material_override = fmt; plane.add_child(fm)
-	# крылья со стреловидностью, законцовки
-	var wz := -L * 0.05
-	var w1 := _wing(span * 0.5, L * 0.19, L * 0.05, L * 0.17, 0.28, 0.07, wing_c, wz)
-	w1.position = Vector3(0, -R * 0.55, 0); _both(plane, w1, 0.0, -R * 0.55)
-	var wl := _wing(R * 1.1, L * 0.045, L * 0.02, L * 0.025, 0.05, 0.0, color, 0.0)
-	wl.rotation_degrees = Vector3(0, 0, 80); wl.position = Vector3(span * 0.5, -R * 0.55 + span * 0.5 * 0.07, wz + L * 0.17 - L * 0.01)
-	_both(plane, wl, span * 0.5, -R * 0.55 + span * 0.5 * 0.07)
-	# оперение
-	var h1 := _wing(span * 0.17, L * 0.09, L * 0.035, L * 0.06, 0.12, 0.03, wing_c, 0.0)
-	h1.position = Vector3(0, R * 0.55, L * 0.40); _both(plane, h1, 0.0, R * 0.55)
-	var fin := _wing(R * 3.0, L * 0.14, L * 0.06, L * 0.08, 0.16, 0.0, color, 0.0)
-	fin.rotation_degrees = Vector3(0, 0, 90); fin.position = Vector3(0, R * 0.7, L * 0.37); plane.add_child(fin)
-	# двигатели: гондола + заборник
-	var eng := CylinderMesh.new(); eng.top_radius = R * 0.52; eng.bottom_radius = R * 0.46; eng.height = L * 0.13
-	var inl := CylinderMesh.new(); inl.top_radius = R * 0.4; inl.bottom_radius = R * 0.4; inl.height = 0.12
-	for s_ in [-1, 1]:
-		var ex: float = s_ * span * 0.19
-		plane.add_child(_mk(eng, Color(0.74, 0.76, 0.80), Vector3(ex, -R * 1.0, -L * 0.07), Vector3(90, 0, 0)))
-		plane.add_child(_mk(inl, Color(0.05, 0.05, 0.06), Vector3(ex, -R * 1.0, -L * 0.07 - L * 0.065), Vector3(90, 0, 0)))
-	# шасси
-	var leg := CylinderMesh.new(); leg.top_radius = 0.18; leg.bottom_radius = 0.18; leg.height = 2.6
-	var wh := CylinderMesh.new(); wh.top_radius = 0.55; wh.bottom_radius = 0.55; wh.height = 0.5
-	var gear := Node3D.new(); gear.name = "gear"; plane.add_child(gear)
-	for g in [[0.0, -L * 0.30], [-span * 0.075, L * 0.05], [span * 0.075, L * 0.05]]:
-		gear.add_child(_mk(leg, Color(0.3, 0.3, 0.33), Vector3(g[0], -R - 0.5, g[1])))
-		gear.add_child(_mk(wh, Color(0.08, 0.08, 0.09), Vector3(g[0], -R - 1.8, g[1]), Vector3(0, 0, 90)))
-	# навигационные огни
-	for lc in [[-1, Color(1, 0.1, 0.1)], [1, Color(0.1, 1, 0.2)]]:
-		var ls := SphereMesh.new(); ls.radius = 0.3; ls.height = 0.6
-		var lm := _mk(ls, lc[1], Vector3(lc[0] * (span * 0.5 + 0.2), -R * 0.55 + span * 0.5 * 0.07, wz + L * 0.17))
-		(lm.material_override as StandardMaterial3D).emission_enabled = true; (lm.material_override as StandardMaterial3D).emission = lc[1]
-		plane.add_child(lm)
+		if p.id == pid: seats = float(p.get("seats", 150))
+	var m: String = MODELS.get(pid, "A320")
+	var inst: Node3D = load("res://assets/planes/%s_nologo.glb" % m).instantiate()
+	var L := clampf(28.0 + seats * 0.075, 26.0, 62.0)
+	if m == "B787" or m == "A350": L = maxf(L, MODEL_LEN[m] * 0.95)
+	var k: float = L / float(MODEL_LEN[m])
+	inst.scale = Vector3.ONE * k; inst.rotation_degrees = Vector3(0, MODEL_YAW, 0)
+	plane.add_child(inst)
 
 # ---------- аэродромы ----------
 func _quad(st: SurfaceTool, x0: float, x1: float, z0: float, z1: float, y: float, col: Color):
@@ -325,7 +247,7 @@ func update_state(s: Dictionary, delta: float):
 	var hdg: float = s.hdg
 	plane.rotation_order = EULER_ORDER_YXZ
 	plane.rotation = Vector3(float(s.theta), -deg_to_rad(hdg), -float(s.phi))
-	var g := plane.get_node_or_null("gear"); if g: g.visible = float(s.gear) > 0.5
+	plane.visible = cam_mode != 1
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []
 	for a in airports:

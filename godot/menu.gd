@@ -176,10 +176,12 @@ func _settings():
 	_toggle(b, "Помощник: сам выпускает и убирает шасси и закрылки", "assistCfg", o.assistCfg)
 	_toggle(b, "Подсказки на экране", "hints", o.hints)
 	_toggle(b, "Спутниковые снимки земли (нужен интернет)", "sat", o.get("sat", true))
+	_choice(b, "Режим пилотирования", "mode", ["лёгкий (помощники)", "нормальный (PFD, ручной заход)", "профи (все приборы, без помощи)"], int(o.get("mode", 0)))
 	_choice(b, "Аварийные ситуации", "emerg", ["выкл", "редко", "иногда", "часто"], int(o.emerg))
 	_choice(b, "Погода", "wxLvl", ["штиль", "обычная", "сложная"], int(o.wxLvl))
 	_choice(b, "Время суток", "tod", ["случайно", "день", "закат", "ночь"], 0 if str(o.tod) == "rnd" else int(o.tod) + 1, true)
 	_choice(b, "Сезон", "season", ["лето", "осень", "зима"], int(o.season))
+	b.add_child(_lbl("Модели самолётов: amvlab/aircraft-models (CC BY 4.0). Снимки Земли: Sentinel-2 cloudless 2020 by EOX (CC BY-NC 4.0), содержит изменённые данные Copernicus Sentinel.", 15, Color(0.5, 0.6, 0.75)))
 	b.add_child(_lbl("Версия: Godot-предпросмотр. Сохранение хранится на устройстве.", 16, Color(0.5, 0.6, 0.75)))
 
 func _toggle(b: VBoxContainer, text: String, key: String, val: bool):

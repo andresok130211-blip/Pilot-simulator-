@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://wg3g5l5b5ogb"
+path="res://.godot/imported/EVTOL_nologo_UV_texturw_nologodrone.png-303956334d759e8e95d0edea88881d37.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "8724cc9e76635c4aae17333587094b2f"
+}
+
+[deps]
+
+source_file="res://assets/planes/EVTOL_nologo_UV_texturw_nologodrone.png"
+dest_files=["res://.godot/imported/EVTOL_nologo_UV_texturw_nologodrone.png-303956334d759e8e95d0edea88881d37.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

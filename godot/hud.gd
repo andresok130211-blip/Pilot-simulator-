@@ -16,6 +16,9 @@ var btn := {}
 var rows: VBoxContainer
 var ev_row: HBoxContainer
 var last_ev_keys := ""
+var instr: Control
+var mode := 0
+var cockpit := false
 var altp: PanelContainer
 var altp_v: VBoxContainer
 
@@ -44,6 +47,7 @@ func _on_act(a: String):
 		_: Sim.act(a)
 
 func _ready():
+	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
 	info = _lbl(22); info.position = Vector2(18, 10); add_child(info)
 	hint = _lbl(24); hint.position = Vector2(18, 66); hint.add_theme_color_override("font_color", Color(0.6, 1, 0.75)); add_child(hint)
 	alert = _lbl(34); alert.add_theme_color_override("font_color", Color(1, 0.35, 0.3)); alert.set_anchors_preset(Control.PRESET_CENTER_TOP); alert.position = Vector2(-220, 100); add_child(alert)
@@ -117,6 +121,8 @@ func refresh_alts():
 func update_state(s: Dictionary):
 	if s.is_empty(): return
 	var c: Dictionary = s.c
+	instr.put(s, mode, cockpit)
+	info.visible = mode < 2
 	info.text = "СК %d км/ч   ВЫС %d м   В/С %+d м/с   КУРС %03d°   М %.2f   до ВПП %.1f км   топливо %d кг   закр %s   шасси %s" % [
 		float(s.ias) * 3.6, float(s.h), float(s.vs), float(s.hdg), float(s.mach), float(s.dist) / 1000.0, float(s.fuel), str(s.flapName), "▼" if float(s.gear) > 0.98 else ("▲" if float(s.gear) < 0.02 else "…")]
 	hint.text = str(s.hint)
