@@ -9,7 +9,7 @@ var shot := ""
 var shot_t := 3.0
 var dbg := ""
 var t_all := 0.0
-var tod := 0
+var tod := -1
 var sel := {"plane": "a320", "from": "SVO", "to": "LED"}
 
 func _ready():
@@ -59,7 +59,11 @@ func _start(to := "", drill := ""):
 	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
-	world.set_tod(int(r.tod))
+	world.set_tod(int(r.tod) if tod < 0 else tod)
+	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
+	for a in r.aps:
+		lo0 = minf(lo0, float(a.lon)); lo1 = maxf(lo1, float(a.lon)); la0 = minf(la0, float(a.lat)); la1 = maxf(la1, float(a.lat))
+	world.set_cities(Sim.g("sim_cities", JSON.stringify({"lo0": lo0 - 4.0, "lo1": lo1 + 4.0, "la0": la0 - 3.0, "la1": la1 + 3.0})))
 	hud.visible = true; playing = true; acc = 0.0; end_t = 0.0
 	Sim.ctl({"thr": 0.0, "brake": true})
 	if dbg != "": Sim.vm.eval("sim_debug(%s)" % dbg, "dbg")

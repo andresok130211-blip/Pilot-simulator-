@@ -442,6 +442,7 @@ const cityR = pop => 1100 + 8200 * Math.sqrt(pop / 1e6);
 
 // ---- контекст рейса: локальные мировые координаты <-> широта/долгота ----
 // мировая система: начало — аэропорт вылета, ось X — на пункт назначения (курс brg0), Z — вправо
+function geoCities() { initVec(); return CITY; }
 function makeGeo(from, brg0deg, D) {
   initLand(); initVec();
   const la1 = from.lat * D2R, lo1 = from.lon * D2R, b0 = brg0deg * D2R, sla = Math.sin(la1), cla = Math.cos(la1);
@@ -539,7 +540,7 @@ function makeGeo(from, brg0deg, D) {
   return g;
 }
 
-return {bioF,landF,isLand,demF,makeGeo};
+return {bioF,landF,isLand,demF,geoCities,makeGeo};
 })();
 __m.events = (function(){
 // Аварийные ситуации (ЧП): сценарии, расписание срабатывания и чек-листы действий пилота.
@@ -2832,6 +2833,7 @@ const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeContr
 const { Flight, DEG, FLAP_NAMES, settle, loadInfo } = __m.sim;
 const { EVENT_DEFS, EVENT_IDS } = __m.events;
 const { toWorld } = __m.terrain;
+const { geoCities } = __m.geo;
 
 let F = null;
 const _w = { x: 0, z: 0 }, _ll = { lat: 0, lon: 0 };
@@ -2934,6 +2936,8 @@ function sim_state() {
   };
 }
 // положение точки локальной системы (x вдоль оси, z вправо) в широте/долготе — для отрисовки аэродромов
+// города (lon,lat,pop) в прямоугольнике вокруг маршрута — для рендера застройки
+function sim_cities(o) { const out = []; for (const c of geoCities()) if (c.lon >= o.lo0 && c.lon <= o.lo1 && c.lat >= o.la0 && c.lat <= o.la1 && c.pop >= 40000) out.push([c.lon, c.lat, c.pop]); return out; }
 function sim_ll(x, z) { return F ? llOf(F, x, z) : null; }
 // отладка: поставить самолёт в воздух (для скриншотов и тестов)
 function sim_debug(o) {
@@ -3050,7 +3054,7 @@ function game_finish() {
 function game_drills() { return EVENT_IDS.map(id => ({ id, short: EVENT_DEFS[id].short, desc: EVENT_DEFS[id].desc })); }
 function game_dump_json() { return JSON.stringify(save); }
 
-return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_ll,sim_debug,game_load,game_dump,game_hub,game_opt,game_set_plane,game_rest,game_contracts,game_hangar,game_buy,game_lease,game_maint,game_crew,game_copilot,game_begin,game_finish,game_drills,game_dump_json};
+return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_cities,sim_ll,sim_debug,game_load,game_dump,game_hub,game_opt,game_set_plane,game_rest,game_contracts,game_hangar,game_buy,game_lease,game_maint,game_crew,game_copilot,game_begin,game_finish,game_drills,game_dump_json};
 })();
 var sim_data = __m.api.sim_data;
 var sim_routes = __m.api.sim_routes;
@@ -3061,6 +3065,7 @@ var sim_act = __m.api.sim_act;
 var sim_alts = __m.api.sim_alts;
 var sim_divert = __m.api.sim_divert;
 var sim_state = __m.api.sim_state;
+var sim_cities = __m.api.sim_cities;
 var sim_ll = __m.api.sim_ll;
 var sim_debug = __m.api.sim_debug;
 var game_load = __m.api.game_load;

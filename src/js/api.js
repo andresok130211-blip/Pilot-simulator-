@@ -4,6 +4,7 @@ import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeCont
 import { Flight, DEG, FLAP_NAMES, settle, loadInfo } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { toWorld } from './terrain.js';
+import { geoCities } from './geo.js';
 
 let F = null;
 const _w = { x: 0, z: 0 }, _ll = { lat: 0, lon: 0 };
@@ -106,6 +107,8 @@ export function sim_state() {
   };
 }
 // положение точки локальной системы (x вдоль оси, z вправо) в широте/долготе — для отрисовки аэродромов
+// города (lon,lat,pop) в прямоугольнике вокруг маршрута — для рендера застройки
+export function sim_cities(o) { const out = []; for (const c of geoCities()) if (c.lon >= o.lo0 && c.lon <= o.lo1 && c.lat >= o.la0 && c.lat <= o.la1 && c.pop >= 40000) out.push([c.lon, c.lat, c.pop]); return out; }
 export function sim_ll(x, z) { return F ? llOf(F, x, z) : null; }
 // отладка: поставить самолёт в воздух (для скриншотов и тестов)
 export function sim_debug(o) {

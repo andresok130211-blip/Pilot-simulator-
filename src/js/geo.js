@@ -93,6 +93,7 @@ const cityR = pop => 1100 + 8200 * Math.sqrt(pop / 1e6);
 
 // ---- контекст рейса: локальные мировые координаты <-> широта/долгота ----
 // мировая система: начало — аэропорт вылета, ось X — на пункт назначения (курс brg0), Z — вправо
+export function geoCities() { initVec(); return CITY; }
 export function makeGeo(from, brg0deg, D) {
   initLand(); initVec();
   const la1 = from.lat * D2R, lo1 = from.lon * D2R, b0 = brg0deg * D2R, sla = Math.sin(la1), cla = Math.cos(la1);

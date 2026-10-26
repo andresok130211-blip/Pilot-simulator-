@@ -14,15 +14,19 @@ uniform vec4 rwy2[4];  // ширина, высота, 0, 0
 uniform int rwy_n = 0;
 uniform vec4 aps[8];
 uniform int ap_n = 0;
+uniform vec4 cty[8];   // lon, lat, радиус (м), население
+uniform int cty_n = 0;
+uniform float night = 0.0;
 varying float v_fl;
 varying vec2 v_ll;
 varying vec3 v_world;
 varying float v_h;
 const float R_E = 6371000.0;
 
-float hash(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
-float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
-  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
+float hashi(ivec2 q){ uint h = uint(q.x) * 747796405u + uint(q.y) * 2891336453u; h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u; h = (h >> 22u) ^ h; return float(h & 16777215u) / 16777215.0; }
+float hash(vec2 p){ return hashi(ivec2(floor(p + 0.5))); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); ivec2 q = ivec2(i);
+  return mix(mix(hashi(q), hashi(q+ivec2(1,0)), f.x), mix(hashi(q+ivec2(0,1)), hashi(q+ivec2(1,1)), f.x), f.y); }
 float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i=0;i<4;i++){ s += a*vnoise(p); p *= 2.03; a *= 0.5; } return s; }
 
 vec2 ll_of(vec3 v){
@@ -102,16 +106,22 @@ void fragment(){
   if (apt_n > 0) land = max(land, 1.0 - apt_k(v_ll));
   float b = texture(bio, uvm).r * 255.0;
   vec3 col;
-  float n1 = fbm(v_ll * 900.0), n2 = fbm(v_ll * 3200.0);
+  float dist = length(VERTEX);
+  float fh = smoothstep(2500.0, 14000.0, dist);   // с расстоянием гасим мелкий шум (против муара)
+  float fm = smoothstep(9000.0, 40000.0, dist);
+  float n1 = mix(fbm(v_ll * 900.0), 0.5, fh), n2 = mix(fbm(v_ll * 3200.0), 0.5, fh);
+  vec3 emis = vec3(0.0);
   if (land < 0.5) {
     col = mix(vec3(0.03, 0.17, 0.30), vec3(0.09, 0.33, 0.45), n2);
     ROUGHNESS = 0.15; SPECULAR = 0.8;
   } else {
     float h = v_h;
     col = vec3(0.40, 0.52, 0.25) + (n1 - 0.5) * vec3(0.16, 0.09, 0.05);
-    float field = smoothstep(0.52, 0.66, fbm(v_ll * 2400.0));
+    float field = mix(smoothstep(0.52, 0.66, fbm(v_ll * 2400.0)), 0.22, fh);
     col = mix(col, vec3(0.65, 0.59, 0.36), field * 0.7);
-    float forest = smoothstep(0.55, 0.65, fbm(v_ll * 1300.0 + 7.0)) * (1.0 - smoothstep(1200.0, 2000.0, h));
+    float forest = mix(smoothstep(0.55, 0.65, fbm(v_ll * 1300.0 + 7.0)), 0.3 * smoothstep(0.3, 0.7, fbm(v_ll * 60.0 + 3.0)), fh) * (1.0 - smoothstep(1200.0, 2000.0, h));
+    // крупные пятна: поля/леса/луга видны и издали
+    col = mix(col, col * (0.82 + 0.36 * fbm(v_ll * 40.0)), fm);
     col = mix(col, vec3(0.15, 0.31, 0.17), forest);
     if (b > 0.5 && b < 1.5) col = mix(col, vec3(0.84, 0.73, 0.52) * (0.9 + 0.2 * n1), 0.9);
     else if (b < 2.5 && b > 1.5) col = mix(col, vec3(0.50, 0.53, 0.41), 0.75);
@@ -129,6 +139,28 @@ void fragment(){
     col = mix(col, vec3(0.92, 0.94, 0.96), polar * 0.7);
     // пляж
     col = mix(col, vec3(0.78, 0.72, 0.52), (1.0 - smoothstep(2.0, 14.0, h)) * 0.7);
+    // города: серая застройка, кварталы, ночью — огни
+    for (int i = 0; i < 8; i++) {
+      if (i >= cty_n) break;
+      vec2 dd = mdelta(v_ll, cty[i].xy);
+      float rr = cty[i].z;
+      float dn = length(dd) / rr;
+      if (dn > 1.15) continue;
+      float edge = fbm(v_ll * 700.0 + float(i)) * 0.35;
+      float dens = clamp((1.0 - dn * dn * 0.85) + edge - 0.18, 0.0, 1.0);
+      float urb = smoothstep(0.25, 0.55, dens) * (1.0 - smoothstep(30000.0, 90000.0, dist) * 0.3);
+      vec2 cell = dd / 70.0; vec2 ci = floor(cell); vec2 cf = fract(cell);
+      float hb = hash(ci + float(i) * 17.0);
+      float road = step(cf.x, 0.14) + step(cf.y, 0.14);
+      float blk = mix(0.55 + 0.35 * hb, 0.62, fh);
+      vec3 ucol = mix(vec3(0.50, 0.49, 0.47), vec3(0.62, 0.60, 0.57), dens) * blk;
+      ucol = mix(ucol, vec3(0.25, 0.25, 0.26), clamp(road, 0.0, 1.0) * (1.0 - fh) * 0.8);
+      col = mix(col, ucol, urb);
+      vec2 wc = floor(dd / 9.0);
+      float lit = step(0.3, hb) * (1.0 - clamp(road, 0.0, 1.0)) * step(0.45, hash(wc + 3.7)) * (0.6 + 0.4 * hash(wc));
+      lit = mix(lit, 0.3, fh);
+      emis += vec3(1.0, 0.78, 0.45) * lit * urb * night * mix(1.0, 0.7, fm);
+    }
     ROUGHNESS = 0.95; SPECULAR = 0.05;
   }
 
@@ -177,4 +209,5 @@ void fragment(){
   }
   if (land > 0.5) NORMAL = normalize((VIEW_MATRIX * vec4(normalize(v_nrm), 0.0)).xyz);
   ALBEDO = col;
+  EMISSION = emis * 1.4;
 }
