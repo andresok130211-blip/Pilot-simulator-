@@ -16,6 +16,9 @@ var tower_alt := 0.0
 var tower_set := false
 var cur_ll := Vector2.ZERO
 var plane_id := ""
+var orbit := 0.0
+var orbit_up := 0.28
+var orbit_d := 1.5
 var clouds := []        # материалы облачных слоёв
 var cloud_nodes := []
 var light_mats := []
@@ -128,6 +131,36 @@ func _both(parent: Node3D, mi: MeshInstance3D, x := 0.0, y := 0.0):
 	mi.position = Vector3(x, y, mi.position.z); parent.add_child(mi)
 	var m2 := mi.duplicate() as MeshInstance3D; m2.scale = Vector3(-1, 1, 1); m2.position = Vector3(-x, y, mi.position.z); parent.add_child(m2)
 
+func _fuselage(L: float, R: float, col: Color) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var nz := 40; var ns := 28
+	var rows := []
+	for i in range(nz + 1):
+		var t := float(i) / nz            # 0 нос .. 1 хвост
+		var z := -L * 0.5 + t * L
+		var r := R; var cy := 0.0
+		if t < 0.12: r = R * sqrt(maxf(0.0, 1.0 - pow((0.12 - t) / 0.12, 2.0))) ; r = maxf(r, R * 0.06); cy = -R * 0.12 * (1.0 - t / 0.12)
+		elif t > 0.68:
+			var u := (t - 0.68) / 0.32
+			r = R * lerpf(1.0, 0.14, pow(u, 1.25)); cy = R * 0.95 * u * u
+		rows.append([z, r, cy])
+	var wl := Color(0.97, 0.97, 0.99); var dark := Color(0.08, 0.11, 0.18)
+	for i in range(nz):
+		for j in range(ns):
+			for q in [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]:
+				var ii: int = i + q[0]; var jj: int = j + q[1]
+				var ang := TAU * jj / ns
+				var rw = rows[ii]
+				var p := Vector3(cos(ang) * rw[1], sin(ang) * rw[1] + rw[2], rw[0])
+				var t := float(ii) / nz
+				var c := wl
+				if sin(ang) < -0.55 and t > 0.1 and t < 0.8: c = col                       # нижняя полоса ливреи
+				if t > 0.8 and sin(ang) < 0.2: c = col.lerp(wl, 0.3)
+				if t > 0.045 and t < 0.1 and sin(ang) > 0.35 and absf(cos(ang)) < 0.75: c = dark   # стёкла кабины
+				if t > 0.14 and t < 0.66 and absf(sin(ang) - 0.28) < 0.1 and absf(cos(ang)) > 0.9: c = dark.lerp(wl, 0.3)   # ряд иллюминаторов
+				st.set_color(c); st.set_normal(Vector3(cos(ang), sin(ang), 0).normalized()); st.add_vertex(p)
+	return st.commit()
+
 func build_plane(pid: String, color: Color):
 	if plane: plane.queue_free()
 	plane_id = pid
@@ -141,20 +174,10 @@ func build_plane(pid: String, color: Color):
 	var span := L * 0.92
 	var body := Color(0.97, 0.97, 0.99)
 	var wing_c := Color(0.82, 0.85, 0.90)
-	# фюзеляж: цилиндр + носовой обтекатель + хвостовой конус (нос = -Z)
-	var cyl := CylinderMesh.new(); cyl.top_radius = R; cyl.bottom_radius = R; cyl.height = L * 0.62
-	plane.add_child(_mk(cyl, body, Vector3(0, 0, -L * 0.04), Vector3(90, 0, 0)))
-	var nose := SphereMesh.new(); nose.radius = R; nose.height = R * 2.0
-	var nm := _mk(nose, body, Vector3(0, -R * 0.04, -L * 0.35)); nm.scale = Vector3(1, 0.95, L * 0.11 / R); plane.add_child(nm)
-	var tcone := CylinderMesh.new(); tcone.top_radius = R * 0.22; tcone.bottom_radius = R; tcone.height = L * 0.34
-	plane.add_child(_mk(tcone, body, Vector3(0, R * 0.18, L * 0.44), Vector3(90 - 2.5, 0, 0)))
-	# ливрея: полоса и окна
-	var band := CylinderMesh.new(); band.top_radius = R * 1.012; band.bottom_radius = R * 1.012; band.height = L * 0.54
-	plane.add_child(_mk(band, color, Vector3(0, -R * 0.62, -L * 0.04), Vector3(90, 0, 0)))
-	var win := BoxMesh.new(); win.size = Vector3(0.1, R * 0.16, L * 0.5)
-	for s_ in [-1, 1]: plane.add_child(_mk(win, Color(0.1, 0.15, 0.22), Vector3(s_ * R * 0.99, R * 0.22, -L * 0.04)))
-	var wsh := BoxMesh.new(); wsh.size = Vector3(R * 1.25, R * 0.3, R * 0.5)
-	plane.add_child(_mk(wsh, Color(0.08, 0.12, 0.2), Vector3(0, R * 0.42, -L * 0.40), Vector3(-18, 0, 0)))
+	# фюзеляж: единая поверхность вращения (нос -Z), плавный нос и поджатый хвост
+	var fm := MeshInstance3D.new(); fm.mesh = _fuselage(L, R, color)
+	var fmt := StandardMaterial3D.new(); fmt.vertex_color_use_as_albedo = true; fmt.roughness = 0.35; fmt.metallic = 0.15
+	fm.material_override = fmt; plane.add_child(fm)
 	# крылья со стреловидностью, законцовки
 	var wz := -L * 0.05
 	var w1 := _wing(span * 0.5, L * 0.19, L * 0.05, L * 0.17, 0.28, 0.07, wing_c, wz)
@@ -352,7 +375,7 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 	var pp := plane.position
 	if cam_mode == 0:
 		var span := 38.0
-		cam.position = pp + back * (span * 1.5) + Vector3(0, span * 0.28 + 2.0, 0)
+		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit)) * (span * orbit_d) + Vector3(0, span * orbit_up + 2.0, 0)
 		cam.look_at(pp + Vector3(0, 1.0, 0), Vector3.UP)
 	elif cam_mode == 1:
 		var fwd := -back

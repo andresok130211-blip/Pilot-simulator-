@@ -33,6 +33,8 @@ func _args() -> bool:
 		elif s.begins_with("--wait="): shot_t = float(s.substr(7))
 		elif s.begins_with("--debug="): dbg = s.substr(8)
 		elif s.begins_with("--cam="): world.cam_mode = int(s.substr(6))
+		elif s.begins_with("--orbit="):
+			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
 		elif s.begins_with("--screen="): screen_arg = s.substr(9)
 	if "--auto" in a:

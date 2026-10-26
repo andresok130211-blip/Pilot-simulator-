@@ -102,7 +102,9 @@ void vertex(){
 }
 void fragment(){
   vec2 uvm = vec2((v_ll.x + 180.0) / 360.0, (90.0 - v_ll.y) / 180.0);
-  float land = max(texture(coast, uvm).r, step(0.5, 1.0 - v_fl));
+  float cdist = length(VERTEX);
+  float cl = texture(coast, uvm).r + (fbm(v_ll * 420.0) - 0.5) * 0.5 * (1.0 - smoothstep(4000.0, 25000.0, cdist)) * (1.0 - step(0.999, texture(coast, uvm).r)) * step(0.001, texture(coast, uvm).r + 0.3);
+  float land = max(cl, step(0.5, 1.0 - v_fl));
   if (apt_n > 0) land = max(land, 1.0 - apt_k(v_ll));
   float b = texture(bio, uvm).r * 255.0;
   vec3 col;
