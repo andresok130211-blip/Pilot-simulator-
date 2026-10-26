@@ -5,6 +5,8 @@ var root: Control
 var body: VBoxContainer
 var sel_to := ""
 var scr := "hub"
+var pre = {}
+var pf_i = {}
 
 func _ready():
 	layer = 5
@@ -65,6 +67,7 @@ func _render():
 		"hangar": _hangar()
 		"drill": _drill()
 		"school": _school()
+		"pre": _pre()
 		"records": _records()
 		"settings": _settings()
 		_: _hub()
@@ -101,7 +104,7 @@ func _select():
 		var bb := _btn(("▶ " if it.to == sel_to else "") + txt, func(): sel_to = it.to; _render(), 22)
 		bb.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.add_child(bb)
 	if sel_to != "":
-		var go := _btn("ЛЕТЕТЬ ✈", func(): close(); start_flight.emit(sel_to, ""), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
+		var go := _btn("ЛЕТЕТЬ ✈", func(): pre = Sim.g("game_preflight", JSON.stringify(sel_to)); pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; scr = "pre"; _render(), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
 
 # ---------- ангар ----------
 func _hangar():
@@ -133,6 +136,38 @@ func _rub(n) -> String:
 		out = s[i] + out; c += 1
 		if c % 3 == 0 and i > 0 and s[i - 1] != "-": out = " " + out
 	return out + " ₽"
+
+# ---------- предполётная подготовка ----------
+const CKL := ["Двери закрыты, трап убран", "Топливо и загрузка проверены", "Закрылки 2 (взлётная конфигурация)", "Штурвал и приборы проверены", "Аварийное оборудование, ремни"]
+func _chips(b: VBoxContainer, title: String, names: Array, key: String):
+	var r := _row(); b.add_child(r); r.add_child(_lbl(title, 20))
+	for i in range(names.size()):
+		var bb := _btn(("● " if pf_i[key] == i else "○ ") + str(names[i]), func(): pf_i[key] = i; _render(), 19); bb.custom_minimum_size = Vector2(0, 50); r.add_child(bb)
+
+func _pre():
+	var b := _frame("Предполётная подготовка", "select")
+	if pre.metarDep != "": b.add_child(_lbl("Вылет: %s\nНазначение: %s" % [pre.metarDep, pre.metarDst], 17, Color(0.7, 0.8, 0.95)))
+	b.add_child(_lbl("Ветер по маршруту: %s %d м/с, боковой %d м/с. Видимость %d м." % ["встречный" if int(pre.head) >= 0 else "попутный", absi(int(pre.head)), int(pre.cross), int(pre.vis)], 19))
+	var fi: int = pf_i.f; var ci: int = pf_i.c
+	_chips(b, "Топливо:", ["минимум %d кг" % int(pre.fuels[0]), "+30 мин %d кг" % int(pre.fuels[1]), "+1 ч %d кг" % int(pre.fuels[2])], "f")
+	_chips(b, "Центровка:", ["багаж вперёд %d%%" % int(float(pre.cgs[0]) * 100), "авто %d%%" % int(float(pre.cgs[1]) * 100), "багаж назад %d%%" % int(float(pre.cgs[2]) * 100)], "c")
+	var li = pre.loads[fi][ci]
+	b.add_child(_lbl("Взлётная масса %.1f т из %.1f т%s.   V1 / VR / V2: %d / %d / %d км/ч" % [float(li.mass) / 1000.0, float(pre.mtow) / 1000.0, "  ПЕРЕГРУЗ — уменьшите топливо" if li.over else "", int(li.v1), int(li.vr), int(li.v2)], 19, Color(1, 0.5, 0.4) if li.over else Color(0.88, 0.93, 1)))
+	if pre.flexOk:
+		var cb := CheckBox.new(); cb.text = "FLEX — пониженная тяга (−14%, меньше износ)"; cb.button_pressed = pf_i.flex; cb.add_theme_font_size_override("font_size", 20)
+		cb.toggled.connect(func(v): pf_i.flex = v); b.add_child(cb)
+	if pre.defects.size() > 0:
+		b.add_child(_lbl("Замечания по технике (износ %d%%): %s. В полёте это может отказать." % [int(pre.wear), "; ".join(pre.defects)], 18, Color(1, 0.7, 0.4)))
+		b.add_child(_btn("Вызвать ТО (%d ₽, −30%% износа)" % int(pre.mtCost), func(): if Sim.g("game_maint"): Sim.persist(); pre.defects = []; _render(), 20))
+	b.add_child(_lbl("Чек-лист:", 20))
+	for i in range(CKL.size()):
+		var cc := CheckBox.new(); cc.text = CKL[i]; cc.button_pressed = pf_i.ck[i]; cc.add_theme_font_size_override("font_size", 20); cc.custom_minimum_size = Vector2(0, 44)
+		cc.toggled.connect(func(v): pf_i.ck[i] = v; _render()); b.add_child(cc)
+	var ready: bool = not bool(li.over)
+	for v in pf_i.ck: ready = ready and v
+	var go := _btn("К ЗАПУСКУ", func():
+		Sim.pf = JSON.stringify({"fuel": pre.fuels[fi], "cg": pre.cgs[ci], "flex": pf_i.flex}); close(); start_flight.emit(sel_to, ""), 30)
+	go.disabled = not ready; go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
 
 # ---------- школа ----------
 func _school():

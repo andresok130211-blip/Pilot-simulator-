@@ -61,9 +61,11 @@ func persist() -> void:
 	var f := FileAccess.open("user://save.json", FileAccess.WRITE)
 	if f: f.store_string(vm.call("game_dump_json", ""))
 
+var pf := ""
 func begin(to: String, drill := "") -> Dictionary:
 	# drill: "" обычный рейс, "L:<id>" урок, "D:" испытание дня, иначе id аварии
-	var a := "%s,null,null,null" % JSON.stringify(to)
+	var a := "%s,null,null,null,%s" % [JSON.stringify(to), pf if pf != "" else "null"]
+	pf = ""
 	if drill.begins_with("L:"): a = "%s,null,'lesson',%s" % [JSON.stringify(to), JSON.stringify(drill.substr(2))]
 	elif drill == "D:": a = "%s,null,'daily',null" % JSON.stringify(to)
 	elif drill != "": a = "%s,%s,null,null" % [JSON.stringify(to), JSON.stringify(drill)]

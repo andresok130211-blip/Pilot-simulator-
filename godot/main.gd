@@ -21,6 +21,8 @@ func _ready():
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	if not _args(): _show_menu()
+	if screen_arg == "pre":
+		menu.sel_to = "LED"; menu.pre = Sim.g("game_preflight", "\"LED\""); menu.pf_i = {"f": 1, "c": 1, "flex": false, "ck": [true, true, false, false, false]}
 	if screen_arg != "": menu.open(screen_arg)
 
 func _args() -> bool:

@@ -1,6 +1,6 @@
 // Программный интерфейс для Godot: вся логика (sim.js, events.js, data.js) остаётся прежней,
 // Godot вызывает эти функции через встроенный JS-движок и рисует результат.
-import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeContract, makeWeather, tripFuel, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
+import { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeContract, makeWeather, metarText, windComp, tripFuel, maxRangeKm, recommendedCruise, fmtRub } from './data.js';
 import { Flight, DEG, FLAP_NAMES, settle, loadInfo } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { toWorld } from './terrain.js';
@@ -172,7 +172,22 @@ const LESSONS = [
   { id: 'l5', title: '5. Заход в тумане', desc: 'Низкая видимость: заход строго по глиссаде и курсу (кнопка ПОСАДКА).', wx: 0, auto: true, config: true, force: 'fog', pass: r => r.kind === 'ok' },
   { id: 'l6', title: '6. Экзамен', desc: 'Сложная погода, без автоматики механизации и без автопилота. Нужны 4★ и выше.', wx: 2, auto: false, config: false, pass: r => r.kind === 'ok' && r.stars >= 4 },
 ];
-let lessonCur = null, dailyKey = null;
+let lessonCur = null, dailyKey = null, pend = null;
+const DEFECTS = [{ t: 'нестабильна работа автопилота', ev: 'apFail' }, { t: 'замечание по генератору №2', ev: 'gen' }, { t: 'след утечки гидравлики', ev: 'hyd' }, { t: 'сомнительные датчики воздушных данных', ev: 'adc' }, { t: 'сбои индикации', ev: 'indic' }];
+// предполётная подготовка: опции топлива/центровки/FLEX, V-скорости, замечания по технике
+export function game_preflight(to) {
+  const from = AP_BY[save.loc], p = PL_BY[save.plane], c = game_contracts_raw().find(x => x.to === to); if (!c) return null;
+  const brg = bearing(from, AP_BY[to]), wx = makeWeather(Math.random, save.wxLvl, brg, save.season);
+  const w = wearOf(p.id), n = w >= 85 ? 2 : (w >= 60 && Math.random() < 0.6) || (w >= 40 && Math.random() < 0.25) ? 1 : 0, defects = [];
+  while (defects.length < n) { const d = DEFECTS[Math.floor(Math.random() * DEFECTS.length)]; if (!defects.includes(d)) defects.push(d); }
+  pend = { to, wx, defects, c };
+  const base = Math.round(c.fuel / (1 + 0.8 * (wx.jet || 0) / 230)), fuels = [base, base + p.burnHr * 0.5, base + p.burnHr].map(v => Math.min(p.fuelCap, Math.round(v)));
+  const cgAuto = 0.22 + ((c.km * 7) % 7) / 100, wc = windComp(wx, brg);
+  return { metarDep: wx.level ? metarText(from, wx, 'dep') : '', metarDst: wx.level ? metarText(AP_BY[to], wx, 'dst') : '', head: Math.round(wc.head), cross: Math.round(Math.abs(wc.cross)), vis: Math.min(wx.vis, wx.visD || wx.vis),
+    fuels, cgs: [0.19, cgAuto, 0.31], flexOk: from.rwy >= p.minRwy * 1.6 && from.elev < 1200, wear: Math.round(w), mtow: p.mtow, defects: defects.map(d => d.t), mtCost: Math.round(p.value * 0.00012 * w),
+    loads: fuels.map(f => [0.19, cgAuto, 0.31].map(g => { const li = loadInfo(p, c, f, g); return { mass: li.mass, over: li.over, v1: Math.round(li.v1), vr: Math.round(li.vr), v2: Math.round(li.v2) }; })) };
+}
+export function game_maint() { const p = PL_BY[save.plane], cst = Math.round(p.value * 0.00012 * wearOf(p.id)); if (save.money < cst) return false; save.money -= cst; save.wear[p.id] = Math.max(0, (save.wear[p.id] || 0) - 30); if (pend) pend.defects = []; return true; }
 export function game_lessons() { return LESSONS.map(l => ({ id: l.id, title: l.title, desc: l.desc, done: !!save.school[l.id] })); }
 export function game_daily_info() { const k = dailyInfo(); return { key: k.key, best: save.daily[k.key] == null ? null : save.daily[k.key], days: Object.keys(save.daily).sort().reverse().slice(0, 7).map(d => [d, save.daily[d]]) }; }
 function dailyInfo() {
@@ -181,7 +196,7 @@ function dailyInfo() {
   return { key, h };
 }
 function mkRnd(h) { let a = h; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-export function game_begin(to, drill, kind, id) {
+export function game_begin(to, drill, kind, id, pf) {
   const from = AP_BY[save.loc], p = PL_BY[save.plane];
   let c, wx, o = {}; lessonCur = null; dailyKey = null;
   const brgTo = c2 => bearing(from, AP_BY[c2.to]);
@@ -198,14 +213,16 @@ export function game_begin(to, drill, kind, id) {
     wx = makeWeather(Math.random, 0, brgTo(c), save.season);
   } else {
     c = game_contracts_raw().find(x => x.to === to); if (!c) return null;
-    wx = makeWeather(Math.random, save.wxLvl, brgTo(c), save.season);
+    wx = pend && pend.to === to ? pend.wx : makeWeather(Math.random, save.wxLvl, brgTo(c), save.season);
+    if (pf) o = { fuel: pf.fuel, cg: pf.cg, flex: !!pf.flex, extraEv: (pend ? pend.defects : []).map(d => d.ev) };
+    pend = null;
   }
   const to2 = AP_BY[c.to], brg = bearing(from, to2);
   const tod = o.tod != null ? o.tod : save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
   F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
-    driftK: 0.5, trackHold: true, cold: false, flex: false, cg: 0.25, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
+    driftK: 0.5, trackHold: true, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
