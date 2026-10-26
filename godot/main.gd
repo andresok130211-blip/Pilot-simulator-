@@ -37,6 +37,9 @@ func _args() -> bool:
 			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
 		elif s.begins_with("--screen="): screen_arg = s.substr(9)
+	for s in a:
+		if s.begins_with("--lesson="): _start("", "L:" + s.substr(9)); return true
+		if s == "--daily": _start("", "D:"); return true
 	if "--auto" in a:
 		var cs = Sim.g("game_contracts")
 		var to: String = sel.to

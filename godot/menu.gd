@@ -64,6 +64,7 @@ func _render():
 		"select": _select()
 		"hangar": _hangar()
 		"drill": _drill()
+		"school": _school()
 		"records": _records()
 		"settings": _settings()
 		_: _hub()
@@ -75,8 +76,11 @@ func _hub():
 	b.add_child(_lbl("%s · %d XP     %s     %s (%s)     %s" % [h.rank.name, int(h.xp), h.moneyText, h.city, h.loc, h.short], 24))
 	b.add_child(_lbl("Рейсов: %d · Посадок: %d · Пассажиров: %d · Репутация: %d · Усталость: %d%%" % [int(h.flights), int(h.landings), int(h.pax), int(h.rep), int(h.fatigue)], 20, Color(0.7, 0.8, 0.95)))
 	var go := _btn("ВЫБРАТЬ РЕЙС ✈", func(): scr = "select"; _render(), 34); go.custom_minimum_size = Vector2(0, 96); var gs := StyleBoxFlat.new(); gs.bg_color = Color(0.13, 0.5, 0.9); gs.set_corner_radius_all(18); go.add_theme_stylebox_override("normal", gs); b.add_child(go)
+	var di = Sim.g("game_daily_info")
+	var dl := _btn("Испытание дня  ·  %s" % ("лучшая посадка %.2f м/с" % float(di.best) if di.best != null else "ещё не пройдено"), func(): close(); start_flight.emit("", "D:"), 24)
+	b.add_child(dl)
 	var r := _row(); b.add_child(r)
-	for it in [["Ангар", "hangar"], ["Тренажёр ЧП", "drill"], ["Рекорды", "records"], ["Настройки", "settings"]]:
+	for it in [["Ангар", "hangar"], ["Школа", "school"], ["Тренажёр ЧП", "drill"], ["Рекорды", "records"], ["Настройки", "settings"]]:
 		var bb := _btn(it[0], func(): scr = it[1]; _render()); bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r.add_child(bb)
 	if int(h.fatigue) >= 25:
 		b.add_child(_btn("Отдых (−усталость) — 40 000 ₽", func(): Sim.g("game_rest"); Sim.persist(); _render()))
@@ -129,6 +133,17 @@ func _rub(n) -> String:
 		out = s[i] + out; c += 1
 		if c % 3 == 0 and i > 0 and s[i - 1] != "-": out = " " + out
 	return out + " ₽"
+
+# ---------- школа ----------
+func _school():
+	var l = Sim.g("game_lessons"); var done := 0
+	for e in l: if e.done: done += 1
+	var b := _frame("Лётная школа  (%d/%d)" % [done, l.size()], "hub")
+	b.add_child(_lbl("Пошаговые уроки. Деньги не начисляются, опыт (+60 XP) — за первое прохождение.", 20, Color(0.7, 0.8, 0.95)))
+	for e in l:
+		var bb := _btn(("✔ " if e.done else "") + str(e.title), func(): close(); start_flight.emit("", "L:" + str(e.id)), 24)
+		bb.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.add_child(bb)
+		b.add_child(_lbl(str(e.desc), 17, Color(0.6, 0.7, 0.85)))
 
 # ---------- тренажёр ЧП ----------
 func _drill():
@@ -199,6 +214,7 @@ func show_result(r: Dictionary):
 		b.add_child(_lbl("ИТОГО: %s%s    (баланс %s)" % ["+" if int(r.net) >= 0 else "", _rub(r.net), _rub(r.money)], 28, Color(1, 1, 1)))
 	if int(r.xp) > 0: b.add_child(_lbl("Опыт: +%d XP" % int(r.xp), 22))
 	for e in r.evLog: b.add_child(_lbl("ЧП «%s»: %s" % [e.title, {"ok": "решено ✔", "late": "с опозданием", "fail": "провалено ✖"}.get(str(e.outcome), str(e.outcome))], 20, Color(0.8, 0.9, 1)))
+	if str(r.get("extra", "")) != "": b.add_child(_lbl(str(r.extra), 24, Color(0.5, 1, 0.7)))
 	if str(r.rankUp) != "": b.add_child(_lbl("Новое звание: %s" % r.rankUp, 28, Color(1, 0.85, 0.3)))
 	var r2 := _row(); b.add_child(r2)
 	var bm := _btn("В меню", func(): scr = "hub"; _render()); bm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(bm)

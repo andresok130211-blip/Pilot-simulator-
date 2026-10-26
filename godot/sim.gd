@@ -62,7 +62,12 @@ func persist() -> void:
 	if f: f.store_string(vm.call("game_dump_json", ""))
 
 func begin(to: String, drill := "") -> Dictionary:
-	var r = _json(vm.call("game_begin", "%s,%s" % [JSON.stringify(to), JSON.stringify(drill) if drill != "" else "null"]))
+	# drill: "" обычный рейс, "L:<id>" урок, "D:" испытание дня, иначе id аварии
+	var a := "%s,null,null,null" % JSON.stringify(to)
+	if drill.begins_with("L:"): a = "%s,null,'lesson',%s" % [JSON.stringify(to), JSON.stringify(drill.substr(2))]
+	elif drill == "D:": a = "%s,null,'daily',null" % JSON.stringify(to)
+	elif drill != "": a = "%s,%s,null,null" % [JSON.stringify(to), JSON.stringify(drill)]
+	var r = _json(vm.call("game_begin", a))
 	return r if r != null else {}
 
 func finish() -> Dictionary:

@@ -164,21 +164,51 @@ export function game_maint(id) { const p = PL_BY[id], c = p ? Math.round(p.value
 export function game_crew() { const c = 400000 + 250000 * (save.crews || 0); if ((save.crews || 0) < 5 && save.money >= c) { save.money -= c; save.crews = (save.crews || 0) + 1; return true; } return false; }
 export function game_copilot() { save.copilot = !save.copilot; return save.copilot; }
 // запуск рейса по контракту (drill — id аварии для тренажёра)
-export function game_begin(to, drill) {
+const LESSONS = [
+  { id: 'l1', title: '1. Первый рейс с автопилотом', desc: 'Взлёт, набор, автозаход и посадка с помощником. Цель — просто долететь и сесть.', wx: 0, auto: true, config: true, pass: r => r.kind === 'ok' },
+  { id: 'l2', title: '2. Ручная посадка', desc: 'Автопилот выключен. Держите глиссаду и выровняйте у земли: касание не жёстче 1,6 м/с.', wx: 0, auto: false, config: true, pass: r => r.kind === 'ok' && r.sink <= 1.6 },
+  { id: 'l3', title: '3. Боковой ветер', desc: 'Сложная погода, ручное пилотирование. Сядьте, не жёстче 2,4 м/с.', wx: 2, auto: false, config: true, pass: r => r.kind === 'ok' && r.sink <= 2.4 },
+  { id: 'l4', title: '4. Отказ двигателя', desc: 'Откажет двигатель. Выполните действия по чек-листу и сядьте.', wx: 0, auto: true, config: true, force: 'engFail', pass: r => r.kind === 'ok' && r.evOk >= 1 },
+  { id: 'l5', title: '5. Заход в тумане', desc: 'Низкая видимость: заход строго по глиссаде и курсу (кнопка ПОСАДКА).', wx: 0, auto: true, config: true, force: 'fog', pass: r => r.kind === 'ok' },
+  { id: 'l6', title: '6. Экзамен', desc: 'Сложная погода, без автоматики механизации и без автопилота. Нужны 4★ и выше.', wx: 2, auto: false, config: false, pass: r => r.kind === 'ok' && r.stars >= 4 },
+];
+let lessonCur = null, dailyKey = null;
+export function game_lessons() { return LESSONS.map(l => ({ id: l.id, title: l.title, desc: l.desc, done: !!save.school[l.id] })); }
+export function game_daily_info() { const k = dailyInfo(); return { key: k.key, best: save.daily[k.key] == null ? null : save.daily[k.key], days: Object.keys(save.daily).sort().reverse().slice(0, 7).map(d => [d, save.daily[d]]) }; }
+function dailyInfo() {
+  const d = new Date(), key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  let h = 2166136261; for (const ch of key + save.plane) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return { key, h };
+}
+function mkRnd(h) { let a = h; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+export function game_begin(to, drill, kind, id) {
   const from = AP_BY[save.loc], p = PL_BY[save.plane];
-  let c;
-  if (drill) { const list = contractsFor(p, from.id, 777 + from.id.charCodeAt(0)); c = list.find(x => x.km >= 500) || list[list.length - 1]; if (!c) return null; }
-  else c = game_contracts_raw().find(x => x.to === to);
-  if (!c) return null;
+  let c, wx, o = {}; lessonCur = null; dailyKey = null;
+  const brgTo = c2 => bearing(from, AP_BY[c2.to]);
+  if (kind === 'lesson') {
+    lessonCur = LESSONS.find(l => l.id === id); drill = lessonCur.force || 'none';
+    const list = contractsFor(p, from.id, 777 + from.id.charCodeAt(0)); c = list.find(x => x.km >= 300) || list[list.length - 1]; if (!c) return null;
+    wx = makeWeather(Math.random, lessonCur.wx, brgTo(c), 1);
+  } else if (kind === 'daily') {
+    const di = dailyInfo(), rnd = mkRnd(di.h), list = contractsFor(p, from.id, di.h % 100000); if (!list.length) return null;
+    c = list[di.h % list.length]; wx = makeWeather(rnd, 2, brgTo(c), 1 + (di.h % 2));
+    dailyKey = di.key; o = { tod: di.h % 3, rnd, fuel: Math.min(p.fuelCap, Math.round(c.fuel + p.burnHr * 0.5)) };
+  } else if (drill) {
+    const list = contractsFor(p, from.id, 777 + from.id.charCodeAt(0)); c = list.find(x => x.km >= 500) || list[list.length - 1]; if (!c) return null;
+    wx = makeWeather(Math.random, 0, brgTo(c), save.season);
+  } else {
+    c = game_contracts_raw().find(x => x.to === to); if (!c) return null;
+    wx = makeWeather(Math.random, save.wxLvl, brgTo(c), save.season);
+  }
   const to2 = AP_BY[c.to], brg = bearing(from, to2);
-  const rnd = Math.random;
-  const wx = makeWeather(rnd, drill ? 0 : save.wxLvl, brg, save.season);
-  const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
+  const tod = o.tod != null ? o.tod : save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
-  F = new Flight({ rnd, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+  F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
     driftK: 0.5, trackHold: true, cold: false, flex: false, cg: 0.25, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : save.assistAuto, config: drill ? true : save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+  if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
+  F.daily = dailyKey;
   F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
   const g = F.world.geo, q = { lat: 0, lon: 0 };
   const aps = F.world.map((w, i) => { const start = i < 2 ? w.wx : w.wx - w.len / 2; g.ll(start, w.wz, q);
@@ -214,11 +244,14 @@ export function game_finish() {
     }
     save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
   }
+  let extra = '';
+  if (lessonCur) { const ok = lessonCur.pass(r), first = ok && !save.school[lessonCur.id]; if (first) { save.school[lessonCur.id] = true; save.xp += 60; } extra = ok ? 'Урок пройден' + (first ? ' (+60 XP)' : '') : 'Урок не пройден — попробуйте ещё раз'; }
+  if (f.daily && r.kind === 'ok') { if (save.daily[f.daily] == null || r.sink < save.daily[f.daily]) save.daily[f.daily] = r.sink; extra = 'Испытание дня: лучшая посадка ' + save.daily[f.daily].toFixed(2) + ' м/с'; }
   const rk = rankOf(save.xp);
   const title = drill ? 'Тренировка окончена' : { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Взлёт прерван' }[r.kind] || r.kind;
   lastResult = { title, drill, kind: r.kind, reason: r.reason, stars: r.stars || 0, sink: r.sink == null ? null : r.sink, revenue: r.revenue, fuelCost: r.fuelCost, ops: r.ops, fee: r.fee, repair: r.repair, net: r.net, netText: fmtRub(r.net),
     xp: r.xp, km: Math.round(r.km), pax: r.pax, fuelUsed: Math.round(r.fuelUsed), paxStars: r.paxStars || 0, evLog: (r.evLog || []).map(e => ({ title: e.title, outcome: e.outcome })), crewInc: r.crewInc || 0, bonus: r.bonus || 0, pen: r.pen || 0,
-    rankUp: rk.i > rkBefore ? rk.name : '', money: save.money, moneyText: fmtRub(save.money) };
+    rankUp: rk.i > rkBefore ? rk.name : '', extra, money: save.money, moneyText: fmtRub(save.money) };
   applied = true;
   return lastResult;
 }
