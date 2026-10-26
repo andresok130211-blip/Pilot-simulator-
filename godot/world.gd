@@ -46,18 +46,20 @@ func _build_env(tod: int):
 	set_tod(tod)
 
 func _build_terrain():
-	var rings := 330; var segs := 256
+	var rings := 370; var segs := 256
 	var verts := PackedVector3Array(); var idx := PackedInt32Array()
-	var r := 30.0
+	var r := 3.0
+	verts.append(Vector3.ZERO)
 	for i in range(rings + 1):
 		for j in range(segs):
 			var a := TAU * j / segs
 			verts.append(Vector3(cos(a) * r, 0, sin(a) * r))
-		r *= 1.0306
+		r *= 1.033
+	for j in range(segs): idx.append_array([0, 1 + (j + 1) % segs, 1 + j])
 	for i in range(rings):
 		for j in range(segs):
-			var a := i * segs + j; var b := i * segs + (j + 1) % segs
-			var c := (i + 1) * segs + j; var d := (i + 1) * segs + (j + 1) % segs
+			var a := 1 + i * segs + j; var b := 1 + i * segs + (j + 1) % segs
+			var c := 1 + (i + 1) * segs + j; var d := 1 + (i + 1) * segs + (j + 1) % segs
 			idx.append_array([a, c, b, b, c, d])
 	var arr := []; arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts; arr[Mesh.ARRAY_INDEX] = idx
@@ -184,6 +186,16 @@ func update_state(s: Dictionary, delta: float):
 	var n := mini(8, near.size())
 	for i in range(n): arr[i] = near[i][1]
 	mat.set_shader_parameter("aps", arr); mat.set_shader_parameter("ap_n", n)
+	# выравнивание рельефа под ближайшими аэродромами (до 4), чтобы полоса не уходила под землю
+	var ln := []
+	for a in airports: ln.append([_local(a.lat, a.lon, lat, lon).length(), a])
+	ln.sort_custom(func(p, q): return p[0] < q[0])
+	var apt := PackedVector4Array(); apt.resize(4)
+	var m := mini(4, ln.size())
+	for i in range(m):
+		var a = ln[i][1]
+		apt[i] = Vector4(float(a.lon), float(a.lat), float(a.elev), 0.0)
+	mat.set_shader_parameter("apt", apt); mat.set_shader_parameter("apt_n", m)
 	_camera(s, hdg, alt)
 
 func _camera(s: Dictionary, hdg: float, alt: float):

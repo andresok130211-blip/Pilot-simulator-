@@ -2,7 +2,7 @@ extends Node
 # Точка входа: меню рейса -> полёт.
 var world: Node3D
 var hud: CanvasLayer
-var menu: Control
+var menu: CanvasLayer
 var playing := false
 var acc := 0.0
 var shot := ""
@@ -18,10 +18,12 @@ func _ready():
 	world = load("res://world.gd").new(); world.name = "World"; add_child(world)
 	hud = load("res://hud.gd").new(); hud.name = "HUD"; add_child(hud); hud.visible = false
 	hud.exit_pressed.connect(_to_menu)
-	_show_menu()
-	_args()
+	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
+	menu.start_flight.connect(func(to, drill): _start(to, drill))
+	if not _args(): _show_menu()
+	if screen_arg != "": menu.open(screen_arg)
 
-func _args():
+func _args() -> bool:
 	var a := OS.get_cmdline_user_args()
 	for s in a:
 		if s.begins_with("--plane="): sel.plane = s.substr(8)
@@ -32,59 +34,58 @@ func _args():
 		elif s.begins_with("--debug="): dbg = s.substr(8)
 		elif s.begins_with("--cam="): world.cam_mode = int(s.substr(6))
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
+		elif s.begins_with("--screen="): screen_arg = s.substr(9)
 	if "--auto" in a:
-		_start()
+		var cs = Sim.g("game_contracts")
+		var to: String = sel.to
+		var ok := false
+		for it in cs.list: if it.to == sel.to: ok = true
+		if not ok and not cs.list.is_empty(): to = cs.list[0].to
+		_start(to, "")
+		return true
+	return false
 
 func _show_menu():
-	playing = false; hud.visible = false
-	if menu: menu.queue_free()
-	var cl := CanvasLayer.new(); cl.layer = 5; add_child(cl)
-	menu = Control.new(); menu.set_anchors_preset(Control.PRESET_FULL_RECT); cl.add_child(menu)
-	var bg := ColorRect.new(); bg.color = Color(0.04, 0.09, 0.16, 0.92); bg.set_anchors_preset(Control.PRESET_FULL_RECT); menu.add_child(bg)
-	var box := VBoxContainer.new(); box.position = Vector2(60, 40); box.custom_minimum_size = Vector2(900, 500); menu.add_child(box)
-	var t := Label.new(); t.text = "✈ Pilot Sim 3D"; t.add_theme_font_size_override("font_size", 40); box.add_child(t)
-	var sub := Label.new(); sub.text = "Новый движок (Godot): реальный мир, физика прежняя. Выберите самолёт и маршрут."; box.add_child(sub)
-	var pl := OptionButton.new(); var fr := OptionButton.new(); var to := OptionButton.new()
-	for p in Sim.data.planes: pl.add_item("%s  (%d мест)" % [p.name, int(p.seats)])
-	for a in Sim.data.airports: fr.add_item("%s — %s %s" % [a.id, a.city, a.name]); to.add_item("%s — %s %s" % [a.id, a.city, a.name])
-	for o in [pl, fr, to]: o.custom_minimum_size = Vector2(700, 56); o.add_theme_font_size_override("font_size", 20); box.add_child(o)
-	for i in range(Sim.data.planes.size()): if Sim.data.planes[i].id == sel.plane: pl.select(i)
-	for i in range(Sim.data.airports.size()):
-		if Sim.data.airports[i].id == sel.from: fr.select(i)
-		if Sim.data.airports[i].id == sel.to: to.select(i)
-	pl.item_selected.connect(func(i): sel.plane = Sim.data.planes[i].id)
-	fr.item_selected.connect(func(i): sel.from = Sim.data.airports[i].id)
-	to.item_selected.connect(func(i): sel.to = Sim.data.airports[i].id)
-	var info := Label.new(); box.add_child(info)
-	var go := Button.new(); go.text = "ВЫЛЕТ ▶"; go.custom_minimum_size = Vector2(300, 70); go.add_theme_font_size_override("font_size", 28)
-	go.pressed.connect(_start); box.add_child(go)
-	world.visible = false
+	playing = false; hud.visible = false; world.visible = false
+	menu.open("hub")
 
-func _start():
-	var o := {"plane": sel.plane, "from": sel.from, "to": sel.to, "tod": tod, "wx": 1, "emerg": 0, "taxi": false, "seed": randi()}
-	if sel.from == sel.to: return
-	var r := Sim.start(o)
-	if r == null: return
-	if menu: menu.get_parent().queue_free(); menu = null
+func _start(to := "", drill := ""):
+	var r := Sim.begin(to, drill)
+	if r.is_empty(): return
+	menu.close()
 	world.visible = true
+	var pid: String = Sim.g("game_hub").plane
 	var col := Color.WHITE
-	for p in Sim.data.planes: if p.id == sel.plane: col = Color(str(p.color))
-	world.build_plane(sel.plane, col)
+	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
+	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
-	world.set_tod(tod)
-	hud.visible = true; playing = true; acc = 0.0
+	world.set_tod(int(r.tod))
+	hud.visible = true; playing = true; acc = 0.0; end_t = 0.0
 	Sim.ctl({"thr": 0.0, "brake": true})
 	if dbg != "": Sim.vm.eval("sim_debug(%s)" % dbg, "dbg")
 	hud.thr_s.set_value_no_signal(0.0)
 
 func _to_menu():
-	_show_menu()
+	if playing:
+		_end_flight()
+	else:
+		_show_menu()
+
+func _end_flight():
+	playing = false; hud.visible = false
+	var r := Sim.finish()
+	world.visible = false
+	menu.show_result(r)
+
+var end_t := 0.0
+var screen_arg := ""
 
 func _process(delta: float):
 	t_all += delta
-	if shot != "" and t_all > shot_t and playing:
+	if shot != "" and t_all > shot_t and (playing or screen_arg != ""):
 		get_viewport().get_texture().get_image().save_png(shot)
 		get_tree().quit()
+	if "--endtest" in OS.get_cmdline_user_args() and playing and t_all > 2.0: _end_flight(); screen_arg = "x"
 	if not playing: return
 	var dt := minf(delta, 0.1)
 	var w := Sim.step(dt)
@@ -92,3 +93,6 @@ func _process(delta: float):
 	if s.is_empty(): return
 	world.update_state(s, dt)
 	hud.update_state(s)
+	if s.get("done", false):
+		end_t += delta
+		if end_t > 3.0: _end_flight()

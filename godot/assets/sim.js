@@ -2828,8 +2828,8 @@ return {DEG,G,FLAP_DCL,FLAP_CD,FLAP_AS,FLAP_NAMES,GS_DEG,GS_TAN,APPR_ALT,AIM_OFF
 __m.api = (function(){
 // Программный интерфейс для Godot: вся логика (sim.js, events.js, data.js) остаётся прежней,
 // Godot вызывает эти функции через встроенный JS-движок и рисует результат.
-const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeContract, makeWeather, tripFuel, maxRangeKm } = __m.data;
-const { Flight, DEG, FLAP_NAMES } = __m.sim;
+const { AIRPORTS, AP_BY, PLANES, PL_BY, bearing, distKm, contractsFor, makeContract, makeWeather, tripFuel, maxRangeKm, recommendedCruise, fmtRub } = __m.data;
+const { Flight, DEG, FLAP_NAMES, settle, loadInfo } = __m.sim;
 const { EVENT_DEFS, EVENT_IDS } = __m.events;
 const { toWorld } = __m.terrain;
 
@@ -2944,7 +2944,113 @@ function sim_debug(o) {
   for (let i = 0; i < 5; i++) f.step(1 / 30);
 }
 
-return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_ll,sim_debug};
+// ======================= карьера (то же, что в main.js, без DOM) =======================
+const RANKS = [['Курсант', 0], ['Второй пилот', 500], ['Пилот', 1500], ['Командир', 3500], ['Капитан-инструктор', 7000], ['Легенда авиации', 15000]];
+function rankOf(xp) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (xp >= RANKS[k][1]) i = k; const nx = RANKS[i + 1]; return { name: RANKS[i][0], i, next: nx ? nx[0] : null, from: RANKS[i][1], to: nx ? nx[1] : RANKS[i][1], pct: nx ? (xp - RANKS[i][1]) / (nx[1] - RANKS[i][1]) : 1 }; }
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: false, cam: 0, hints: true, tod: 'rnd', sound: true, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, daily: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
+let contractCur = null, lastResult = null, applied = false;
+const wearOf = id => Math.round(save.wear[id] || 0);
+const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
+const etaMin = km => Math.round(km / 760 * 60 + 22);
+function game_load(json) {
+  try { Object.assign(save, JSON.parse(json || '{}')); } catch (e) { }
+  save.stat = Object.assign({ maxKm: 0, streak: 0, best: 0, min: 0 }, save.stat || {});
+  if (!AP_BY[save.loc]) save.loc = 'SVO';
+  if (!PL_BY[save.plane] || !fleetIds().includes(save.plane)) save.plane = save.owned[0] || 'ssj';
+  return true;
+}
+function game_dump() { return save; }
+function game_hub() {
+  const ap = AP_BY[save.loc], p = PL_BY[save.plane];
+  return { money: save.money, moneyText: fmtRub(save.money), loc: ap.id, city: ap.city, locName: ap.name, plane: p.id, planeName: p.name, short: p.short, flights: save.flights, landings: save.landings, pax: save.pax,
+    bestSink: save.bestSink, rank: rankOf(save.xp), xp: save.xp, fatigue: Math.round(save.fatigue || 0), rep: Math.round(save.rep), crews: save.crews || 0, copilot: !!save.copilot, fuelMul: save.fuelMul || 1,
+    opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
+    stat: save.stat, top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
+}
+function game_opt(k, v) { save[k] = v; return true; }
+function game_set_plane(id) { if (fleetIds().includes(id)) save.plane = id; return save.plane; }
+function game_rest() { if (save.money >= 40000) { save.money -= 40000; save.fatigue = 0; return true; } return false; }
+function game_contracts() {
+  const ap = AP_BY[save.loc], p = PL_BY[save.plane];
+  const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
+  list.forEach(c => { let h = save.flights * 31; for (const ch of c.to) h = (h * 33 + ch.charCodeAt(0)) % 997; c.dem = 0.8 + (h % 48) / 100; c.revenue = Math.round(c.revenue * c.dem); });
+  return { from: ap.id, plane: p.short, range: Math.round(maxRangeKm(p) / 100) * 100, minRwy: p.minRwy, seats: p.seats,
+    list: list.map(c => ({ to: c.to, city: AP_BY[c.to].city, name: AP_BY[c.to].name, km: Math.round(c.km), eta: etaMin(c.km), pax: c.pax, revenue: c.revenue, revenueText: fmtRub(c.revenue), fuel: Math.round(c.fuel) })) };
+}
+function game_hangar() {
+  const cur = save.plane;
+  return { money: save.money, rep: Math.round(save.rep), crews: save.crews || 0, crewCost: 400000 + 250000 * (save.crews || 0), copilot: !!save.copilot,
+    planes: PLANES.map(p => { const own = save.owned.includes(p.id), lz = (save.lease[p.id] || 0) > 0, w = wearOf(p.id);
+      return { id: p.id, name: p.name, short: p.short, seats: p.seats, range: Math.round(maxRangeKm(p) / 100) * 100, minRwy: p.minRwy, desc: p.desc, price: p.price, lease: Math.round(p.price * 0.12), own, leased: lz, leaseLeft: save.lease[p.id] || 0, wear: w, maint: Math.round(p.value * 0.0003 * w), cur: p.id === cur }; }) };
+}
+function game_buy(id) { const p = PL_BY[id]; if (p && !save.owned.includes(id) && save.money >= p.price) { save.money -= p.price; save.owned.push(id); save.plane = id; return true; } return false; }
+function game_lease(id) { const p = PL_BY[id], c = p ? Math.round(p.price * 0.12) : 0; if (p && save.money >= c) { save.money -= c; save.lease[id] = 5; save.plane = id; return true; } return false; }
+function game_maint(id) { const p = PL_BY[id], c = p ? Math.round(p.value * 0.0003 * wearOf(id)) : 0; if (p && save.money >= c) { save.money -= c; save.wear[id] = 0; return true; } return false; }
+function game_crew() { const c = 400000 + 250000 * (save.crews || 0); if ((save.crews || 0) < 5 && save.money >= c) { save.money -= c; save.crews = (save.crews || 0) + 1; return true; } return false; }
+function game_copilot() { save.copilot = !save.copilot; return save.copilot; }
+// запуск рейса по контракту (drill — id аварии для тренажёра)
+function game_begin(to, drill) {
+  const from = AP_BY[save.loc], p = PL_BY[save.plane];
+  let c;
+  if (drill) { const list = contractsFor(p, from.id, 777 + from.id.charCodeAt(0)); c = list.find(x => x.km >= 500) || list[list.length - 1]; if (!c) return null; }
+  else c = game_contracts_raw().find(x => x.to === to);
+  if (!c) return null;
+  const to2 = AP_BY[c.to], brg = bearing(from, to2);
+  const rnd = Math.random;
+  const wx = makeWeather(rnd, drill ? 0 : save.wxLvl, brg, save.season);
+  const tod = save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
+  const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
+  contractCur = c; lastResult = null; applied = false;
+  F = new Flight({ rnd, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+    driftK: 0.5, trackHold: true, cold: false, flex: false, cg: 0.25, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
+    copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : save.assistAuto, config: drill ? true : save.assistCfg, hints: save.hints, taxi: save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+  F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
+  const g = F.world.geo, q = { lat: 0, lon: 0 };
+  const aps = F.world.map((w, i) => { const start = i < 2 ? w.wx : w.wx - w.len / 2; g.ll(start, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city }; });
+  return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to2.id, aps, tod };
+}
+function game_contracts_raw() {
+  const ap = AP_BY[save.loc], p = PL_BY[save.plane];
+  const list = contractsFor(p, ap.id, save.flights * 7919 + ap.id.charCodeAt(0) * 131 + ap.id.charCodeAt(2));
+  list.forEach(c => { let h = save.flights * 31; for (const ch of c.to) h = (h * 33 + ch.charCodeAt(0)) % 997; c.dem = 0.8 + (h % 48) / 100; c.revenue = Math.round(c.revenue * c.dem); });
+  return list;
+}
+// подведение итогов рейса: применяет деньги, опыт, износ; возвращает отчёт (повторный вызов вернёт тот же)
+function game_finish() {
+  const f = F; if (!f) return null;
+  if (applied && lastResult) return lastResult;
+  const r = settle(f, contractCur, { rep: save.rep, copilot: save.copilot, fuelMul: save.fuelMul || 1, crews: save.crews || 0 });
+  const drill = !!f.drill, rkBefore = rankOf(save.xp).i;
+  if (!drill) {
+    save.money = Math.max(0, save.money + r.net);
+    if (r.kind !== 'abort') save.flights++;
+    if (r.kind === 'ok' || r.kind === 'overrun') save.loc = f.locAfter;
+    { const st = save.stat; st.maxKm = Math.max(st.maxKm, r.km); st.min += f.simTime / 60; if (r.kind === 'ok' && r.stars >= 4) { st.streak++; st.best = Math.max(st.best, st.streak); } else if (r.kind !== 'abort') st.streak = 0;
+      if (r.kind === 'ok') { save.top.push({ sink: r.sink, ap: f.toAp.id, pl: f.p.short }); save.top.sort((a, b) => a.sink - b.sink); save.top = save.top.slice(0, 10); } }
+    if (r.kind === 'ok') { save.landings++; save.pax += r.pax; if (save.bestSink == null || r.sink < save.bestSink) save.bestSink = r.sink; }
+    if (r.kind !== 'abort') {
+      const id = f.p.id;
+      save.wear[id] = Math.min(100, (save.wear[id] || 0) + (r.km / 60) * (f.flex ? 0.75 : 1) + (r.sink > 2.4 ? 8 : 0) + r.evFail * 5 + (r.kind === 'crash' ? 30 : 0));
+      const dr = r.kind === 'ok' ? (r.stars - 3) * 2 + (r.sched > 0 ? 1 : r.sched < 0 ? -2 : 0) : r.kind === 'crash' ? -15 : r.kind === 'overrun' ? -6 : -4;
+      save.fatigue = Math.min(100, (save.fatigue || 0) + 3 + (f.simTime / 60) * 0.3 * (save.copilot ? 0.6 : 1)); save.fuelMul = Math.max(0.8, Math.min(1.5, (save.fuelMul || 1) + (Math.random() - 0.5) * 0.25));
+      r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
+      if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }
+    }
+    save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
+  }
+  const rk = rankOf(save.xp);
+  const title = drill ? 'Тренировка окончена' : { ok: r.quality, crash: 'Катастрофа', overrun: 'Выкатились за полосу', forced: 'Рейс сорван', missed: 'Аэропорт пролетели', abort: 'Взлёт прерван' }[r.kind] || r.kind;
+  lastResult = { title, drill, kind: r.kind, reason: r.reason, stars: r.stars || 0, sink: r.sink == null ? null : r.sink, revenue: r.revenue, fuelCost: r.fuelCost, ops: r.ops, fee: r.fee, repair: r.repair, net: r.net, netText: fmtRub(r.net),
+    xp: r.xp, km: Math.round(r.km), pax: r.pax, fuelUsed: Math.round(r.fuelUsed), paxStars: r.paxStars || 0, evLog: (r.evLog || []).map(e => ({ title: e.title, outcome: e.outcome })), crewInc: r.crewInc || 0, bonus: r.bonus || 0, pen: r.pen || 0,
+    rankUp: rk.i > rkBefore ? rk.name : '', money: save.money, moneyText: fmtRub(save.money) };
+  applied = true;
+  return lastResult;
+}
+function game_drills() { return EVENT_IDS.map(id => ({ id, short: EVENT_DEFS[id].short, desc: EVENT_DEFS[id].desc })); }
+function game_dump_json() { return JSON.stringify(save); }
+
+return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_ll,sim_debug,game_load,game_dump,game_hub,game_opt,game_set_plane,game_rest,game_contracts,game_hangar,game_buy,game_lease,game_maint,game_crew,game_copilot,game_begin,game_finish,game_drills,game_dump_json};
 })();
 var sim_data = __m.api.sim_data;
 var sim_routes = __m.api.sim_routes;
@@ -2957,3 +3063,20 @@ var sim_divert = __m.api.sim_divert;
 var sim_state = __m.api.sim_state;
 var sim_ll = __m.api.sim_ll;
 var sim_debug = __m.api.sim_debug;
+var game_load = __m.api.game_load;
+var game_dump = __m.api.game_dump;
+var game_hub = __m.api.game_hub;
+var game_opt = __m.api.game_opt;
+var game_set_plane = __m.api.game_set_plane;
+var game_rest = __m.api.game_rest;
+var game_contracts = __m.api.game_contracts;
+var game_hangar = __m.api.game_hangar;
+var game_buy = __m.api.game_buy;
+var game_lease = __m.api.game_lease;
+var game_maint = __m.api.game_maint;
+var game_crew = __m.api.game_crew;
+var game_copilot = __m.api.game_copilot;
+var game_begin = __m.api.game_begin;
+var game_finish = __m.api.game_finish;
+var game_drills = __m.api.game_drills;
+var game_dump_json = __m.api.game_dump_json;

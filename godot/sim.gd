@@ -14,6 +14,10 @@ func boot() -> bool:
 	if r.begins_with("ERR"):
 		push_error(r); return false
 	data = _json(vm.call("sim_data", ""))
+	var sf := FileAccess.open("user://save.json", FileAccess.READ)
+	var js := "{}"
+	if sf: js = sf.get_as_text()
+	vm.call("game_load", JSON.stringify(js))
 	ok = true
 	return true
 
@@ -48,3 +52,20 @@ func divert(i: int) -> bool:
 func routes(plane: String, from: String, seed_: int) -> Array:
 	var r = _json(vm.call("sim_routes", '"%s","%s",%d' % [plane, from, seed_]))
 	return r if r != null else []
+
+# ---------- карьера ----------
+func g(fn: String, args := ""):
+	return _json(vm.call(fn, args))
+
+func persist() -> void:
+	var f := FileAccess.open("user://save.json", FileAccess.WRITE)
+	if f: f.store_string(vm.call("game_dump_json", ""))
+
+func begin(to: String, drill := "") -> Dictionary:
+	var r = _json(vm.call("game_begin", "%s,%s" % [JSON.stringify(to), JSON.stringify(drill) if drill != "" else "null"]))
+	return r if r != null else {}
+
+func finish() -> Dictionary:
+	var r = _json(vm.call("game_finish", ""))
+	persist()
+	return r if r != null else {}
