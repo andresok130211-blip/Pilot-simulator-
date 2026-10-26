@@ -143,6 +143,7 @@ func _settings():
 	_toggle(b, "Помощник: автопилот набирает высоту, снижается и ведёт по глиссаде", "assistAuto", o.assistAuto)
 	_toggle(b, "Помощник: сам выпускает и убирает шасси и закрылки", "assistCfg", o.assistCfg)
 	_toggle(b, "Подсказки на экране", "hints", o.hints)
+	_toggle(b, "Спутниковые снимки земли (нужен интернет)", "sat", o.get("sat", true))
 	_choice(b, "Аварийные ситуации", "emerg", ["выкл", "редко", "иногда", "часто"], int(o.emerg))
 	_choice(b, "Погода", "wxLvl", ["штиль", "обычная", "сложная"], int(o.wxLvl))
 	_choice(b, "Время суток", "tod", ["случайно", "день", "закат", "ночь"], 0 if str(o.tod) == "rnd" else int(o.tod) + 1, true)

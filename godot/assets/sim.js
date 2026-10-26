@@ -2951,7 +2951,7 @@ function sim_debug(o) {
 // ======================= карьера (то же, что в main.js, без DOM) =======================
 const RANKS = [['Курсант', 0], ['Второй пилот', 500], ['Пилот', 1500], ['Командир', 3500], ['Капитан-инструктор', 7000], ['Легенда авиации', 15000]];
 function rankOf(xp) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (xp >= RANKS[k][1]) i = k; const nx = RANKS[i + 1]; return { name: RANKS[i][0], i, next: nx ? nx[0] : null, from: RANKS[i][1], to: nx ? nx[1] : RANKS[i][1], pct: nx ? (xp - RANKS[i][1]) / (nx[1] - RANKS[i][1]) : 1 }; }
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: false, cam: 0, hints: true, tod: 'rnd', sound: true, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, daily: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: false, cam: 0, hints: true, sat: true, tod: 'rnd', sound: true, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, daily: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
 let contractCur = null, lastResult = null, applied = false;
 const wearOf = id => Math.round(save.wear[id] || 0);
 const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
@@ -2968,7 +2968,7 @@ function game_hub() {
   const ap = AP_BY[save.loc], p = PL_BY[save.plane];
   return { money: save.money, moneyText: fmtRub(save.money), loc: ap.id, city: ap.city, locName: ap.name, plane: p.id, planeName: p.name, short: p.short, flights: save.flights, landings: save.landings, pax: save.pax,
     bestSink: save.bestSink, rank: rankOf(save.xp), xp: save.xp, fatigue: Math.round(save.fatigue || 0), rep: Math.round(save.rep), crews: save.crews || 0, copilot: !!save.copilot, fuelMul: save.fuelMul || 1,
-    opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
+    opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, sat: save.sat !== false, emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
     stat: save.stat, top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
 }
 function game_opt(k, v) { save[k] = v; return true; }

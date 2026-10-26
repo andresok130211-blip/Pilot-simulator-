@@ -62,6 +62,7 @@ func _start(to := "", drill := ""):
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
+	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)))
 	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
 	for a in r.aps:
 		lo0 = minf(lo0, float(a.lon)); lo1 = maxf(lo1, float(a.lon)); la0 = minf(la0, float(a.lat)); la1 = maxf(la1, float(a.lat))

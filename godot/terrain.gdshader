@@ -17,6 +17,27 @@ uniform int ap_n = 0;
 uniform vec4 cty[8];   // lon, lat, радиус (м), население
 uniform int cty_n = 0;
 uniform float night = 0.0;
+uniform sampler2D sat_mid : source_color, filter_linear, repeat_disable;
+uniform sampler2D sat_near : source_color, filter_linear, repeat_disable;
+uniform vec2 sat_mid_org = vec2(0.0);
+uniform float sat_mid_size = 1.0;
+uniform vec2 sat_near_org = vec2(0.0);
+uniform float sat_near_size = 1.0;
+uniform float sat_on = 0.0;
+vec4 sat_sample(vec2 ll){
+  float la = radians(clamp(ll.y, -85.0, 85.0));
+  vec2 m = vec2((ll.x + 180.0) / 360.0, 0.5 - log(tan(0.78539816 + la * 0.5)) / 6.2831853);
+  vec4 r = vec4(0.0);
+  vec2 u0 = (m - sat_mid_org) / sat_mid_size;
+  if (u0.x > 0.0 && u0.x < 1.0 && u0.y > 0.0 && u0.y < 1.0) { r = texture(sat_mid, u0); r.a *= smoothstep(0.0, 0.04, min(min(u0.x, 1.0 - u0.x), min(u0.y, 1.0 - u0.y))); }
+  vec2 u1 = (m - sat_near_org) / sat_near_size;
+  if (u1.x > 0.0 && u1.x < 1.0 && u1.y > 0.0 && u1.y < 1.0) {
+    vec4 n = texture(sat_near, u1);
+    n.a *= smoothstep(0.0, 0.03, min(min(u1.x, 1.0 - u1.x), min(u1.y, 1.0 - u1.y)));
+    r = mix(r, n, n.a); r.a = max(r.a, n.a);
+  }
+  return r;
+}
 varying float v_fl;
 varying vec2 v_ll;
 varying vec3 v_world;
@@ -113,6 +134,7 @@ void fragment(){
   float fm = smoothstep(9000.0, 40000.0, dist);
   float n1 = mix(fbm(v_ll * 900.0), 0.5, fh), n2 = mix(fbm(v_ll * 3200.0), 0.5, fh);
   vec3 emis = vec3(0.0);
+  float sat_a = 0.0;
   if (land < 0.5) {
     col = mix(vec3(0.03, 0.17, 0.30), vec3(0.09, 0.33, 0.45), n2);
     ROUGHNESS = 0.15; SPECULAR = 0.8;
@@ -141,6 +163,9 @@ void fragment(){
     col = mix(col, vec3(0.92, 0.94, 0.96), polar * 0.7);
     // пляж
     col = mix(col, vec3(0.78, 0.72, 0.52), (1.0 - smoothstep(2.0, 14.0, h)) * 0.7);
+    vec4 sat = sat_sample(v_ll) * sat_on;
+    sat_a = sat.a;
+    col = mix(col, sat.rgb * 1.05, sat.a * 0.94 * step(0.5, land));
     // города: серая застройка, кварталы, ночью — огни
     for (int i = 0; i < 8; i++) {
       if (i >= cty_n) break;
@@ -157,7 +182,7 @@ void fragment(){
       float blk = mix(0.55 + 0.35 * hb, 0.62, fh);
       vec3 ucol = mix(vec3(0.50, 0.49, 0.47), vec3(0.62, 0.60, 0.57), dens) * blk;
       ucol = mix(ucol, vec3(0.25, 0.25, 0.26), clamp(road, 0.0, 1.0) * (1.0 - fh) * 0.8);
-      col = mix(col, ucol, urb);
+      col = mix(col, ucol, urb * (1.0 - sat_a));
       vec2 wc = floor(dd / 9.0);
       float lit = step(0.3, hb) * (1.0 - clamp(road, 0.0, 1.0)) * step(0.45, hash(wc + 3.7)) * (0.6 + 0.4 * hash(wc));
       lit = mix(lit, 0.3, fh);

@@ -17,6 +17,7 @@ var tower_set := false
 var cur_ll := Vector2.ZERO
 var plane_id := ""
 var orbit := 0.0
+var tiles
 var orbit_up := 0.28
 var orbit_d := 1.5
 var clouds := []        # материалы облачных слоёв
@@ -85,6 +86,7 @@ func _build_terrain():
 	mat.set_shader_parameter("bio", load("res://assets/bio.png"))
 	mat.set_shader_parameter("coast", load("res://assets/coast.png"))
 	terrain.material_override = mat; add_child(terrain)
+	tiles = load("res://tiles.gd").new(); add_child(tiles); tiles.setup(mat)
 
 
 # ---------- облака ----------
@@ -317,6 +319,7 @@ func update_state(s: Dictionary, delta: float):
 	var lat: float = s.lat; var lon: float = s.lon
 	cur_ll = Vector2(lon, lat)
 	mat.set_shader_parameter("center_ll", cur_ll)
+	tiles.update_pos(lon, lat)
 	var alt: float = s.alt
 	plane.position = Vector3(0, alt + 3.0, 0)
 	var hdg: float = s.hdg
