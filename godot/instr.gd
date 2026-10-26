@@ -28,6 +28,7 @@ func _draw():
 	if mode == 0 and not cockpit: return
 	_pfd(Vector2(80, 100), 135.0)
 	if mode == 2: _eng(Vector2(1000, 100))
+	_map(Rect2(730, 100, 240, 130))
 
 func _pfd(o: Vector2, r: float):
 	var c := o + Vector2(r, r)
@@ -87,3 +88,16 @@ func _eng(o: Vector2):
 	_t(o + Vector2(0, 262), "Ветер %d°/%d м/с  QNH %d" % [float(s.wx.dir), float(s.wx.spd), float(s.wx.qnh)], 16)
 	_t(o + Vector2(0, 286), "Темп. %d°C  Число М %.2f" % [float(s.wx.temp), float(s.mach)], 16)
 	_t(o + Vector2(0, 310), "Тормоз %s  Реверс %s" % ["ДА" if s.c.brake else "нет", "ДА" if s.c.rev else "нет"], 16)
+
+func _map(r: Rect2):
+	draw_rect(r, Color(0, 0, 0, 0.5))
+	var D := float(s.D); var k := (r.size.x - 40.0) / maxf(D, 1000.0)
+	var a := r.position + Vector2(20, r.size.y * 0.5); var b := a + Vector2(D * k, 0)
+	draw_line(a, b, Color(0.4, 0.7, 1, 0.8), 2.0)
+	draw_circle(a, 4, Color(0.5, 1, 0.6)); draw_circle(b, 4, Color(1, 0.7, 0.3))
+	_t(a + Vector2(-8, 24), str(s.rw0.id), 14, Color(0.5, 1, 0.6)); _t(b + Vector2(-16, 24), str(s.rw1.id), 14, Color(1, 0.7, 0.3))
+	var p := a + Vector2(float(s.x) * k, clampf(float(s.y) * k, -r.size.y * 0.45, r.size.y * 0.45))
+	var ang := float(s.psi)
+	var pts := PackedVector2Array([p + Vector2(9, 0).rotated(ang), p + Vector2(-6, 5).rotated(ang), p + Vector2(-6, -5).rotated(ang)])
+	draw_colored_polygon(pts, Color(1, 1, 1))
+	_t(r.position + Vector2(6, 16), "%d км до ВПП" % (float(s.dist) / 1000.0), 14)

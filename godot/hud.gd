@@ -39,11 +39,26 @@ func _button(text: String, act: String, w := 128.0) -> Button:
 	b.pressed.connect(func(): _on_act(act))
 	return b
 
+var radio_p: PanelContainer
+var last_s := {}
+func toggle_radio():
+	if radio_p and radio_p.visible: radio_p.visible = false; return
+	if radio_p: radio_p.queue_free()
+	radio_p = PanelContainer.new(); radio_p.position = Vector2(480, 110); add_child(radio_p)
+	var v := VBoxContainer.new(); radio_p.add_child(v)
+	var gnd: bool = bool(last_s.get("onGround", true)) and not bool(last_s.get("air", false))
+	var air: bool = bool(last_s.get("air", false)) and not bool(last_s.get("onGround", false))
+	for d in [["Руление", "taxi", gnd], ["Взлёт", "to", gnd], ["Эшелон выше", "climb", air], ["Посадка", "land", air], ["PAN-PAN", "pan", true], ["MAYDAY", "may", true]]:
+		if d[2]:
+			var b := _button(d[0], "radio:" + d[1], 220)
+			b.pressed.connect(func(): radio_p.visible = false); v.add_child(b)
+
 func _on_act(a: String):
 	match a:
 		"view": get_parent().world.cycle_cam()
 		"exit": exit_pressed.emit()
 		"altp": toggle_alts()
+		"radio": toggle_radio()
 		_: Sim.act(a)
 
 func _ready():
@@ -68,9 +83,9 @@ func _ready():
 	rows.set_anchors_preset(Control.PRESET_BOTTOM_LEFT); rows.position = Vector2(120, -150); add_child(rows)
 	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); rows.add_child(r1); rows.add_child(r2)
 	var defs1 := [["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["ТОРМОЗ", "brake"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ТЕМП", "warp"]]
-	var defs2 := [["А/П", "ap"], ["А/Т", "at"], ["ЗАХОД", "appr"], ["ВЫС −", "altd"], ["ВЫС +", "altu"], ["ЗАПАСНЫЕ", "altp"], ["ВИД", "view"], ["МЕНЮ", "exit"]]
-	for d in defs1: var b := _button(d[0], d[1], 120); btn[d[1]] = b; r1.add_child(b)
-	for d in defs2: var b2 := _button(d[0], d[1], 120); btn[d[1]] = b2; r2.add_child(b2)
+	var defs2 := [["А/П", "ap"], ["А/Т", "at"], ["ЗАХОД", "appr"], ["ВЫС −", "altd"], ["ВЫС +", "altu"], ["ЗАПАСНЫЕ", "altp"], ["ВИД", "view"], ["РАДИО", "radio"], ["МЕНЮ", "exit"]]
+	for d in defs1: var b := _button(d[0], d[1], 108); btn[d[1]] = b; r1.add_child(b)
+	for d in defs2: var b2 := _button(d[0], d[1], 108); btn[d[1]] = b2; r2.add_child(b2)
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
@@ -121,6 +136,7 @@ func refresh_alts():
 func update_state(s: Dictionary):
 	if s.is_empty(): return
 	var c: Dictionary = s.c
+	last_s = s
 	instr.put(s, mode, cockpit)
 	info.visible = mode < 2
 	info.text = "СК %d км/ч   ВЫС %d м   В/С %+d м/с   КУРС %03d°   М %.2f   до ВПП %.1f км   топливо %d кг   закр %s   шасси %s" % [
