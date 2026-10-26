@@ -20,7 +20,8 @@ func close():
 func _frame(title: String, back := "") -> VBoxContainer:
 	if root: root.queue_free()
 	root = Control.new(); root.set_anchors_preset(Control.PRESET_FULL_RECT); add_child(root)
-	var bg := ColorRect.new(); bg.color = Color(0.04, 0.08, 0.15, 0.96); bg.set_anchors_preset(Control.PRESET_FULL_RECT); root.add_child(bg)
+	root.theme = _theme()
+	var bg := ColorRect.new(); bg.color = Color(0.04, 0.08, 0.15, 0.97); bg.set_anchors_preset(Control.PRESET_FULL_RECT); root.add_child(bg)
 	var top := HBoxContainer.new(); top.position = Vector2(40, 16); top.custom_minimum_size = Vector2(1200, 60); root.add_child(top)
 	if back != "":
 		var b := _btn("‹ Назад", func(): scr = back; _render(), 22); b.custom_minimum_size = Vector2(150, 54); top.add_child(b)
@@ -30,9 +31,25 @@ func _frame(title: String, back := "") -> VBoxContainer:
 	body = VBoxContainer.new(); body.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_theme_constant_override("separation", 10); sc.add_child(body)
 	return body
 
+var _th: Theme
+func _theme() -> Theme:
+	if _th: return _th
+	_th = Theme.new()
+	var mk := func(c: Color) -> StyleBoxFlat:
+		var sb := StyleBoxFlat.new(); sb.bg_color = c; sb.set_corner_radius_all(14)
+		sb.content_margin_left = 18; sb.content_margin_right = 18; sb.content_margin_top = 10; sb.content_margin_bottom = 10
+		sb.border_color = Color(0.25, 0.4, 0.65, 0.5); sb.set_border_width_all(1); return sb
+	_th.set_stylebox("normal", "Button", mk.call(Color(0.11, 0.19, 0.32)))
+	_th.set_stylebox("hover", "Button", mk.call(Color(0.15, 0.26, 0.43)))
+	_th.set_stylebox("pressed", "Button", mk.call(Color(0.2, 0.45, 0.8)))
+	_th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	_th.set_color("font_color", "Button", Color(0.93, 0.96, 1.0))
+	_th.set_color("font_pressed_color", "Button", Color.WHITE)
+	return _th
+
 func _btn(text: String, cb: Callable, fs := 24) -> Button:
 	var b := Button.new(); b.text = text; b.add_theme_font_size_override("font_size", fs); b.custom_minimum_size = Vector2(0, 58)
-	b.pressed.connect(cb); return b
+	b.mouse_filter = Control.MOUSE_FILTER_PASS; b.pressed.connect(cb); return b
 
 func _lbl(text: String, fs := 22, col := Color(0.88, 0.93, 1.0)) -> Label:
 	var l := Label.new(); l.text = text; l.add_theme_font_size_override("font_size", fs); l.add_theme_color_override("font_color", col)
@@ -55,14 +72,14 @@ func _render():
 func _hub():
 	var h = Sim.g("game_hub")
 	var b := _frame("✈ Pilot Sim 3D")
-	b.add_child(_lbl("🎖 %s · %d XP    💰 %s    📍 %s (%s)    🛩 %s" % [h.rank.name, int(h.xp), h.moneyText, h.city, h.loc, h.short], 24))
+	b.add_child(_lbl("%s · %d XP     %s     %s (%s)     %s" % [h.rank.name, int(h.xp), h.moneyText, h.city, h.loc, h.short], 24))
 	b.add_child(_lbl("Рейсов: %d · Посадок: %d · Пассажиров: %d · Репутация: %d · Усталость: %d%%" % [int(h.flights), int(h.landings), int(h.pax), int(h.rep), int(h.fatigue)], 20, Color(0.7, 0.8, 0.95)))
-	var go := _btn("ВЫБРАТЬ РЕЙС ✈", func(): scr = "select"; _render(), 34); go.custom_minimum_size = Vector2(0, 84); b.add_child(go)
+	var go := _btn("ВЫБРАТЬ РЕЙС ✈", func(): scr = "select"; _render(), 34); go.custom_minimum_size = Vector2(0, 96); var gs := StyleBoxFlat.new(); gs.bg_color = Color(0.13, 0.5, 0.9); gs.set_corner_radius_all(18); go.add_theme_stylebox_override("normal", gs); b.add_child(go)
 	var r := _row(); b.add_child(r)
 	for it in [["Ангар", "hangar"], ["Тренажёр ЧП", "drill"], ["Рекорды", "records"], ["Настройки", "settings"]]:
 		var bb := _btn(it[0], func(): scr = it[1]; _render()); bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r.add_child(bb)
 	if int(h.fatigue) >= 25:
-		b.add_child(_btn("😴 Отдых (−усталость) — 40 000 ₽", func(): Sim.g("game_rest"); Sim.persist(); _render()))
+		b.add_child(_btn("Отдых (−усталость) — 40 000 ₽", func(): Sim.g("game_rest"); Sim.persist(); _render()))
 
 # ---------- выбор рейса ----------
 func _select():
@@ -86,7 +103,7 @@ func _select():
 func _hangar():
 	var d = Sim.g("game_hangar")
 	var b := _frame("Ангар", "hub")
-	b.add_child(_lbl("💰 %s   ⭐ репутация %d" % [_rub(d.money), int(d.rep)], 24))
+	b.add_child(_lbl("%s   ⭐ репутация %d" % [_rub(d.money), int(d.rep)], 24))
 	var cr := _row(); b.add_child(cr)
 	var bc := _btn("Экипажи: %d/5 · нанять %s" % [int(d.crews), _rub(d.crewCost)], func(): Sim.g("game_crew"); Sim.persist(); _render(), 20); bc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cr.add_child(bc)
 	var bp := _btn("Второй пилот: %s" % ("вкл" if d.copilot else "выкл"), func(): Sim.g("game_copilot"); Sim.persist(); _render(), 20); bp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cr.add_child(bp)
@@ -182,7 +199,7 @@ func show_result(r: Dictionary):
 		b.add_child(_lbl("ИТОГО: %s%s    (баланс %s)" % ["+" if int(r.net) >= 0 else "", _rub(r.net), _rub(r.money)], 28, Color(1, 1, 1)))
 	if int(r.xp) > 0: b.add_child(_lbl("Опыт: +%d XP" % int(r.xp), 22))
 	for e in r.evLog: b.add_child(_lbl("ЧП «%s»: %s" % [e.title, {"ok": "решено ✔", "late": "с опозданием", "fail": "провалено ✖"}.get(str(e.outcome), str(e.outcome))], 20, Color(0.8, 0.9, 1)))
-	if str(r.rankUp) != "": b.add_child(_lbl("🎖 Новое звание: %s" % r.rankUp, 28, Color(1, 0.85, 0.3)))
+	if str(r.rankUp) != "": b.add_child(_lbl("Новое звание: %s" % r.rankUp, 28, Color(1, 0.85, 0.3)))
 	var r2 := _row(); b.add_child(r2)
 	var bm := _btn("В меню", func(): scr = "hub"; _render()); bm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(bm)
 	var ba := _btn("Ещё рейс", func(): scr = "select"; _render()); ba.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(ba)

@@ -89,12 +89,15 @@ float height_at(vec2 ll, float d, vec2 xz, out float fl){
   float w2 = 1.0 - smoothstep(1000.0, 2400.0, sp);    // ~2.6 км
   float w3 = 1.0 - smoothstep(40.0, 110.0, sp);       // ~265 м
   float w0 = 1.0 - smoothstep(6000.0, 14000.0, sp);   // ~9 км
-  float r1 = pow(1.0 - abs(2.0*fbm(ll*140.0)-1.0), 2.0);
-  float r2 = pow(1.0 - abs(2.0*fbm(ll*42.0 + 5.0)-1.0), 2.0);
   float amp = clamp(0.45*h - 260.0, 0.0, 1500.0);
-  float det = (fbm(ll*12.0) - 0.45) * min(300.0, 40.0 + 0.08*h) * w0
-            + (r2 - 0.35) * amp * 0.8 * w2 + (r1 - 0.35) * amp * 0.45 * w1
-            + (fbm(ll*420.0) - 0.5) * min(160.0, 0.06*h) * w3;
+  float r1 = 0.0, r2 = 0.0;
+  if (amp > 0.0 && w2 > 0.0) r2 = pow(1.0 - abs(2.0*fbm(ll*42.0 + 5.0)-1.0), 2.0);
+  if (amp > 0.0 && w1 > 0.0) r1 = pow(1.0 - abs(2.0*fbm(ll*140.0)-1.0), 2.0);
+  float det = 0.0;
+  if (w0 > 0.0) det += (fbm(ll*12.0) - 0.45) * min(300.0, 40.0 + 0.08*h) * w0;
+  if (w2 > 0.0 && amp > 0.0) det += (r2 - 0.35) * amp * 0.8 * w2;
+  if (w1 > 0.0 && amp > 0.0) det += (r1 - 0.35) * amp * 0.45 * w1;
+  if (w3 > 0.0) det += (fbm(ll*420.0) - 0.5) * min(160.0, 0.06*h) * w3;
   h = max(0.0, h + det * smoothstep(0.0, 400.0, h));
   if (apt_n > 0) h = mix(apt_elev(ll), h, apt_k(ll));
   return h;
@@ -113,9 +116,12 @@ void vertex(){
   // нормаль по конечным разностям той же функции высоты
   float e = max(12.0, 0.04 * d);
   float f1, f2;
-  float hx = height_at(ll_of(v + vec3(e, 0.0, 0.0)), d, v.xz + vec2(e, 0.0), f1) * k;
-  float hz = height_at(ll_of(v + vec3(0.0, 0.0, e)), d, v.xz + vec2(0.0, e), f2) * k;
-  v_nrm = normalize(vec3(-(hx - h) / e, 1.0, -(hz - h) / e));
+  v_nrm = vec3(0.0, 1.0, 0.0);
+  if (d < 45000.0) {
+    float hx = height_at(ll_of(v + vec3(e, 0.0, 0.0)), d, v.xz + vec2(e, 0.0), f1) * k;
+    float hz = height_at(ll_of(v + vec3(0.0, 0.0, e)), d, v.xz + vec2(0.0, e), f2) * k;
+    v_nrm = normalize(vec3(-(hx - h) / e, 1.0, -(hz - h) / e));
+  }
   v_h = h;
   VERTEX.y = h - d*d/(2.0*R_E);
   v_world = VERTEX;
@@ -124,7 +130,9 @@ void vertex(){
 void fragment(){
   vec2 uvm = vec2((v_ll.x + 180.0) / 360.0, (90.0 - v_ll.y) / 180.0);
   float cdist = length(VERTEX);
-  float cl = texture(coast, uvm).r + (fbm(v_ll * 420.0) - 0.5) * 0.5 * (1.0 - smoothstep(4000.0, 25000.0, cdist)) * (1.0 - step(0.999, texture(coast, uvm).r)) * step(0.001, texture(coast, uvm).r + 0.3);
+  float cr0 = texture(coast, uvm).r;
+  float cl = cr0;
+  if (cdist < 25000.0 && cr0 > 0.001 && cr0 < 0.999) cl += (fbm(v_ll * 420.0) - 0.5) * 0.5 * (1.0 - smoothstep(4000.0, 25000.0, cdist));
   float land = max(cl, step(0.5, 1.0 - v_fl));
   if (apt_n > 0) land = max(land, 1.0 - apt_k(v_ll));
   float b = texture(bio, uvm).r * 255.0;
@@ -132,7 +140,8 @@ void fragment(){
   float dist = length(VERTEX);
   float fh = smoothstep(2500.0, 14000.0, dist);   // с расстоянием гасим мелкий шум (против муара)
   float fm = smoothstep(9000.0, 40000.0, dist);
-  float n1 = mix(fbm(v_ll * 900.0), 0.5, fh), n2 = mix(fbm(v_ll * 3200.0), 0.5, fh);
+  float n1 = 0.5, n2 = 0.5;
+  if (fh < 1.0) { n1 = mix(fbm(v_ll * 900.0), 0.5, fh); n2 = mix(fbm(v_ll * 3200.0), 0.5, fh); }
   vec3 emis = vec3(0.0);
   float sat_a = 0.0;
   if (land < 0.5) {
@@ -141,9 +150,12 @@ void fragment(){
   } else {
     float h = v_h;
     col = vec3(0.40, 0.52, 0.25) + (n1 - 0.5) * vec3(0.16, 0.09, 0.05);
-    float field = mix(smoothstep(0.52, 0.66, fbm(v_ll * 2400.0)), 0.22, fh);
+    float field = 0.22;
+    if (fh < 1.0) field = mix(smoothstep(0.52, 0.66, fbm(v_ll * 2400.0)), 0.22, fh);
     col = mix(col, vec3(0.65, 0.59, 0.36), field * 0.7);
-    float forest = mix(smoothstep(0.55, 0.65, fbm(v_ll * 1300.0 + 7.0)), 0.3 * smoothstep(0.3, 0.7, fbm(v_ll * 60.0 + 3.0)), fh) * (1.0 - smoothstep(1200.0, 2000.0, h));
+    float fo = 0.3 * smoothstep(0.3, 0.7, fbm(v_ll * 60.0 + 3.0));
+    if (fh < 1.0) fo = mix(smoothstep(0.55, 0.65, fbm(v_ll * 1300.0 + 7.0)), fo, fh);
+    float forest = fo * (1.0 - smoothstep(1200.0, 2000.0, h));
     // крупные пятна: поля/леса/луга видны и издали
     col = mix(col, col * (0.82 + 0.36 * fbm(v_ll * 40.0)), fm);
     col = mix(col, vec3(0.15, 0.31, 0.17), forest);

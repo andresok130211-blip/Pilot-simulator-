@@ -61,7 +61,7 @@ func _build_env(tod: int):
 	sun = DirectionalLight3D.new(); add_child(sun)
 
 func _build_terrain():
-	var rings := 370; var segs := 256
+	var rings := 330; var segs := 192
 	var verts := PackedVector3Array(); var idx := PackedInt32Array()
 	var r := 3.0
 	verts.append(Vector3.ZERO)
@@ -69,7 +69,7 @@ func _build_terrain():
 		for j in range(segs):
 			var a := TAU * j / segs
 			verts.append(Vector3(cos(a) * r, 0, sin(a) * r))
-		r *= 1.033
+		r *= 1.0375
 	for j in range(segs): idx.append_array([0, 1 + (j + 1) % segs, 1 + j])
 	for i in range(rings):
 		for j in range(segs):
