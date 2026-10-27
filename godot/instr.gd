@@ -20,20 +20,37 @@ func _draw():
 	if s.is_empty(): return
 	if cockpit: _cockpit(); return
 	_topbar()
-	if mode == 0: return
-	_pfd(Vector2(190, 100), 135.0)
-	if mode == 2: _eng(Vector2(1000, 100))
-	_radar(radar_rect().get_center(), 115.0)
+	_tapes()
+	if mode == 2: _eng(Vector2(1030, 24))
+	_radar(radar_rect().get_center(), 112.0)
 
 # верхняя плашка: маршрут, остаток, время
 func _topbar():
-	if mode == 0: return
-	var r := Rect2(470, 8, 560, 52)
-	draw_rect(r, Color(0.05, 0.08, 0.12, 0.75), true)
-	_t(r.position + Vector2(12, 36), "%s → %s" % [str(s.rw0.id), str(s.rw1.id)], 26)
-	_t(r.position + Vector2(215, 38), "%d км" % (float(s.dist) / 1000.0), 32, Color(0.4, 1, 0.55))
+	var r := Rect2(293, 14, 694, 54)
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.1, 0.13, 0.17, 0.82); sb.set_corner_radius_all(14); draw_style_box(sb, r)
+	_t(r.position + Vector2(10, 37), "%s → %s" % [str(s.rw0.id), str(s.rw1.id)], 26)
+	_t(r.position + Vector2(285, 40), "%d км" % (float(s.dist) / 1000.0), 34, Color(0.4, 1, 0.55))
 	var v := maxf(float(s.v), 60.0); var m := int(float(s.dist) / v / 60.0)
-	_t(r.position + Vector2(400, 36), "%d ч %02d мин" % [m / 60, m % 60], 24)
+	_t(r.position + Vector2(500, 38), "◷ %d ч %02d мин" % [m / 60, m % 60], 24, Color(0.9, 0.95, 1))
+
+# ленты скорости и высоты по бокам от самолёта
+func _tapes():
+	var spd := float(s.ias) * 3.6; var alt := float(s.alt)
+	_tape(Rect2(378, 117, 58, 200), spd, 20.0, 1.2, true)
+	_tape(Rect2(806, 117, 66, 200), alt, 50.0, 0.8, false)
+
+func _tape(r: Rect2, val: float, step: float, k: float, left: bool):
+	draw_rect(r, Color(0.05, 0.08, 0.12, 0.7), true)
+	var cy := r.get_center().y
+	for i in range(-7, 8):
+		var v := roundf(val / step) * step + i * step
+		var y := cy - (v - val) * k
+		if y < r.position.y + 12 or y > r.end.y - 12 or v < 0: continue
+		var x := r.end.x if left else r.position.x
+		draw_line(Vector2(x, y), Vector2(x + (-9 if left else 9), y), Color.WHITE, 2.0)
+		_t(Vector2(r.position.x + 6, y + 6), "%d" % v, 17)
+	draw_rect(Rect2(r.position.x, cy - 15, r.size.x, 30), Color(0, 0, 0, 0.92))
+	_t(Vector2(r.position.x + 6, cy + 8), "%d" % val, 22, Color(0.45, 1, 0.55))
 
 # кабина: подголовник, лобовое, MCP, приборная панель (по фото кабины 737)
 func _cockpit():
@@ -134,20 +151,33 @@ func _eng(o: Vector2):
 
 var rng := 40000.0
 var sweep := 0.0
-func radar_rect() -> Rect2: return Rect2(730, 96, 250, 250) if not cockpit else Rect2(412, 352, 112, 112)
+func radar_rect() -> Rect2: return Rect2(42, 45, 224, 224) if not cockpit else Rect2(412, 352, 112, 112)
 
 func _radar(c: Vector2, R: float):
 	var r := Rect2(c - Vector2(R, R), Vector2(R, R) * 2.0)
 	sweep = fmod(sweep + 0.06, TAU)
-	draw_circle(c, R + 8, Color(0, 0, 0, 0.6)); draw_circle(c, R, Color(0.02, 0.12, 0.06, 0.85))
-	for q in [0.33, 0.66, 1.0]: draw_arc(c, R * q, 0, TAU, 48, Color(0.2, 0.7, 0.35, 0.6), 1.5)
-	draw_line(c + Vector2(0, -R), c + Vector2(0, R), Color(0.2, 0.7, 0.35, 0.35), 1.0); draw_line(c + Vector2(-R, 0), c + Vector2(R, 0), Color(0.2, 0.7, 0.35, 0.35), 1.0)
-	draw_line(c, c + Vector2(0, -R).rotated(sweep), Color(0.5, 1, 0.6, 0.8), 2.0)
+	draw_circle(c, R + 6, Color(0.55, 0.9, 0.85, 0.9)); draw_circle(c, R, Color(0.03, 0.14, 0.12, 0.92))
+	for q in [0.33, 0.66]: draw_arc(c, R * q, 0, TAU, 48, Color(0.35, 0.65, 0.4, 0.7), 1.5)
+	var gcol := Color(0.3, 0.55, 0.35, 0.45)
+	for g in range(-3, 4):
+		draw_line(c + Vector2(g * R / 3.2, -R), c + Vector2(g * R / 3.2, R), gcol, 1.0); draw_line(c + Vector2(-R, g * R / 3.2), c + Vector2(R, g * R / 3.2), gcol, 1.0)
+	draw_line(c, c + Vector2(0, -R).rotated(sweep), Color(0.5, 1, 0.6, 0.5), 2.0)
 	var k := R / rng; var psi := float(s.psi); var cs := cos(psi); var sn := sin(psi)
 	var px := float(s.x); var pz := float(s.y)
 	var a := _rp(c, k, 0.0, 0.0, px, pz, cs, sn); var b := _rp(c, k, float(s.D), 0.0, px, pz, cs, sn)
-	draw_line(a.clamp(c - Vector2(R, R), c + Vector2(R, R)), b.clamp(c - Vector2(R, R), c + Vector2(R, R)), Color(1, 0.4, 1, 0.8), 2.0)
-	if b.distance_to(c) < R: draw_circle(b, 5, Color(1, 0.7, 0.3)); _t(b + Vector2(6, -6), str(s.rw1.id), 13, Color(1, 0.7, 0.3))
+	# маршрут пунктиром, точки IAF (25 км) и FAF (12 км) до ВПП назначения
+	var dd := b - a
+	if dd.length() > 1.0:
+		var u := dd.normalized(); var n := int(minf(dd.length(), 3000.0) / 14.0)
+		for i in range(n):
+			var p0 := a + u * (i * 14.0); var p1 := p0 + u * 8.0
+			if p0.distance_to(c) < R - 3.0 and p1.distance_to(c) < R - 3.0: draw_line(p0, p1, Color(0.55, 0.9, 1, 0.95), 2.5)
+		for fx in [[25000.0, "IAF", Color(0.75, 0.5, 1)], [12000.0, "FAF", Color(0.45, 1, 0.9)]]:
+			var fp := b - u * (float(fx[0]) * k)
+			if fp.distance_to(c) < R - 12.0:
+				draw_rect(Rect2(fp - Vector2(7, 7), Vector2(14, 14)), Color(0.4, 1, 0.5, 0.35)); draw_rect(Rect2(fp - Vector2(7, 7), Vector2(14, 14)), Color(0.4, 1, 0.5), false, 2.0)
+				_t(fp + Vector2(10, 2), str(fx[1]), 14, fx[2])
+	if b.distance_to(c) < R: _t(b + Vector2(8, -8), str(s.rw1.id), 17, Color.WHITE)
 	if a.distance_to(c) < R: draw_circle(a, 4, Color(0.5, 1, 0.6)); _t(a + Vector2(6, -6), str(s.rw0.id), 13, Color(0.5, 1, 0.6))
 	for t in s.get("trf", []):
 		var p := _rp(c, k, float(t[0]), float(t[1]), px, pz, cs, sn)
@@ -155,12 +185,14 @@ func _radar(c: Vector2, R: float):
 			var dh := float(t[2]) - float(s.alt)
 			var col := Color(1, 0.3, 0.3) if absf(dh) < 600.0 else Color(0.4, 0.8, 1)
 			draw_rect(Rect2(p - Vector2(4, 4), Vector2(8, 8)), col); _t(p + Vector2(7, 4), "%+d" % (dh / 100.0), 13, col)
-	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -9), c + Vector2(6, 7), c + Vector2(-6, 7)]), Color.WHITE)
-	_t(r.position + Vector2(R * 0.55, R * 1.95), "%d км" % (rng / 1000.0), 13, Color(0.6, 1, 0.7))
-	# подсказка курса к аэродрому назначения
+	# север: метка «С» на кольце
+	var na := -deg_to_rad(float(s.hdg))
+	_t(c + Vector2(0, -(R - 14)).rotated(na) + Vector2(-5, 5), "С", 15, Color(1, 0.5, 0.3))
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -17), c + Vector2(11, 14), c + Vector2(0, 8), c + Vector2(-11, 14)]), Color.WHITE)
+	_t(r.position + Vector2(R * 1.3, R * 1.95), "%d км" % (rng / 1000.0), 14 if R > 80 else 11, Color(0.7, 1, 0.8))
 	var tb := _rp(c, 1.0, float(s.D), 0.0, px, pz, cs, sn)
 	var ang := rad_to_deg(atan2(tb.x - c.x, -(tb.y - c.y)))
-	if absf(ang) > 2.0: _t(r.position + Vector2(R * 0.45, 18), "%s %d°" % ["ВПРАВО" if ang > 0 else "ВЛЕВО", int(absf(ang))], 15 if R > 80 else 11, Color(1, 0.8, 0.3))
+	if absf(ang) > 2.0: _t(r.position + Vector2(R * 0.5, 26), "%s %d°" % ["ВПРАВО" if ang > 0 else "ВЛЕВО", int(absf(ang))], 20 if R > 80 else 11, Color(1, 0.75, 0.3))
 
 func _rp(c: Vector2, k: float, tx: float, tz: float, px: float, pz: float, cs: float, sn: float) -> Vector2:
 	var dx := tx - px; var dz := tz - pz

@@ -68,6 +68,7 @@ export function sim_act(a) {
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (!c.rev) { c.thr = c.t1 = c.t2 = 0; c.split = false; } } else f.msg('Реверс — только на пробеге'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
+    case 'nav': c.nav = !c.nav; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'start': if (f.cold) { if (f.gate.done) f.startReq = true; else f.msg('Дождитесь окончания обслуживания'); } break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; break; }

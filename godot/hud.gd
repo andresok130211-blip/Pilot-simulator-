@@ -35,8 +35,11 @@ func _lbl(size := 20) -> Label:
 
 func _button(text: String, act: String, w := 128.0) -> Button:
 	var b := Button.new()
-	b.text = text; b.custom_minimum_size = Vector2(w, 56)
-	b.add_theme_font_size_override("font_size", 17)
+	b.text = text; b.custom_minimum_size = Vector2(w, 56 if w > 100 else 48)
+	b.add_theme_font_size_override("font_size", 17 if w > 100 else 12)
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.09, 0.11, 0.2, 0.88); sb.set_corner_radius_all(11); sb.border_color = Color(0.45, 0.55, 0.8, 0.5); sb.set_border_width_all(1)
+	sb.content_margin_left = 2; sb.content_margin_right = 2; sb.content_margin_top = 2; sb.content_margin_bottom = 2
+	for st in ["normal", "hover", "pressed", "disabled"]: b.add_theme_stylebox_override(st, sb)
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.pressed.connect(func(): _on_act(act))
@@ -60,6 +63,9 @@ func toggle_radio():
 func _link_look():
 	var b: Button = get_node("link"); b.text = "СВЯЗАНЫ" if linked else "РАЗДЕЛЬНО"
 	b.modulate = Color(0.45, 1, 0.55) if linked else Color(1, 0.8, 0.5)
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.16, 0.55, 0.3, 0.95) if linked else Color(0.35, 0.3, 0.2, 0.95); sb.set_corner_radius_all(16)
+	for st in ["normal", "hover", "pressed"]: b.add_theme_stylebox_override(st, sb)
+	b.modulate = Color.WHITE
 
 func boarding(left: float):
 	var on := left > 0.0
@@ -89,41 +95,44 @@ func _ready():
 	evbox = _lbl(20); evbox.set_anchors_preset(Control.PRESET_TOP_RIGHT); evbox.position = Vector2(-560, 10); evbox.size = Vector2(540, 200); evbox.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; add_child(evbox)
 	# рычаги газа и штурвал рисуются одним слоем, касания обрабатываются в _input (мультитач)
 	pads = Control.new(); pads.set_anchors_preset(Control.PRESET_FULL_RECT); pads.mouse_filter = Control.MOUSE_FILTER_IGNORE; pads.draw.connect(_draw_pads); add_child(pads)
-	var lk := _button("СВЯЗАНЫ", "link", 112); lk.position = Vector2(10, 178); lk.name = "link"; add_child(lk); _link_look()
+	var lk := _button("СВЯЗАНЫ", "link", 238); lk.position = Vector2(33, 536); lk.add_theme_font_size_override("font_size", 20); lk.name = "link"; add_child(lk); _link_look()
 	# кнопки (ряды)
-	rows = VBoxContainer.new(); rows.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE); rows.position = Vector2(120, -158); rows.size = Vector2(1000, 150); rows.mouse_filter = Control.MOUSE_FILTER_PASS
-	rows.set_anchors_preset(Control.PRESET_BOTTOM_LEFT); rows.position = Vector2(130, -150); add_child(rows)
-	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); rows.add_child(r1); rows.add_child(r2)
-	var defs1 := [["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["ТОРМОЗ", "brake"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ТЕМП", "warp"]]
-	var defs2 := [["А/П", "ap"], ["А/Т", "at"], ["ЗАХОД", "appr"], ["ВЫС −", "altd"], ["ВЫС +", "altu"], ["ЗАПАСНЫЕ", "altp"], ["ВИД", "view"], ["РАДИО", "radio"], ["МЕНЮ", "exit"]]
-	for d in defs1: var b := _button(d[0], d[1], 108); btn[d[1]] = b; r1.add_child(b)
-	for d in defs2: var b2 := _button(d[0], d[1], 108); btn[d[1]] = b2; r2.add_child(b2)
+	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 5); rows.position = Vector2(298, 452); add_child(rows)
+	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 5); r2.add_theme_constant_override("separation", 5); rows.add_child(r1); rows.add_child(r2)
+	var defs1 := [["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["ТОРМОЗ", "brake"], ["×1", "warp"], ["А/П", "ap"], ["А/Т", "at"], ["НАВ", "nav"], ["ВЫС −", "altd"]]
+	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["МЕНЮ", "exit"]]
+	for d in defs1: var b := _button(d[0], d[1], 74); btn[d[1]] = b; r1.add_child(b)
+	for d in defs2: var b2 := _button(d[0], d[1], 74); btn[d[1]] = b2; r2.add_child(b2)
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
 	altp = PanelContainer.new(); altp.visible = false; altp.position = Vector2(300, 90); add_child(altp)
 	altp_v = VBoxContainer.new(); altp.add_child(altp_v)
 
-const LV_X := [10.0, 68.0]
-func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i], get_viewport().get_visible_rect().size.y - 390.0, 52, 330)
+const LV_X := [38.0, 155.0]
+func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i], 304.0, 104, 222)
 
 func _draw_pads():
 	var fnt := ThemeDB.fallback_font
 	for i in range(2):
 		var r := _lv_rect(i); var v: float = thr[i]
-		var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.1, 0.12, 0.16, 0.7); sb.set_corner_radius_all(16); sb.border_color = Color(0.5, 0.6, 0.75, 0.8); sb.set_border_width_all(2)
+		var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.34, 0.35, 0.4, 0.92); sb.set_corner_radius_all(20); sb.border_color = Color(0.62, 0.68, 0.8, 0.9); sb.set_border_width_all(3)
 		pads.draw_style_box(sb, r)
-		var fl := StyleBoxFlat.new(); fl.bg_color = Color(0.3, 0.75, 1.0, 0.55); fl.set_corner_radius_all(14)
-		if v > 0.02: pads.draw_style_box(fl, Rect2(r.position.x + 3, r.end.y - r.size.y * v, r.size.x - 6, r.size.y * v))
-		pads.draw_rect(Rect2(r.position.x - 3, r.end.y - r.size.y * v - 7, r.size.x + 6, 14), Color(1, 1, 1, 0.95))
-		pads.draw_string(fnt, r.position + Vector2(6, 22), "ВЗЛЁТ ▲", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.9))
-		pads.draw_string(fnt, r.position + Vector2(2, r.size.y - 30), "РУЛЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1, 1, 1, 0.9))
-		pads.draw_string(fnt, r.position + Vector2(8, r.size.y - 8), "%d%%" % int(v * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
-		pads.draw_string(fnt, r.position + Vector2(14, -6), "ДВ%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+		pads.draw_colored_polygon(PackedVector2Array([r.position + Vector2(8, 30), r.position + Vector2(r.size.x - 8, 30), r.position + Vector2(8, 118)]), Color(0.45, 0.55, 0.3, 0.9))
+		pads.draw_line(r.position + Vector2(2, 138), r.position + Vector2(r.size.x - 2, 60), Color(1, 1, 1, 0.95), 5.0)
+		var lvl := r.end.y - 34.0 - (r.size.y - 70.0) * v
+		pads.draw_rect(Rect2(r.position.x + 4, lvl, r.size.x - 8, r.end.y - 34.0 - lvl), Color(0.3, 0.75, 1.0, 0.28))
+		pads.draw_rect(Rect2(r.position.x - 3, lvl - 5, r.size.x + 6, 10), Color(1, 1, 1, 0.97))
+		var dy := r.end.y - 34.0 - (r.size.y - 70.0) * 0.18
+		for dx in range(0, int(r.size.x) - 8, 12): pads.draw_line(Vector2(r.position.x + 4 + dx, dy), Vector2(r.position.x + 12 + dx, dy), Color(1, 1, 1, 0.85), 2.0)
+		pads.draw_string(fnt, r.position + Vector2(12, 24), "ВЗЛЁТ ▲", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.95))
+		pads.draw_string(fnt, Vector2(r.position.x + 8, dy + 22), "▼ РУЛЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.95))
+		pads.draw_string(fnt, Vector2(r.position.x + 30, r.end.y - 8), "%d%%" % int(v * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
+		pads.draw_string(fnt, r.position + Vector2(36, -6), "ДВ%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	if cockpit and not fingers.values().has("yoke"): return
-	var o := y_org if fingers.values().has("yoke") else Vector2(1160, get_viewport().get_visible_rect().size.y - 150.0)
+	var o := y_org if fingers.values().has("yoke") else Vector2(1095, 445)
 	var k := o + yoke_knob * 95.0
-	pads.draw_circle(o, 92, Color(0, 0, 0, 0.25)); pads.draw_arc(o, 92, 0, TAU, 48, Color(1, 1, 1, 0.5), 3.0)
+	pads.draw_circle(o, 100, Color(0.45, 0.48, 0.5, 0.55)); pads.draw_arc(o, 100, 0, TAU, 48, Color(0.9, 0.95, 1, 0.8), 3.0)
 	# штурвал U-образный: поворот по крену, смещение по тангажу
 	var ang := yoke_knob.x * 1.1
 	var pts := PackedVector2Array()
@@ -135,7 +144,7 @@ func _draw_pads():
 	pads.draw_polyline(pts, Color(0.18, 0.2, 0.26, 0.95), 14.0)
 	pads.draw_circle(gl, 9, Color(1, 0.7, 0.2)); pads.draw_circle(gr, 9, Color(1, 0.7, 0.2))
 	pads.draw_line(k + Vector2(0, 24).rotated(ang), k + Vector2(0, 90), Color(0.15, 0.17, 0.22, 0.9), 14.0)
-	pads.draw_string(fnt, o + Vector2(-34, -78), "ШТУРВАЛ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.8))
+	pads.draw_string(fnt, o + Vector2(-30, -78), "ШТУРВАЛ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.8))
 
 func _all_buttons(n: Node, out: Array):
 	for c in n.get_children():
@@ -201,7 +210,7 @@ func update_state(s: Dictionary):
 	if cockpit != _ck_prev: _ck_prev = cockpit; pads.queue_redraw()
 	instr.put(s, mode, cockpit)
 	info.visible = mode == 0 and not cockpit
-	log_l.position = Vector2(130, -540) if cockpit else Vector2(230, -330)
+	log_l.position = Vector2(130, -540) if cockpit else Vector2(300, -300)
 	evbox.position.y = 70.0 if cockpit else 10.0
 	info.text = "СК %d км/ч   ВЫС %d м   В/С %+d м/с   КУРС %03d°   М %.2f   до ВПП %.1f км   топливо %d кг   закр %s   шасси %s" % [
 		float(s.ias) * 3.6, float(s.h), float(s.vs), float(s.hdg), float(s.mach), float(s.dist) / 1000.0, float(s.fuel), str(s.flapName), "▼" if float(s.gear) > 0.98 else ("▲" if float(s.gear) < 0.02 else "…")]
@@ -220,9 +229,19 @@ func update_state(s: Dictionary):
 		for ch in ev_row.get_children(): ch.queue_free()
 		for b in s.evBtns:
 			var bb := _button(str(b.t), "ev:" + str(b.k), 200); ev_row.add_child(bb)
+	_labels(s, c)
 	_mark("gear", c.gear); _mark("brake", c.brake); _mark("ap", c.apOn); _mark("at", c.atOn); _mark("appr", c.appr); _mark("rev", c.rev)
 	var st = get_node_or_null("start"); if st: st.visible = not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
 	if c.atOn and not fingers.values().has("t0") and not fingers.values().has("t1"): thr = [float(c.thr), float(c.thr)]; pads.queue_redraw()
+
+func _labels(s: Dictionary, c: Dictionary):
+	var gr := float(s.gear)
+	btn["gear"].text = "ШАССИ\n" + ("▼" if gr > 0.98 else ("▲" if gr < 0.02 else "…"))
+	btn["fl-"].text = "ЗАКР −\n(%s)" % str(s.flapName)
+	btn["warp"].text = "×%d" % int(c.warp)
+	btn["abrk"].text = "АВТОТОРМ\n" + ["—", "1", "2", "MAX"][clampi(int(c.get("abrk", 0)), 0, 3)]
+	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ"][get_parent().world.cam_mode]
+	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false))
 
 func _mark(k: String, on) -> void:
 	if btn.has(k): btn[k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
