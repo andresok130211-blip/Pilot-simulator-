@@ -18,6 +18,7 @@ func _ready():
 	world = load("res://world.gd").new(); world.name = "World"; add_child(world)
 	hud = load("res://hud.gd").new(); hud.name = "HUD"; add_child(hud); hud.visible = false
 	hud.exit_pressed.connect(_to_menu)
+	snd = load("res://sound.gd").new(); add_child(snd)
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	if not _args(): _show_menu()
@@ -69,6 +70,7 @@ func _start(to := "", drill := ""):
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
+	snd.on = bool(Sim.g("game_hub").opts.get("sound", true))
 	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
 	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)))
 	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
@@ -96,6 +98,7 @@ func _end_flight():
 var end_t := 0.0
 var screen_arg := ""
 var board_left := 0.0
+var snd
 var taps := []   # отладка: --tap=x,y,t (касание), --drag=x,y,x2,y2,t
 
 func _process(delta: float):
@@ -109,7 +112,8 @@ func _process(delta: float):
 			tp.append("x")
 			for pr in [true, false]:
 				var ev := InputEventScreenTouch.new(); ev.index = 0; ev.pressed = pr; ev.position = Vector2(float(tp[0]), float(tp[1])); Input.parse_input_event(ev)
-	if not playing: return
+	if not playing:
+		snd.eng = 0.0; snd.warn = false; return
 	var dt := minf(delta, 0.1)
 	var w: float = 0.0
 	if board_left > 0.0: board_left -= delta
@@ -118,6 +122,7 @@ func _process(delta: float):
 	if s.is_empty(): return
 	world.update_state(s, dt)
 	hud.cockpit = world.cam_mode == 1
+	snd.put(s)
 	hud.update_state(s)
 	world.board_tick(board_left > 0.0 and world.cam_mode != 1, t_all)
 	hud.boarding(board_left)
