@@ -71,10 +71,14 @@ func boarding(left: float):
 	var on := left > 0.0
 	var l = get_node_or_null("board_l")
 	if l == null:
-		l = _lbl(34); l.name = "board_l"; l.position = Vector2(380, 90); add_child(l)
+		l = _lbl(34); l.name = "board_l"; l.position = Vector2(200, 90); add_child(l)
 		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
-	if on: l.text = "Посадка пассажиров и экипажа… %d%%" % int((1.0 - left / 10.0) * 100.0)
+	for n in [instr, pads, rows, get_node("link"), info, hint, log_l]: n.visible = not on
+	if on:
+		var bt: float = get_parent().world.BOARD_T - left
+		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
+		l.add_theme_font_size_override("font_size", 26)
 
 func _on_act(a: String):
 	match a:

@@ -136,42 +136,159 @@ func build_plane(pid: String, color: Color):
 	plane.add_child(inst)
 	_build_boarding(L)
 
-# ---------- посадка пассажиров: люди, трап, заправщик, багаж ----------
+# ---------- подготовка к вылету: телетрап, посадка, багаж, заправка, буксировщик ----------
+const BOARD_T := 14.0
 var board: Node3D
 var boarding_on := false
-var walkers := []
+var bd := {}
 var board_L := 37.0
+var _pm := {}
+func _m(c: Color, alpha := 1.0) -> StandardMaterial3D:
+	var k := "%s%s" % [c, alpha]
+	if not _pm.has(k):
+		var sm := StandardMaterial3D.new(); sm.albedo_color = Color(c.r, c.g, c.b, alpha); sm.roughness = 0.7
+		if alpha < 1.0: sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_pm[k] = sm
+	return _pm[k]
+
+func _box(parent: Node3D, size: Vector3, col: Color, pos: Vector3, alpha := 1.0) -> MeshInstance3D:
+	var bm := BoxMesh.new(); bm.size = size
+	var mi := MeshInstance3D.new(); mi.mesh = bm; mi.material_override = _m(col, alpha); mi.position = pos; parent.add_child(mi); return mi
+
+func _cyl(parent: Node3D, r: float, h: float, col: Color, pos: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
+	var cm := CylinderMesh.new(); cm.top_radius = r; cm.bottom_radius = r; cm.height = h
+	var mi := MeshInstance3D.new(); mi.mesh = cm; mi.material_override = _m(col); mi.position = pos; mi.rotation_degrees = rot; parent.add_child(mi); return mi
+
+# человек: туловище, голова, качающиеся руки и ноги
+func _person(col: Color, crew: bool, bag := false) -> Dictionary:
+	var root := Node3D.new()
+	_box(root, Vector3(0.44, 0.62, 0.26), col, Vector3(0, 1.18, 0))
+	var hm := SphereMesh.new(); hm.radius = 0.13; hm.height = 0.26
+	var hd := MeshInstance3D.new(); hd.mesh = hm; hd.material_override = _m(Color(0.9, 0.72, 0.58)); hd.position = Vector3(0, 1.6, 0); root.add_child(hd)
+	if crew: _box(root, Vector3(0.3, 0.08, 0.3), Color(0.08, 0.1, 0.2), Vector3(0, 1.75, 0))
+	var parts := {"root": root}
+	for sd in [-1, 1]:
+		var lg := Node3D.new(); lg.position = Vector3(sd * 0.11, 0.88, 0); root.add_child(lg)
+		_box(lg, Vector3(0.15, 0.86, 0.17), Color(0.15, 0.17, 0.25), Vector3(0, -0.43, 0))
+		var ar := Node3D.new(); ar.position = Vector3(sd * 0.28, 1.45, 0); root.add_child(ar)
+		_box(ar, Vector3(0.1, 0.6, 0.12), col, Vector3(0, -0.3, 0))
+		parts["l" if sd < 0 else "r"] = lg; parts["a" + ("l" if sd < 0 else "r")] = ar
+	if bag: _box(root, Vector3(0.18, 0.32, 0.4), Color(0.2, 0.2, 0.25), Vector3(0.4, 0.45, 0))
+	return parts
+
 func _build_boarding(L: float):
 	board_L = L
+	bd.clear()
 	board = Node3D.new(); plane.add_child(board)
-	var zd := -L * 0.27; var gy := -2.9    # уровень земли относительно центра самолёта
-	var cap := CapsuleMesh.new(); cap.radius = 0.24; cap.height = 1.7
-	walkers.clear()
-	for i in range(18):
-		var mi := _mk(cap, Color.from_hsv(randf(), 0.5, 0.75) if i > 2 else Color(0.1, 0.12, 0.25), Vector3(0, gy + 0.85, zd))
-		board.add_child(mi); walkers.append([mi, float(i) / 18.0, randf_range(-1.2, 1.2)])
-	var st := BoxMesh.new(); st.size = Vector3(2.6, 3.0, 1.6)
-	board.add_child(_mk(st, Color(0.75, 0.75, 0.8), Vector3(-L * 0.06 - 2.6, gy + 1.5, zd)))
-	var term := BoxMesh.new(); term.size = Vector3(8, 9, L * 0.9)
-	board.add_child(_mk(term, Color(0.6, 0.68, 0.78), Vector3(-34, gy + 4.5, 0)))
-	var truck := BoxMesh.new(); truck.size = Vector3(2.6, 2.4, 7)
-	board.add_child(_mk(truck, Color(0.9, 0.7, 0.1), Vector3(L * 0.34, gy + 1.2, L * 0.02)))
-	var cart := BoxMesh.new(); cart.size = Vector3(1.8, 1.3, 3.2)
-	var cm := _mk(cart, Color(0.35, 0.4, 0.45), Vector3(-9, gy + 0.65, L * 0.12)); cm.name = "cart"; board.add_child(cm)
+	var gs := -2.3            # уровень площадки относительно центра самолёта
+	var zd := -L * 0.30       # передняя левая дверь
+	var fl := -0.05           # пол телетрапа
+	_box(board, Vector3(80, 0.12, L * 2.4), Color(0.4, 0.41, 0.43), Vector3(-6, gs - 0.06, 0))
+	_box(board, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.01, -L * 0.5 - 22))
+	# терминал
+	_box(board, Vector3(12, 12, L * 1.1), Color(0.62, 0.7, 0.8), Vector3(-27, gs + 6, 0))
+	_box(board, Vector3(0.2, 3, L * 1.0), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, 0))
+	# телетрап: стеклянный тоннель, выдвигается к двери
+	var br := Node3D.new(); br.name = "bridge"; board.add_child(br)
+	bd["bridge"] = br
+	_box(br, Vector3(1, 0.15, 2.6), Color(0.55, 0.56, 0.6), Vector3(0, fl - 0.08, 0))
+	_box(br, Vector3(1, 0.15, 2.6), Color(0.8, 0.8, 0.84), Vector3(0, fl + 2.6, 0))
+	_box(br, Vector3(1, 2.6, 0.08), Color(0.35, 0.5, 0.6), Vector3(0, fl + 1.3, 1.3), 0.45)
+	_box(br, Vector3(1, 2.6, 0.08), Color(0.35, 0.5, 0.6), Vector3(0, fl + 1.3, -1.3), 0.45)
+	_cyl(br, 1.7, 2.9, Color(0.85, 0.85, 0.88), Vector3(0, fl + 1.2, 0), Vector3(0, 0, 0))
+	_box(board, Vector3(0.6, fl - gs, 0.6), Color(0.3, 0.3, 0.34), Vector3(-6, gs + (fl - gs) * 0.5, zd))
+	# люди
+	var pax := []
+	var cols := [Color(0.8, 0.25, 0.2), Color(0.2, 0.45, 0.8), Color(0.9, 0.7, 0.2), Color(0.3, 0.65, 0.4), Color(0.6, 0.35, 0.7), Color(0.85, 0.85, 0.85), Color(0.25, 0.25, 0.3)]
+	for i in range(34):
+		var crew := i < 4
+		var p := _person(Color(0.08, 0.12, 0.3) if crew else cols[i % cols.size()], crew, i % 3 == 1)
+		board.add_child(p.root); p["t0"] = 0.4 + i * 0.2 if crew else 1.6 + (i - 4) * 0.21; p["lane"] = randf_range(-0.8, 0.8); pax.append(p)
+	bd["pax"] = pax
+	# наземный персонал: регулировщик у носа, заправщик, багаж
+	var mar := _person(Color(1.0, 0.5, 0.1), false); board.add_child(mar.root); mar.root.position = Vector3(-3.5, gs, -L * 0.5 - 7); mar.root.rotation.y = PI; bd["mar"] = mar
+	var rmp := _person(Color(1.0, 0.5, 0.1), false); board.add_child(rmp.root); rmp.root.position = Vector3(9.5, gs, -L * 0.06); rmp.root.rotation.y = PI * 0.5; bd["rmp"] = rmp
+	_box(board, Vector3(2.6, 2.2, 6.5), Color(0.9, 0.7, 0.1), Vector3(17, gs + 1.1, -L * 0.03))
+	_cyl(board, 1.15, 5.0, Color(0.85, 0.85, 0.88), Vector3(17, gs + 3.1, L * 0.0), Vector3(90, 0, 0))
+	_cyl(board, 0.07, 9.5, Color(0.1, 0.1, 0.1), Vector3(12.0, gs + 1.9, -L * 0.03), Vector3(0, 0, 70))
+	# багажный погрузчик: наклонная лента и чемоданы
+	var belt := _box(board, Vector3(0.9, 0.16, 6.4), Color(0.2, 0.2, 0.22), Vector3(5.2, gs + 1.35, L * 0.12)); belt.rotation_degrees = Vector3(0, 0, 0)
+	belt.rotation_degrees = Vector3(0, 90, 0); belt.rotation_degrees.z = 0
+	belt.mesh.size = Vector3(6.4, 0.16, 0.9); belt.rotation_degrees = Vector3(0, 0, 24)
+	_box(board, Vector3(1.6, 1.0, 2.2), Color(0.9, 0.85, 0.2), Vector3(8.2, gs + 0.5, L * 0.12))
+	var bags := []
+	for i in range(6):
+		var bg := _box(board, Vector3(0.7, 0.4, 0.5), Color.from_hsv(randf(), 0.5, 0.6), Vector3(0, 0, 0)); bags.append(bg)
+	bd["bags"] = bags
+	# кейтеринг на задней левой двери
+	var ct := _box(board, Vector3(5.0, 2.6, 2.4), Color(0.9, 0.9, 0.95), Vector3(-9.5, gs + 1.7, L * 0.30))
+	var plat := _box(board, Vector3(2.4, 0.2, 2.2), Color(0.7, 0.72, 0.78), Vector3(-5.0, gs + 1.4, L * 0.30)); bd["plat"] = plat
+	# буксировщик заходит к носу
+	var tug := Node3D.new(); board.add_child(tug); bd["tug"] = tug
+	_box(tug, Vector3(2.4, 1.0, 3.6), Color(0.7, 0.15, 0.12), Vector3(0, gs + 0.5, 0)); _box(tug, Vector3(1.8, 0.8, 1.4), Color(0.8, 0.8, 0.85), Vector3(0, gs + 1.3, 0.6))
+	_box(tug, Vector3(0.12, 0.12, 3.0), Color(0.2, 0.2, 0.22), Vector3(0, gs + 0.45, -3.2))
+	# конусы
+	var cn := CylinderMesh.new(); cn.top_radius = 0.02; cn.bottom_radius = 0.22; cn.height = 0.6
+	for q in [[-5.5, -L * 0.5 - 3.0], [5.5, -L * 0.5 - 3.0], [-14.0, -L * 0.1], [14.0, L * 0.35], [-14.0, L * 0.4], [11.0, -L * 0.3]]:
+		board.add_child(_mk(cn, Color(1, 0.45, 0.1), Vector3(q[0], gs + 0.3, q[1])))
+	# проблесковый маяк
+	var bm := SphereMesh.new(); bm.radius = 0.2; bm.height = 0.4
+	var bc := _mk(bm, Color(1, 0.1, 0.1), Vector3(0, 2.6, -L * 0.05)); (bc.material_override as StandardMaterial3D).emission_enabled = true; (bc.material_override as StandardMaterial3D).emission = Color(1, 0.1, 0.1)
+	board.add_child(bc); bd["beacon"] = bc
 
-func board_tick(on: bool, t: float):
+func _walk(p: Dictionary, t: float, ph: float, amp := 0.7):
+	var s := sin(t * 9.0 + ph) * amp
+	p.l.rotation.x = s; p.r.rotation.x = -s; p.al.rotation.x = -s * 0.8; p.ar.rotation.x = s * 0.8
+
+func board_phase(t: float) -> String:
+	if t < 1.5: return "Экипаж прибывает, наземная бригада готовит самолёт"
+	if t < 9.0: return "Посадка пассажиров, погрузка багажа и заправка"
+	if t < 10.5: return "Двери закрываются, телетрап отъезжает"
+	return "Подключён буксировщик — готовность к запуску"
+
+func board_tick(on: bool, bt: float):
 	if board == null: return
 	boarding_on = on
 	board.visible = on
 	if not on: return
-	var zd := -board_L * 0.27; var gy := -2.9
-	for w in walkers:
-		var u := fposmod(t * 0.07 + float(w[1]), 1.0)
-		var x := lerpf(-27.0, -board_L * 0.06 - 2.6, u)
-		w[0].position = Vector3(x, gy + 0.85 + absf(sin(t * 7.0 + float(w[1]) * 20.0)) * 0.06, zd + float(w[2]) * (1.0 - u))
-		w[0].visible = u < 0.97
-	var c := board.get_node_or_null("cart")
-	if c: c.position.z = board_L * 0.12 + sin(t * 0.4) * 5.0
+	var t := bt
+	var L := board_L; var gs := -2.3; var zd := -L * 0.30; var fl := -0.05
+	var door_x := -2.55; var base_x := -20.9
+	# телетрап: тоннель между терминалом и дверью, отъезжает после посадки
+	var ex := door_x - clampf((t - 9.0) / 1.2, 0.0, 1.0) * 5.0
+	var br: Node3D = bd.bridge; br.position = Vector3((base_x + ex) * 0.5, 0, zd)
+	for ch in br.get_children():
+		if ch is MeshInstance3D and ch.mesh is BoxMesh:
+			(ch.mesh as BoxMesh).size.x = ex - base_x
+	# люди идут по телетрапу к двери
+	for p in bd.pax:
+		var u := (t - float(p.t0)) / 4.2
+		var vis: bool = u >= 0.0 and u < 1.0
+		p.root.visible = vis
+		if vis:
+			var x := lerpf(base_x + 0.5, door_x - 0.3, u)
+			p.root.position = Vector3(x, fl + absf(sin(t * 9.0 + float(p.t0) * 3.0)) * 0.04, zd + float(p.lane) * 0.9)
+			p.root.rotation.y = -PI * 0.5
+			_walk(p, t, float(p.t0) * 3.0)
+	# регулировщик с жезлами и рабочий у погрузчика
+	var m: Dictionary = bd.mar; m.al.rotation.z = -2.4 + sin(t * 5.0) * 0.5; m.ar.rotation.z = 2.4 - sin(t * 5.0) * 0.5
+	var rp: Dictionary = bd.rmp; rp.ar.rotation.x = -1.2 + sin(t * 4.0) * 0.4
+	# чемоданы ползут по ленте, потом исчезают в люке
+	var i := 0
+	for bg in bd.bags:
+		var u := fposmod(t * 0.45 + i / 6.0, 1.0)
+		bg.position = Vector3(lerpf(7.6, 2.8, u), gs + lerpf(0.9, 2.0, u), L * 0.12)
+		bg.rotation_degrees = Vector3(0, 0, 24); bg.visible = t < 9.0; i += 1
+	# платформа кейтеринга поднимается к двери и опускается
+	var plat: MeshInstance3D = bd.plat
+	plat.position.y = gs + lerpf(1.4, 3.1, clampf(t / 2.5, 0.0, 1.0)) - clampf((t - 8.0) / 1.5, 0.0, 1.0) * 1.7
+	# буксировщик подъезжает к носу
+	var tug: Node3D = bd.tug
+	var k := clampf((t - 10.4) / 2.6, 0.0, 1.0)
+	tug.position = Vector3(lerpf(-16.0, 0.0, minf(k * 1.3, 1.0)), 0, -L * 0.5 - lerpf(16.0, 5.2, k))
+	tug.rotation.y = lerpf(0.5, 0.0, minf(k * 1.3, 1.0))
+	# маяк мигает после закрытия дверей
+	(bd.beacon as MeshInstance3D).visible = t > 9.5 and fmod(t * 3.0, 1.0) < 0.5
 
 # ---------- аэродромы ----------
 func _quad(st: SurfaceTool, x0: float, x1: float, z0: float, z1: float, y: float, col: Color):
@@ -333,12 +450,19 @@ func update_state(s: Dictionary, delta: float):
 		clouds[i].set_shader_parameter("ground_off", Vector2(gx, gz))
 	_camera(s, hdg, alt)
 
+func _bo() -> float:
+	return 40.0 + sin(Time.get_ticks_msec() * 0.0004) * 22.0
+
 func _camera(s: Dictionary, hdg: float, alt: float):
 	var back := Vector3(0, 0, 1).rotated(Vector3.UP, -deg_to_rad(hdg))
 	var pp := plane.position
-	if cam_mode == 0:
+	if cam_mode == 0 and boarding_on:
+		var sw := sin(Time.get_ticks_msec() * 0.0004)
+		cam.position = plane.to_global(Vector3(-10.0 + sw * 7.0, 6.5, -board_L * 0.5 - 20.0 - sw * 3.0))
+		cam.look_at(plane.to_global(Vector3(-4.0, 0.5, -board_L * 0.3 + 3.0)), Vector3.UP)
+	elif cam_mode == 0:
 		var span := 38.0
-		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit - (50.0 if boarding_on else 0.0))) * (span * orbit_d * (0.8 if boarding_on else 1.0)) + Vector3(0, span * orbit_up + 2.0, 0)
+		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit - (_bo() if boarding_on else 0.0))) * (span * orbit_d * (0.85 if boarding_on else 1.0)) + Vector3(0, span * orbit_up + 2.0, 0)
 		cam.look_at(pp + Vector3(0, 1.0, 0), Vector3.UP)
 	elif cam_mode == 1:
 		var fwd := -back

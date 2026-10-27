@@ -77,7 +77,7 @@ func _start(to := "", drill := ""):
 	for a in r.aps:
 		lo0 = minf(lo0, float(a.lon)); lo1 = maxf(lo1, float(a.lon)); la0 = minf(la0, float(a.lat)); la1 = maxf(la1, float(a.lat))
 	world.set_cities(Sim.g("sim_cities", JSON.stringify({"lo0": lo0 - 4.0, "lo1": lo1 + 4.0, "la0": la0 - 3.0, "la1": la1 + 3.0})))
-	board_left = 0.0 if dbg != "" else 10.0
+	board_left = 0.0 if dbg != "" else world.BOARD_T
 	hud.visible = true; playing = true; acc = 0.0; end_t = 0.0
 	Sim.ctl({"thr": 0.0, "brake": true})
 	if dbg != "": Sim.vm.eval("sim_debug(%s)" % dbg, "dbg")
@@ -124,7 +124,7 @@ func _process(delta: float):
 	hud.cockpit = world.cam_mode == 1
 	snd.put(s)
 	hud.update_state(s)
-	world.board_tick(board_left > 0.0 and world.cam_mode != 1, t_all)
+	world.board_tick(board_left > 0.0 and world.cam_mode != 1, world.BOARD_T - board_left)
 	hud.boarding(board_left)
 	if s.get("done", false):
 		end_t += delta
