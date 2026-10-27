@@ -134,6 +134,44 @@ func build_plane(pid: String, color: Color):
 	var k: float = L / float(MODEL_LEN[m])
 	inst.scale = Vector3.ONE * k; inst.rotation_degrees = Vector3(0, MODEL_YAW, 0)
 	plane.add_child(inst)
+	_build_boarding(L)
+
+# ---------- посадка пассажиров: люди, трап, заправщик, багаж ----------
+var board: Node3D
+var boarding_on := false
+var walkers := []
+var board_L := 37.0
+func _build_boarding(L: float):
+	board_L = L
+	board = Node3D.new(); plane.add_child(board)
+	var zd := -L * 0.27; var gy := -2.9    # уровень земли относительно центра самолёта
+	var cap := CapsuleMesh.new(); cap.radius = 0.24; cap.height = 1.7
+	walkers.clear()
+	for i in range(18):
+		var mi := _mk(cap, Color.from_hsv(randf(), 0.5, 0.75) if i > 2 else Color(0.1, 0.12, 0.25), Vector3(0, gy + 0.85, zd))
+		board.add_child(mi); walkers.append([mi, float(i) / 18.0, randf_range(-1.2, 1.2)])
+	var st := BoxMesh.new(); st.size = Vector3(2.6, 3.0, 1.6)
+	board.add_child(_mk(st, Color(0.75, 0.75, 0.8), Vector3(-L * 0.06 - 2.6, gy + 1.5, zd)))
+	var term := BoxMesh.new(); term.size = Vector3(8, 9, L * 0.9)
+	board.add_child(_mk(term, Color(0.6, 0.68, 0.78), Vector3(-34, gy + 4.5, 0)))
+	var truck := BoxMesh.new(); truck.size = Vector3(2.6, 2.4, 7)
+	board.add_child(_mk(truck, Color(0.9, 0.7, 0.1), Vector3(L * 0.34, gy + 1.2, L * 0.02)))
+	var cart := BoxMesh.new(); cart.size = Vector3(1.8, 1.3, 3.2)
+	var cm := _mk(cart, Color(0.35, 0.4, 0.45), Vector3(-9, gy + 0.65, L * 0.12)); cm.name = "cart"; board.add_child(cm)
+
+func board_tick(on: bool, t: float):
+	if board == null: return
+	boarding_on = on
+	board.visible = on
+	if not on: return
+	var zd := -board_L * 0.27; var gy := -2.9
+	for w in walkers:
+		var u := fposmod(t * 0.07 + float(w[1]), 1.0)
+		var x := lerpf(-27.0, -board_L * 0.06 - 2.6, u)
+		w[0].position = Vector3(x, gy + 0.85 + absf(sin(t * 7.0 + float(w[1]) * 20.0)) * 0.06, zd + float(w[2]) * (1.0 - u))
+		w[0].visible = u < 0.97
+	var c := board.get_node_or_null("cart")
+	if c: c.position.z = board_L * 0.12 + sin(t * 0.4) * 5.0
 
 # ---------- аэродромы ----------
 func _quad(st: SurfaceTool, x0: float, x1: float, z0: float, z1: float, y: float, col: Color):
@@ -300,7 +338,7 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 	var pp := plane.position
 	if cam_mode == 0:
 		var span := 38.0
-		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit)) * (span * orbit_d) + Vector3(0, span * orbit_up + 2.0, 0)
+		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit - (50.0 if boarding_on else 0.0))) * (span * orbit_d * (0.8 if boarding_on else 1.0)) + Vector3(0, span * orbit_up + 2.0, 0)
 		cam.look_at(pp + Vector3(0, 1.0, 0), Vector3.UP)
 	elif cam_mode == 1:
 		var fwd := -back

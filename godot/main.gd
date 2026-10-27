@@ -38,6 +38,7 @@ func _args() -> bool:
 		elif s.begins_with("--orbit="):
 			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		elif s.begins_with("--mode="): Sim.g("game_opt", "\"mode\",%s" % s.substr(7))
+		elif s.begins_with("--tap="): taps.append(s.substr(6).split(","))
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
 		elif s.begins_with("--screen="): screen_arg = s.substr(9)
 	for s in a:
@@ -74,10 +75,11 @@ func _start(to := "", drill := ""):
 	for a in r.aps:
 		lo0 = minf(lo0, float(a.lon)); lo1 = maxf(lo1, float(a.lon)); la0 = minf(la0, float(a.lat)); la1 = maxf(la1, float(a.lat))
 	world.set_cities(Sim.g("sim_cities", JSON.stringify({"lo0": lo0 - 4.0, "lo1": lo1 + 4.0, "la0": la0 - 3.0, "la1": la1 + 3.0})))
+	board_left = 0.0 if dbg != "" else 10.0
 	hud.visible = true; playing = true; acc = 0.0; end_t = 0.0
 	Sim.ctl({"thr": 0.0, "brake": true})
 	if dbg != "": Sim.vm.eval("sim_debug(%s)" % dbg, "dbg")
-	hud.thr_s.set_value_no_signal(0.0)
+	hud.thr = [0.0, 0.0]; hud.pads.queue_redraw()
 
 func _to_menu():
 	if playing:
@@ -93,6 +95,8 @@ func _end_flight():
 
 var end_t := 0.0
 var screen_arg := ""
+var board_left := 0.0
+var taps := []   # отладка: --tap=x,y,t (касание), --drag=x,y,x2,y2,t
 
 func _process(delta: float):
 	t_all += delta
@@ -100,14 +104,23 @@ func _process(delta: float):
 		get_viewport().get_texture().get_image().save_png(shot)
 		get_tree().quit()
 	if "--endtest" in OS.get_cmdline_user_args() and playing and t_all > 2.0: _end_flight(); screen_arg = "x"
+	for tp in taps:
+		if t_all > float(tp[2]) and tp.size() == 3:
+			tp.append("x")
+			for pr in [true, false]:
+				var ev := InputEventScreenTouch.new(); ev.index = 0; ev.pressed = pr; ev.position = Vector2(float(tp[0]), float(tp[1])); Input.parse_input_event(ev)
 	if not playing: return
 	var dt := minf(delta, 0.1)
-	var w := Sim.step(dt)
+	var w: float = 0.0
+	if board_left > 0.0: board_left -= delta
+	else: w = Sim.step(dt)
 	var s := Sim.state()
 	if s.is_empty(): return
 	world.update_state(s, dt)
 	hud.cockpit = world.cam_mode == 1
 	hud.update_state(s)
+	world.board_tick(board_left > 0.0 and world.cam_mode != 1, t_all)
+	hud.boarding(board_left)
 	if s.get("done", false):
 		end_t += delta
 		if end_t > 3.0: _end_flight()

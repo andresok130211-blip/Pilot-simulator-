@@ -6,10 +6,12 @@ var hint: Label
 var log_l: Label
 var evbox: Label
 var alert: Label
-var thr_s: VSlider
-var yoke: Control
+var pads: Control
+var thr := [0.0, 0.0]
+var linked := true
+var fingers := {}
+var y_org := Vector2(1120, 470)
 var yoke_knob := Vector2.ZERO
-var yoke_id := -1
 var stick := 0.0
 var roll := 0.0
 var btn := {}
@@ -36,6 +38,7 @@ func _button(text: String, act: String, w := 128.0) -> Button:
 	b.text = text; b.custom_minimum_size = Vector2(w, 56)
 	b.add_theme_font_size_override("font_size", 17)
 	b.focus_mode = Control.FOCUS_NONE
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.pressed.connect(func(): _on_act(act))
 	return b
 
@@ -53,11 +56,22 @@ func toggle_radio():
 			var b := _button(d[0], "radio:" + d[1], 220)
 			b.pressed.connect(func(): radio_p.visible = false); v.add_child(b)
 
+func boarding(left: float):
+	var on := left > 0.0
+	var l = get_node_or_null("board_l")
+	if l == null:
+		l = _lbl(34); l.name = "board_l"; l.position = Vector2(380, 90); add_child(l)
+		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
+	l.visible = on; get_node("board_skip").visible = on
+	if on: l.text = "Посадка пассажиров и экипажа… %d%%" % int((1.0 - left / 10.0) * 100.0)
+
 func _on_act(a: String):
 	match a:
 		"view": get_parent().world.cycle_cam()
 		"exit": exit_pressed.emit()
+		"skipboard": get_parent().board_left = 0.0
 		"altp": toggle_alts()
+		"link": linked = not linked; get_node("link").text = "ГАЗ: общий" if linked else "ГАЗ: раздельно"
 		"radio": toggle_radio()
 		_: Sim.act(a)
 
@@ -68,19 +82,12 @@ func _ready():
 	alert = _lbl(34); alert.add_theme_color_override("font_color", Color(1, 0.35, 0.3)); alert.set_anchors_preset(Control.PRESET_CENTER_TOP); alert.position = Vector2(-220, 100); add_child(alert)
 	log_l = _lbl(18); log_l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT); log_l.position = Vector2(230, -330); add_child(log_l)
 	evbox = _lbl(20); evbox.set_anchors_preset(Control.PRESET_TOP_RIGHT); evbox.position = Vector2(-560, 10); evbox.size = Vector2(540, 200); evbox.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; add_child(evbox)
-	# газ
-	thr_s = VSlider.new(); thr_s.min_value = 0; thr_s.max_value = 1; thr_s.step = 0.01; thr_s.value = 0
-	thr_s.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT); thr_s.position = Vector2(30, -300); thr_s.custom_minimum_size = Vector2(70, 270); thr_s.size = Vector2(70, 270)
-	thr_s.value_changed.connect(func(v): Sim.ctl({"thr": v}))
-	add_child(thr_s)
-	var tl := _lbl(18); tl.text = "ГАЗ"; tl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT); tl.position = Vector2(34, -330); add_child(tl)
-	# штурвал
-	yoke = Control.new(); yoke.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT); yoke.position = Vector2(-300, -300); yoke.size = Vector2(280, 280)
-	yoke.draw.connect(_draw_yoke); add_child(yoke)
-	yoke.gui_input.connect(_yoke_input)
+	# рычаги газа и штурвал рисуются одним слоем, касания обрабатываются в _input (мультитач)
+	pads = Control.new(); pads.set_anchors_preset(Control.PRESET_FULL_RECT); pads.mouse_filter = Control.MOUSE_FILTER_IGNORE; pads.draw.connect(_draw_pads); add_child(pads)
+	var lk := _button("ГАЗ: общий", "link", 140); lk.position = Vector2(10, 184); lk.name = "link"; add_child(lk)
 	# кнопки (ряды)
 	rows = VBoxContainer.new(); rows.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE); rows.position = Vector2(120, -158); rows.size = Vector2(1000, 150); rows.mouse_filter = Control.MOUSE_FILTER_PASS
-	rows.set_anchors_preset(Control.PRESET_BOTTOM_LEFT); rows.position = Vector2(120, -150); add_child(rows)
+	rows.set_anchors_preset(Control.PRESET_BOTTOM_LEFT); rows.position = Vector2(130, -150); add_child(rows)
 	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); rows.add_child(r1); rows.add_child(r2)
 	var defs1 := [["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["ТОРМОЗ", "brake"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ТЕМП", "warp"]]
 	var defs2 := [["А/П", "ap"], ["А/Т", "at"], ["ЗАХОД", "appr"], ["ВЫС −", "altd"], ["ВЫС +", "altu"], ["ЗАПАСНЫЕ", "altp"], ["ВИД", "view"], ["РАДИО", "radio"], ["МЕНЮ", "exit"]]
@@ -92,27 +99,61 @@ func _ready():
 	altp = PanelContainer.new(); altp.visible = false; altp.position = Vector2(300, 90); add_child(altp)
 	altp_v = VBoxContainer.new(); altp.add_child(altp_v)
 
-func _draw_yoke():
-	var c := yoke.size / 2.0
-	yoke.draw_circle(c, 130, Color(0, 0, 0, 0.25))
-	yoke.draw_arc(c, 130, 0, TAU, 48, Color(1, 1, 1, 0.5), 3.0)
-	yoke.draw_line(c - Vector2(110, 0), c + Vector2(110, 0), Color(1, 1, 1, 0.25), 2.0)
-	yoke.draw_line(c - Vector2(0, 110), c + Vector2(0, 110), Color(1, 1, 1, 0.25), 2.0)
-	yoke.draw_circle(c + yoke_knob * 110.0, 34, Color(1, 1, 1, 0.8))
+const LV_X := [10.0, 68.0]
+func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i], get_viewport().get_visible_rect().size.y - 390.0, 52, 330)
 
-func _yoke_input(e: InputEvent):
-	var c := yoke.size / 2.0
-	if e is InputEventScreenTouch or e is InputEventMouseButton:
-		if e.pressed: yoke_id = 1; _set_yoke(e.position - c)
-		else: yoke_id = -1; _set_yoke(Vector2.ZERO)
-	elif (e is InputEventScreenDrag or e is InputEventMouseMotion) and yoke_id == 1:
-		_set_yoke(e.position - c)
+func _draw_pads():
+	for i in range(2):
+		var r := _lv_rect(i)
+		pads.draw_rect(r, Color(0, 0, 0, 0.4)); pads.draw_rect(Rect2(r.position.x, r.end.y - r.size.y * thr[i], r.size.x, r.size.y * thr[i]), Color(0.3, 0.75, 1.0, 0.75))
+		pads.draw_rect(Rect2(r.position.x - 4, r.end.y - r.size.y * thr[i] - 6, r.size.x + 8, 12), Color(1, 1, 1, 0.95))
+		pads.draw_string(ThemeDB.fallback_font, r.position + Vector2(14, -6), "ДВ%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	var o := y_org if fingers.values().has("yoke") else Vector2(1120, get_viewport().get_visible_rect().size.y - 250.0)
+	var k := o + yoke_knob * 95.0
+	pads.draw_circle(o, 105, Color(0, 0, 0, 0.25)); pads.draw_arc(o, 105, 0, TAU, 48, Color(1, 1, 1, 0.5), 3.0)
+	# штурвал: обод поворачивается по крену, смещается по тангажу
+	var ang := yoke_knob.x * 1.1
+	var p1 := k + Vector2(-60, 0).rotated(ang); var p2 := k + Vector2(60, 0).rotated(ang)
+	pads.draw_line(p1, p2, Color(0.15, 0.15, 0.18, 0.95), 14.0); pads.draw_line(k, k + Vector2(0, 50).rotated(ang), Color(0.15, 0.15, 0.18, 0.95), 12.0)
+	pads.draw_circle(p1, 20, Color(0.3, 0.3, 0.34, 0.95)); pads.draw_circle(p2, 20, Color(0.3, 0.3, 0.34, 0.95))
+
+func _all_buttons(n: Node, out: Array):
+	for c in n.get_children():
+		if c is Button and c.is_visible_in_tree() and not c.disabled: out.append(c)
+		_all_buttons(c, out)
+
+func _input(e: InputEvent):
+	if not visible: return
+	if e is InputEventScreenTouch:
+		var idx: int = e.index
+		if e.pressed:
+			var bs := []; _all_buttons(self, bs)
+			for b in bs:
+				if b.get_global_rect().has_point(e.position): b.pressed.emit(); return
+			if instr.mode > 0 and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
+			for i in range(2):
+				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
+			if e.position.x > 700 and e.position.y > 230: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
+		else:
+			if fingers.get(idx, "") == "yoke": _set_yoke(Vector2.ZERO)
+			fingers.erase(idx)
+	elif e is InputEventScreenDrag:
+		var f: String = fingers.get(e.index, "")
+		if f == "yoke": _set_yoke(e.position - y_org)
+		elif f.begins_with("t"): _set_thr(int(f.substr(1)), e.position)
+
+func _set_thr(i: int, p: Vector2):
+	var r := _lv_rect(i); var v := clampf((r.end.y - p.y) / r.size.y, 0.0, 1.0)
+	if linked: thr = [v, v]; Sim.ctl({"thr": v, "split": false})
+	else: thr[i] = v; Sim.ctl({"split": true, "t1": thr[0], "t2": thr[1], "thr": maxf(thr[0], thr[1])})
+	pads.queue_redraw()
 
 func _set_yoke(d: Vector2):
-	d = d / 110.0
+	d = d / 95.0
 	if d.length() > 1.0: d = d.normalized()
+	d = d * (0.45 + 0.55 * d.length())   # мягче у центра
 	yoke_knob = d; roll = d.x; stick = -d.y
-	Sim.ctl({"stick": stick, "roll": roll}); yoke.queue_redraw()
+	Sim.ctl({"stick": stick, "roll": roll}); pads.queue_redraw()
 
 func _unhandled_key_input(e: InputEvent):
 	pass
@@ -127,11 +168,11 @@ func refresh_alts():
 	var list := Sim.alts()
 	for a in list:
 		var b := Button.new(); b.text = "%s — %d км%s" % [a.label, int(a.d / 1000.0), "" if a.ok else "  (не подходит)"]
-		b.disabled = not a.ok; b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(520, 50)
+		b.disabled = not a.ok; b.focus_mode = Control.FOCUS_NONE; b.mouse_filter = Control.MOUSE_FILTER_IGNORE; b.custom_minimum_size = Vector2(520, 50)
 		var i: int = a.i
 		b.pressed.connect(func(): if Sim.divert(i): altp.visible = false)
 		altp_v.add_child(b)
-	var x := Button.new(); x.text = "Закрыть"; x.pressed.connect(func(): altp.visible = false); altp_v.add_child(x)
+	var x := Button.new(); x.mouse_filter = Control.MOUSE_FILTER_IGNORE; x.text = "Закрыть"; x.pressed.connect(func(): altp.visible = false); altp_v.add_child(x)
 
 func update_state(s: Dictionary):
 	if s.is_empty(): return
@@ -158,7 +199,7 @@ func update_state(s: Dictionary):
 			var bb := _button(str(b.t), "ev:" + str(b.k), 200); ev_row.add_child(bb)
 	_mark("gear", c.gear); _mark("brake", c.brake); _mark("ap", c.apOn); _mark("at", c.atOn); _mark("appr", c.appr); _mark("rev", c.rev)
 	var st = get_node_or_null("start"); if st: st.visible = not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
-	if c.atOn or c.apOn and not c.has("x"): thr_s.set_value_no_signal(float(c.thr))
+	if c.atOn and not fingers.values().has("t0") and not fingers.values().has("t1"): thr = [float(c.thr), float(c.thr)]; pads.queue_redraw()
 
 func _mark(k: String, on) -> void:
 	if btn.has(k): btn[k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)

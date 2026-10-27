@@ -26,9 +26,9 @@ func _draw():
 		draw_colored_polygon(PackedVector2Array([Vector2(0, 470), Vector2(1280, 470), Vector2(1280, 720), Vector2(0, 720)]), Color(0.1, 0.11, 0.13))
 		draw_rect(Rect2(0, 462, 1280, 10), Color(0.18, 0.19, 0.22))
 	if mode == 0 and not cockpit: return
-	_pfd(Vector2(80, 100), 135.0)
+	_pfd(Vector2(190, 100), 135.0)
 	if mode == 2: _eng(Vector2(1000, 100))
-	_map(Rect2(730, 100, 240, 130))
+	_radar()
 
 func _pfd(o: Vector2, r: float):
 	var c := o + Vector2(r, r)
@@ -89,15 +89,36 @@ func _eng(o: Vector2):
 	_t(o + Vector2(0, 286), "Темп. %d°C  Число М %.2f" % [float(s.wx.temp), float(s.mach)], 16)
 	_t(o + Vector2(0, 310), "Тормоз %s  Реверс %s" % ["ДА" if s.c.brake else "нет", "ДА" if s.c.rev else "нет"], 16)
 
-func _map(r: Rect2):
-	draw_rect(r, Color(0, 0, 0, 0.5))
-	var D := float(s.D); var k := (r.size.x - 40.0) / maxf(D, 1000.0)
-	var a := r.position + Vector2(20, r.size.y * 0.5); var b := a + Vector2(D * k, 0)
-	draw_line(a, b, Color(0.4, 0.7, 1, 0.8), 2.0)
-	draw_circle(a, 4, Color(0.5, 1, 0.6)); draw_circle(b, 4, Color(1, 0.7, 0.3))
-	_t(a + Vector2(-8, 24), str(s.rw0.id), 14, Color(0.5, 1, 0.6)); _t(b + Vector2(-16, 24), str(s.rw1.id), 14, Color(1, 0.7, 0.3))
-	var p := a + Vector2(float(s.x) * k, clampf(float(s.y) * k, -r.size.y * 0.45, r.size.y * 0.45))
-	var ang := float(s.psi)
-	var pts := PackedVector2Array([p + Vector2(9, 0).rotated(ang), p + Vector2(-6, 5).rotated(ang), p + Vector2(-6, -5).rotated(ang)])
-	draw_colored_polygon(pts, Color(1, 1, 1))
-	_t(r.position + Vector2(6, 16), "%d км до ВПП" % (float(s.dist) / 1000.0), 14)
+var rng := 40000.0
+var sweep := 0.0
+func radar_rect() -> Rect2: return Rect2(730, 96, 250, 250)
+
+func _radar():
+	var r := radar_rect(); var c := r.get_center(); var R := 115.0
+	sweep = fmod(sweep + 0.06, TAU)
+	draw_circle(c, R + 8, Color(0, 0, 0, 0.6)); draw_circle(c, R, Color(0.02, 0.12, 0.06, 0.85))
+	for q in [0.33, 0.66, 1.0]: draw_arc(c, R * q, 0, TAU, 48, Color(0.2, 0.7, 0.35, 0.6), 1.5)
+	draw_line(c + Vector2(0, -R), c + Vector2(0, R), Color(0.2, 0.7, 0.35, 0.35), 1.0); draw_line(c + Vector2(-R, 0), c + Vector2(R, 0), Color(0.2, 0.7, 0.35, 0.35), 1.0)
+	draw_line(c, c + Vector2(0, -R).rotated(sweep), Color(0.5, 1, 0.6, 0.8), 2.0)
+	var k := R / rng; var psi := float(s.psi); var cs := cos(psi); var sn := sin(psi)
+	var px := float(s.x); var pz := float(s.y)
+	var a := _rp(c, k, 0.0, 0.0, px, pz, cs, sn); var b := _rp(c, k, float(s.D), 0.0, px, pz, cs, sn)
+	draw_line(a.clamp(c - Vector2(R, R), c + Vector2(R, R)), b.clamp(c - Vector2(R, R), c + Vector2(R, R)), Color(1, 0.4, 1, 0.8), 2.0)
+	if b.distance_to(c) < R: draw_circle(b, 5, Color(1, 0.7, 0.3)); _t(b + Vector2(6, -6), str(s.rw1.id), 13, Color(1, 0.7, 0.3))
+	if a.distance_to(c) < R: draw_circle(a, 4, Color(0.5, 1, 0.6)); _t(a + Vector2(6, -6), str(s.rw0.id), 13, Color(0.5, 1, 0.6))
+	for t in s.get("trf", []):
+		var p := _rp(c, k, float(t[0]), float(t[1]), px, pz, cs, sn)
+		if p.distance_to(c) < R:
+			var dh := float(t[2]) - float(s.alt)
+			var col := Color(1, 0.3, 0.3) if absf(dh) < 600.0 else Color(0.4, 0.8, 1)
+			draw_rect(Rect2(p - Vector2(4, 4), Vector2(8, 8)), col); _t(p + Vector2(7, 4), "%+d" % (dh / 100.0), 13, col)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -9), c + Vector2(6, 7), c + Vector2(-6, 7)]), Color.WHITE)
+	_t(r.position + Vector2(6, 16), "РАДАР %d км" % (rng / 1000.0), 14, Color(0.6, 1, 0.7)); _t(r.position + Vector2(6, 262), "касание — дальность", 12, Color(0.6, 0.8, 0.7))
+
+func _rp(c: Vector2, k: float, tx: float, tz: float, px: float, pz: float, cs: float, sn: float) -> Vector2:
+	var dx := tx - px; var dz := tz - pz
+	return c + Vector2(-dx * sn + dz * cs, -(dx * cs + dz * sn)) * k
+
+func cycle_range():
+	var rs := [10000.0, 20000.0, 40000.0, 80000.0, 160000.0]
+	rng = rs[(rs.find(rng) + 1) % 5]

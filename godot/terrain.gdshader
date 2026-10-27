@@ -94,7 +94,8 @@ float height_at(vec2 ll, float d, vec2 xz, out float fl){
   if (amp > 0.0 && w2 > 0.0) r2 = pow(1.0 - abs(2.0*fbm(ll*42.0 + 5.0)-1.0), 2.0);
   if (amp > 0.0 && w1 > 0.0) r1 = pow(1.0 - abs(2.0*fbm(ll*140.0)-1.0), 2.0);
   float det = 0.0;
-  if (w0 > 0.0) det += (fbm(ll*12.0) - 0.45) * min(300.0, 40.0 + 0.08*h) * w0;
+  if (w0 > 0.0) det += (fbm(ll*12.0) - 0.45) * min(300.0, 70.0 + 0.08*h) * w0;
+  if (w2 > 0.0 && h > 3.0) det += (fbm(ll*34.0 + 11.0) - 0.5) * 55.0 * w2;   // холмистая равнина
   if (w2 > 0.0 && amp > 0.0) det += (r2 - 0.35) * amp * 0.8 * w2;
   if (w1 > 0.0 && amp > 0.0) det += (r1 - 0.35) * amp * 0.45 * w1;
   if (w3 > 0.0) det += (fbm(ll*420.0) - 0.5) * min(160.0, 0.06*h) * w3;

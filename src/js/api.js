@@ -103,7 +103,7 @@ export function sim_state() {
     rw0: { lat: rw0[0], lon: rw0[1], len: f.fromAp.rwy, id: f.fromAp.id }, rw1: { lat: rw1[0], lon: rw1[1], len: f.toAp.rwy, id: f.toAp.id },
     tod: f.tod, cs: f.cs, plane: f.p.id, fade: f.fade, fadeText: f.fadeText,
     ground: { gx: f.fr0.gx, taxiZ: f.fr0.tz }, // схема аэродрома для отрисовки
-    hold: !!f.hold, ga: f.ga,
+    hold: !!f.hold, ga: f.ga, trf: f.trf.filter(t => !t.gone).map(t => [Math.round(t.x), Math.round(t.y), Math.round(t.h)]),
   };
 }
 // положение точки локальной системы (x вдоль оси, z вправо) в широте/долготе — для отрисовки аэродромов
