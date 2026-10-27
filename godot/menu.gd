@@ -1,6 +1,9 @@
 extends CanvasLayer
 # Меню карьеры: главная, выбор рейса, ангар, тренажёр, рекорды, настройки, итоги рейса.
 signal start_flight(to: String, drill: String)
+signal walk_request
+var walk_found: Array = []
+var walked := false
 var root: Control
 var body: VBoxContainer
 var sel_to := ""
@@ -104,7 +107,7 @@ func _select():
 		var bb := _btn(("▶ " if it.to == sel_to else "") + txt, func(): sel_to = it.to; _render(), 22)
 		bb.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.add_child(bb)
 	if sel_to != "":
-		var go := _btn("ЛЕТЕТЬ ✈", func(): pre = Sim.g("game_preflight", JSON.stringify(sel_to)); pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; scr = "pre"; _render(), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
+		var go := _btn("ЛЕТЕТЬ ✈", func(): pre = Sim.g("game_preflight", JSON.stringify(sel_to)); pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; walk_found = []; walk_request.emit(), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
 
 # ---------- ангар ----------
 func _hangar():
@@ -156,9 +159,10 @@ func _pre():
 	if pre.flexOk:
 		var cb := CheckBox.new(); cb.text = "FLEX — пониженная тяга (−14%, меньше износ)"; cb.button_pressed = pf_i.flex; cb.add_theme_font_size_override("font_size", 20)
 		cb.toggled.connect(func(v): pf_i.flex = v); b.add_child(cb)
-	if pre.defects.size() > 0:
-		b.add_child(_lbl("Замечания по технике (износ %d%%): %s. В полёте это может отказать." % [int(pre.wear), "; ".join(pre.defects)], 18, Color(1, 0.7, 0.4)))
-		b.add_child(_btn("Вызвать ТО (%d ₽, −30%% износа)" % int(pre.mtCost), func(): if Sim.g("game_maint"): Sim.persist(); pre.defects = []; _render(), 20))
+	var seen: Array = pre.defects if int(Sim.g("game_hub").opts.get("mode", 0)) == 0 else walk_found
+	if seen.size() > 0:
+		b.add_child(_lbl("Замечания по технике (износ %d%%): %s. В полёте это может отказать." % [int(pre.wear), "; ".join(seen)], 18, Color(1, 0.7, 0.4)))
+		b.add_child(_btn("Вызвать ТО (%d ₽, −30%% износа)" % int(pre.mtCost), func(): if Sim.g("game_maint"): Sim.persist(); pre.defects = []; walk_found = []; _render(), 20))
 	b.add_child(_lbl("Чек-лист:", 20))
 	for i in range(CKL.size()):
 		var cc := CheckBox.new(); cc.text = CKL[i]; cc.button_pressed = pf_i.ck[i]; cc.add_theme_font_size_override("font_size", 20); cc.custom_minimum_size = Vector2(0, 44)

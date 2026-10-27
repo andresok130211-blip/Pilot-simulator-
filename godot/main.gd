@@ -21,7 +21,10 @@ func _ready():
 	snd = load("res://sound.gd").new(); add_child(snd)
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
+	menu.walk_request.connect(_walk)
 	if not _args(): _show_menu()
+	if screen_arg == "walk":
+		menu.sel_to = "LED"; menu.pre = Sim.g("game_preflight", "\"LED\""); menu.pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; _walk(); return
 	if screen_arg == "pre":
 		menu.sel_to = "LED"; menu.pre = Sim.g("game_preflight", "\"LED\""); menu.pf_i = {"f": 1, "c": 1, "flex": false, "ck": [true, true, false, false, false]}
 	if screen_arg != "": menu.open(screen_arg)
@@ -54,6 +57,19 @@ func _args() -> bool:
 		_start(to, "")
 		return true
 	return false
+
+func _walk():
+	menu.close()
+	world.visible = true
+	var pid: String = Sim.g("game_hub").plane
+	var col := Color.WHITE
+	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
+	world.build_plane(pid, col)
+	world.set_tod(0 if tod < 0 else tod)
+	var wk = load("res://walk.gd").new(); add_child(wk)
+	wk.finished.connect(func(found: Array):
+		world.visible = false; menu.walk_found = found; menu.open("pre"))
+	wk.start(world, menu.pre.defects, false)
 
 func _show_menu():
 	playing = false; hud.visible = false; world.visible = false
