@@ -33,6 +33,7 @@ func _ready():
 	set_tod(0)
 	cam = Camera3D.new(); cam.far = 600000.0; cam.near = 1.0; cam.fov = 62
 	add_child(cam)
+	_build_cockpit()
 
 func set_tod(tod: int):
 	var tops := [Color(0.20, 0.42, 0.78), Color(0.16, 0.19, 0.44), Color(0.03, 0.06, 0.15)]
@@ -147,6 +148,54 @@ func build_plane(pid: String, color: Color):
 	_build_gear(L)
 	_build_lights(L)
 	_build_boarding(L)
+
+# ---------- 3D-кабина: каркас остекления, козырёк, панель с приборами (SubViewport), рычаги, штурвалы ----------
+var ck: Node3D
+var ck_vp: SubViewport
+var ck_instr: Control
+var ck_lev: Array = []
+var ck_yoke: Array = []
+func _build_cockpit() -> void:
+	ck = Node3D.new(); ck.scale = Vector3.ONE * 3.5; ck.visible = false; cam.add_child(ck)
+	ck_vp = SubViewport.new(); ck_vp.size = Vector2i(1280, 190); ck_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS; add_child(ck_vp)
+	ck_instr = Control.new(); ck_instr.set_script(load("res://instr.gd")); ck_instr.set("panel", true); ck_vp.add_child(ck_instr)
+	var dk := Color(0.07, 0.075, 0.085); var md := Color(0.14, 0.15, 0.17)
+	var pm := MeshInstance3D.new(); var qm := QuadMesh.new(); qm.size = Vector2(2.28, 0.34); pm.mesh = qm
+	var mt := StandardMaterial3D.new(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.albedo_texture = ck_vp.get_texture(); pm.material_override = mt
+	pm.position = Vector3(0, -0.12, -0.95); ck.add_child(pm)
+	_box(ck, Vector3(2.9, 0.06, 0.4), dk, Vector3(0, 0.085, -0.8))            # козырёк
+	_box(ck, Vector3(2.9, 0.5, 0.06), md, Vector3(0, -0.58, -0.96))         # низ панели
+	_box(ck, Vector3(2.9, 0.18, 0.3), dk, Vector3(0, 0.62, -0.8))           # верхняя рама с тумблерами
+	for i in range(34):
+		var on := (i * 7) % 5 == 0
+		var sw := _box(ck, Vector3(0.035, 0.05, 0.03), Color(0.95, 0.6, 0.15) if on else Color(0.35, 0.37, 0.4), Vector3(-1.3 + i * 0.077, 0.52, -0.64))
+		if on: (sw.material_override as StandardMaterial3D).emission_enabled = true; (sw.material_override as StandardMaterial3D).emission = Color(0.9, 0.55, 0.1)
+	_box(ck, Vector3(0.06, 0.62, 0.05), dk, Vector3(0, 0.32, -0.95))        # центральная стойка
+	for sx in [-1.0, 1.0]:
+		var pil := _box(ck, Vector3(0.16, 0.7, 0.08), dk, Vector3(sx * 1.0, 0.33, -0.95)); pil.rotation_degrees = Vector3(0, 0, -sx * 12.0)
+		var wall := _box(ck, Vector3(0.5, 1.4, 0.2), md, Vector3(sx * 1.45, -0.1, -0.8)); wall.rotation_degrees = Vector3(0, sx * 30.0, 0)
+	_box(ck, Vector3(0.34, 0.24, 0.5), dk, Vector3(0.0, -0.32, -0.5))        # пьедестал
+	ck_lev.clear()
+	for i in range(2):
+		var piv := Node3D.new(); piv.position = Vector3(-0.05 + i * 0.1, -0.2, -0.5); ck.add_child(piv)
+		_box(piv, Vector3(0.02, 0.1, 0.02), Color(0.6, 0.62, 0.66), Vector3(0, 0.05, 0))
+		_box(piv, Vector3(0.035, 0.035, 0.035), Color(0.12, 0.12, 0.14), Vector3(0, 0.115, 0))
+		ck_lev.append(piv)
+	ck_yoke.clear()
+	for sx in [-0.62, 0.62]:
+		var y := Node3D.new(); y.position = Vector3(sx, -0.36, -0.66); ck.add_child(y)
+		var tm := TorusMesh.new(); tm.inner_radius = 0.085; tm.outer_radius = 0.115
+		var ti := MeshInstance3D.new(); ti.mesh = tm; ti.material_override = _m(Color(0.08, 0.08, 0.09)); ti.rotation_degrees = Vector3(90, 0, 0); y.add_child(ti)
+		_box(y, Vector3(0.03, 0.03, 0.2), dk, Vector3(0, 0, -0.1))
+		ck_yoke.append(y)
+
+func cockpit_tick(s: Dictionary, thr: Array, roll: float, stick: float) -> void:
+	ck.visible = cam_mode == 1
+	if not ck.visible: return
+	ck_instr.call("put", s, 2, true)
+	for i in range(2): (ck_lev[i] as Node3D).rotation.x = -(float(thr[i]) - 0.25) * 1.0
+	for y in ck_yoke:
+		(y as Node3D).rotation.z = -roll * 0.9; (y as Node3D).position.z = -0.66 + stick * 0.05
 
 # ---------- шасси и огни (в моделях их нет) ----------
 var gear: Node3D

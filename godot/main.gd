@@ -145,6 +145,7 @@ func _process(delta: float):
 	snd.on = snd_opt and not hud.paused
 	snd.put(s)
 	hud.update_state(s)
+	world.cockpit_tick(s, hud.thr, hud.roll, hud.stick)
 	world.board_tick(board_left > 0.0 and world.cam_mode != 1, world.BOARD_T - board_left)
 	hud.boarding(board_left)
 	if s.get("done", false):

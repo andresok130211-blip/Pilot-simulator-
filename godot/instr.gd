@@ -3,6 +3,7 @@ extends Control
 var s := {}
 var mode := 0
 var cockpit := false
+var panel := false   # отрисовка приборной панели в текстуру 3D-кабины
 var font: Font
 
 func _ready():
@@ -18,7 +19,8 @@ func _t(p: Vector2, txt: String, sz := 18, col := Color.WHITE):
 
 func _draw():
 	if s.is_empty(): return
-	if cockpit: _cockpit(); return
+	if panel: draw_set_transform(Vector2(0, -300)); _panel(); return
+	if cockpit: return
 	_topbar()
 	_tapes()
 	if mode == 2: _eng(Vector2(1030, 24))
@@ -76,6 +78,16 @@ func _cockpit():
 	_eicas(Vector2(560, 345))
 	for sx in [26.0, 1254.0]:
 		draw_rect(Rect2(sx - 14, 470, 28, 170), Color(0.05, 0.05, 0.06)); draw_circle(Vector2(sx, 470), 28, Color(0.07, 0.07, 0.08))
+
+func _panel():
+	draw_rect(Rect2(0, 300, 1280, 190), Color(0.03, 0.035, 0.04))
+	draw_rect(Rect2(330, 305, 620, 26), Color(0.0, 0.0, 0.0))   # MCP
+	var vals := [["СК", "%d" % (float(s.ias) * 3.6)], ["КУРС", "%03d" % float(s.hdg)], ["ВЫС", "%d" % float(s.c.apAlt)], ["В/С", "%+d" % float(s.vs)], ["М", "%.2f" % float(s.mach)]]
+	for i in range(5): _t(Vector2(346 + i * 120, 324), "%s %s" % [vals[i][0], vals[i][1]], 16, Color(0.4, 1, 0.5))
+	for x in [160.0, 380.0, 560.0, 720.0, 900.0, 1120.0]: draw_rect(Rect2(x - 2, 336, 4, 150), Color(0.1, 0.11, 0.13))
+	_pfd(Vector2(200, 340), 70.0); _pfd(Vector2(950, 340), 70.0)
+	_radar(Vector2(468, 408), 56.0); _radar(Vector2(812, 408), 56.0)
+	_eicas(Vector2(560, 345))
 
 func _eicas(o: Vector2):
 	draw_rect(Rect2(o, Vector2(160, 130)), Color(0, 0, 0, 0.85))
