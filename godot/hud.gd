@@ -24,6 +24,8 @@ var cockpit := false
 var altp: PanelContainer
 var altp_v: VBoxContainer
 
+const WARN := {"pullup": "ВЫТЯГИВАЙТЕ!", "gear": "ВЫПУСТИТЕ ШАССИ!", "sink": "СЛИШКОМ БЫСТРО СНИЖАЕМСЯ", "terrain": "ЗЕМЛЯ ВПЕРЕДИ! НАБЕРИТЕ ВЫСОТУ", "stall": "МАЛАЯ СКОРОСТЬ!",
+	"over": "ПРЕВЫШЕНИЕ СКОРОСТИ", "flaps": "ЗАКРЫЛКИ!", "fuel0": "ТОПЛИВО ЗАКОНЧИЛОСЬ", "lowfuel": "МАЛО ТОПЛИВА"}
 func _lbl(size := 20) -> Label:
 	var l := Label.new()
 	l.add_theme_font_size_override("font_size", size)
@@ -219,7 +221,10 @@ func update_state(s: Dictionary):
 	info.text = "СК %d км/ч   ВЫС %d м   В/С %+d м/с   КУРС %03d°   М %.2f   до ВПП %.1f км   топливо %d кг   закр %s   шасси %s" % [
 		float(s.ias) * 3.6, float(s.h), float(s.vs), float(s.hdg), float(s.mach), float(s.dist) / 1000.0, float(s.fuel), str(s.flapName), "▼" if float(s.gear) > 0.98 else ("▲" if float(s.gear) < 0.02 else "…")]
 	hint.text = str(s.hint)
-	alert.text = "  ".join(s.alerts) if s.alerts.size() > 0 else ("  ".join(s.warnings) if s.warnings.size() > 0 else "")
+	var wt := []
+	for k in ["pullup", "gear", "sink", "terrain", "stall", "over", "flaps", "fuel0", "lowfuel"]:
+		if s.warnings.has(k) and not (k == "flaps" and s.warnings.has("gear")) and not (k == "lowfuel" and s.warnings.has("fuel0")): wt.append(WARN[k])
+	alert.text = "  ".join(s.alerts) if s.alerts.size() > 0 else "  ".join(wt.slice(0, 2))
 	log_l.text = "\n".join(s.msgs)
 	if s.ev:
 		var t := "⚠ " + str(s.ev.title) + "\n"
