@@ -10,6 +10,11 @@ var sel_to := ""
 var scr := "hub"
 var pre = {}
 var pf_i = {}
+var sc: ScrollContainer
+var t_id := -1
+var t_org := Vector2.ZERO
+var t_moved := false
+var t_sc := 0
 
 func _ready():
 	layer = 5
@@ -31,9 +36,10 @@ func _frame(title: String, back := "") -> VBoxContainer:
 	if back != "":
 		var b := _btn("‹ Назад", func(): scr = back; _render(), 22); b.custom_minimum_size = Vector2(150, 54); top.add_child(b)
 	var t := Label.new(); t.text = title; t.add_theme_font_size_override("font_size", 34); t.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(t)
-	var sc := ScrollContainer.new(); sc.position = Vector2(40, 90); sc.size = Vector2(1200, 530); sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; root.add_child(sc)
+	sc = ScrollContainer.new(); sc.position = Vector2(40, 90); sc.size = Vector2(1200, 530); sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; root.add_child(sc)
 	sc.set_anchors_preset(Control.PRESET_FULL_RECT); sc.offset_left = 40; sc.offset_top = 90; sc.offset_right = -40; sc.offset_bottom = -16
 	body = VBoxContainer.new(); body.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_theme_constant_override("separation", 10); sc.add_child(body)
+	_fix.call_deferred()
 	return body
 
 var _th: Theme
@@ -232,10 +238,11 @@ func _toggle(b: VBoxContainer, text: String, key: String, val: bool):
 func _choice(b: VBoxContainer, text: String, key: String, names: Array, cur: int, tod := false):
 	var r := _row(); b.add_child(r)
 	r.add_child(_lbl(text, 21))
-	var ob := OptionButton.new(); ob.add_theme_font_size_override("font_size", 21); ob.custom_minimum_size = Vector2(240, 54)
-	for n in names: ob.add_item(n)
-	ob.select(cur)
-	ob.item_selected.connect(func(i):
+	var ob := _btn("", func(): pass, 21); ob.custom_minimum_size = Vector2(300, 54)
+	var st := [cur]
+	ob.text = "‹  %s  ›" % str(names[cur])
+	ob.pressed.connect(func():
+		var i: int = (int(st[0]) + 1) % names.size(); st[0] = i; ob.text = "‹  %s  ›" % str(names[i])
 		var v = (("\"rnd\"" if i == 0 else str(i - 1)) if tod else str(i))
 		Sim.g("game_opt", "%s,%s" % [JSON.stringify(key), v]); Sim.persist())
 	r.add_child(ob)
@@ -261,3 +268,38 @@ func show_result(r: Dictionary):
 	var r2 := _row(); b.add_child(r2)
 	var bm := _btn("В меню", func(): scr = "hub"; _render()); bm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(bm)
 	var ba := _btn("Ещё рейс", func(): scr = "select"; _render()); ba.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(ba)
+
+# ---------- ввод: свой маршрутизатор касаний (кнопки внутри прокрутки иначе «глотают» нажатия) ----------
+func _fix() -> void:
+	if root: _ign(root)
+
+func _ign(n: Node) -> void:
+	if n is BaseButton or n is ScrollContainer: (n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children(): _ign(c)
+
+func _btns(n: Node, out: Array) -> void:
+	if n is BaseButton and (n as Control).is_visible_in_tree() and not (n as BaseButton).disabled: out.append(n)
+	for c in n.get_children(): _btns(c, out)
+
+func _tap(p: Vector2) -> void:
+	var bs := []; _btns(root, bs)
+	for i in range(bs.size() - 1, -1, -1):
+		var b: BaseButton = bs[i]
+		if not b.get_global_rect().has_point(p): continue
+		if sc and sc.is_ancestor_of(b) and not sc.get_global_rect().has_point(p): continue
+		if b is OptionButton: (b as OptionButton).show_popup()
+		elif b.toggle_mode: b.button_pressed = not b.button_pressed
+		else: b.pressed.emit()
+		return
+
+func _input(e: InputEvent) -> void:
+	if root == null or not is_instance_valid(root): return
+	if e is InputEventScreenTouch:
+		if e.pressed and t_id < 0:
+			t_id = e.index; t_org = e.position; t_moved = false; t_sc = sc.scroll_vertical if sc else 0
+		elif not e.pressed and e.index == t_id:
+			t_id = -1
+			if not t_moved: _tap(e.position)
+	elif e is InputEventScreenDrag and e.index == t_id:
+		if (e.position - t_org).length() > 16.0: t_moved = true
+		if t_moved and sc: sc.scroll_vertical = t_sc - int(e.position.y - t_org.y)

@@ -60,6 +60,9 @@ func _build_env(tod: int):
 	we.environment = env; add_child(we)
 	sun = DirectionalLight3D.new(); add_child(sun)
 
+func mip_tex(path: String) -> ImageTexture:
+	var im: Image = (load(path) as Texture2D).get_image(); im.generate_mipmaps(); return ImageTexture.create_from_image(im)
+
 func _build_terrain():
 	var rings := 330; var segs := 192
 	var verts := PackedVector3Array(); var idx := PackedInt32Array()
@@ -82,6 +85,7 @@ func _build_terrain():
 	m.custom_aabb = AABB(Vector3(-700000, -2000, -700000), Vector3(1400000, 20000, 1400000))
 	terrain = MeshInstance3D.new(); terrain.mesh = m; terrain.extra_cull_margin = 16384.0
 	mat = ShaderMaterial.new(); mat.shader = load("res://terrain.gdshader")
+	mat.set_shader_parameter("det_g", mip_tex("res://assets/tex/det_g.png")); mat.set_shader_parameter("det_r", mip_tex("res://assets/tex/det_r.png"))
 	mat.set_shader_parameter("dem", load("res://assets/dem.png"))
 	mat.set_shader_parameter("bio", load("res://assets/bio.png"))
 	mat.set_shader_parameter("coast", load("res://assets/coast.png"))
@@ -183,7 +187,9 @@ func _build_boarding(L: float):
 	var gs := -2.3            # уровень площадки относительно центра самолёта
 	var zd := -L * 0.30       # передняя левая дверь
 	var fl := -0.05           # пол телетрапа
-	_box(board, Vector3(80, 0.12, L * 2.4), Color(0.4, 0.41, 0.43), Vector3(-6, gs - 0.06, 0))
+	var padm: MeshInstance3D = _box(board, Vector3(80, 0.12, L * 2.4), Color(1, 1, 1), Vector3(-6, gs - 0.06, 0))
+	var sm := StandardMaterial3D.new(); sm.albedo_texture = mip_tex("res://assets/tex/det_r.png"); sm.albedo_color = Color(0.9, 0.91, 0.93); sm.uv1_triplanar = true; sm.uv1_scale = Vector3(0.18, 0.18, 0.18); sm.roughness = 0.95
+	padm.material_override = sm
 	_box(board, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.01, -L * 0.5 - 22))
 	# терминал
 	_box(board, Vector3(12, 12, L * 1.1), Color(0.62, 0.7, 0.8), Vector3(-27, gs + 6, 0))

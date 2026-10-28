@@ -92,8 +92,10 @@ func start(w: Node3D, defs: Array, all := false):
 
 func _build_site(L: float) -> void:
 	root3 = Node3D.new(); world.add_child(root3)
-	world._box(root3, Vector3(600, 0.1, 600), Color(0.28, 0.42, 0.22), Vector3(0, GS - 0.25, 0))
-	world._box(root3, Vector3(half.x * 2.0 + 4.0, 0.12, half.y * 2.0 + 4.0), Color(0.42, 0.43, 0.45), Vector3(0, GS - 0.06, 0))
+	var gr: MeshInstance3D = world._box(root3, Vector3(600, 0.1, 600), Color(1, 1, 1), Vector3(0, GS - 0.25, 0))
+	gr.material_override = _tex_mat(world.mip_tex("res://assets/tex/grass.jpg"), Color(1, 1, 1), 0.12)
+	var pd: MeshInstance3D = world._box(root3, Vector3(half.x * 2.0 + 4.0, 0.12, half.y * 2.0 + 4.0), Color(1, 1, 1), Vector3(0, GS - 0.06, 0))
+	pd.material_override = _tex_mat(world.mip_tex("res://assets/tex/det_r.png"), Color(0.95, 0.96, 0.98), 0.18)
 	world._box(root3, Vector3(0.3, 0.02, half.y * 2.0), Color(0.95, 0.8, 0.1), Vector3(0, GS + 0.02, 0))
 	for sx in [-1.0, 1.0]:   # ограждение площадки
 		world._box(root3, Vector3(0.15, 1.0, half.y * 2.0 + 4.0), Color(0.9, 0.35, 0.1), Vector3(sx * (half.x + 2.0), GS + 0.5, 0))
@@ -105,6 +107,10 @@ func _build_site(L: float) -> void:
 		world._box(root3, Vector3(0.3, 0.25, 0.8), Color(0.9, 0.8, 0.1), Vector3(sx * 3.8, GS + 0.12, L * 0.04 - 1.3))
 	world._box(root3, Vector3(2.2, 2.4, 5.0), Color(0.9, 0.9, 0.92), Vector3(-half.x + 4.0, GS + 1.2, L * 0.3))   # топливозаправщик
 	world._box(root3, Vector3(1.6, 1.2, 1.2), Color(0.95, 0.75, 0.1), Vector3(-9.0, GS + 0.6, -L * 0.3))        # наземное питание
+
+func _tex_mat(t: Texture2D, c: Color, k: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new(); m.albedo_texture = t; m.albedo_color = c; m.uv1_triplanar = true; m.uv1_scale = Vector3(k, k, k); m.roughness = 0.95
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC; return m
 
 func _draw_pad() -> void:
 	var c := Vector2(150, 500)

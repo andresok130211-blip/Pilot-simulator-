@@ -24,6 +24,8 @@ uniform float sat_mid_size = 1.0;
 uniform vec2 sat_near_org = vec2(0.0);
 uniform float sat_near_size = 1.0;
 uniform float sat_on = 0.0;
+uniform sampler2D det_g : filter_linear_mipmap, repeat_enable;
+uniform sampler2D det_r : filter_linear_mipmap, repeat_enable;
 vec4 sat_sample(vec2 ll){
   float la = radians(clamp(ll.y, -85.0, 85.0));
   vec2 m = vec2((ll.x + 180.0) / 360.0, 0.5 - log(tan(0.78539816 + la * 0.5)) / 6.2831853);
@@ -179,6 +181,15 @@ void fragment(){
     vec4 sat = sat_sample(v_ll) * sat_on;
     sat_a = sat.a;
     col = mix(col, sat.rgb * 1.05, sat.a * 0.94 * step(0.5, land));
+    // реальные текстуры травы и камня: мелкая детализация вблизи
+    float dk = 1.0 - smoothstep(1500.0, 16000.0, dist);
+    if (dk > 0.0) {
+      vec2 tuv = v_ll * 3700.0;
+      float tg = texture(det_g, tuv).r * texture(det_g, tuv * 0.113 + 0.37).r * 4.0;
+      float tr = texture(det_r, tuv * 0.7).r * texture(det_r, tuv * 0.083 + 0.5).r * 4.0;
+      float td = mix(tg, tr, max(rock, snow * 0.5));
+      col *= mix(1.0, td, 0.75 * dk * step(0.5, land));
+    }
     // города: серая застройка, кварталы, ночью — огни
     for (int i = 0; i < 8; i++) {
       if (i >= cty_n) break;
