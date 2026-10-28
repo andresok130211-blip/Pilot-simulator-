@@ -67,8 +67,8 @@ func start(w: Node3D, defs: Array, all := false):
 		["nose", "Носовая часть", 0.0, -L * 0.5 - 1.5, "Обтекатель целый, трубки Пито чистые."],
 		["eng1", "Левый двигатель", -5.7, -L * 0.08, "Лопатки целы, течей нет, створки закрыты."],
 		["eng2", "Правый двигатель", 5.7, -L * 0.08, "Лопатки целы, течей нет, генератор в порядке."],
-		["lg", "Левая основная стойка", -3.8, L * 0.04, "Амортизатор в норме, шины целы, течей нет."],
-		["rg", "Правая основная стойка", 3.8, L * 0.04, "Амортизатор в норме, шины целы, течей нет."],
+		["lg", "Левая основная стойка", -L * 0.068, L * 0.04, "Амортизатор в норме, шины целы, течей нет."],
+		["rg", "Правая основная стойка", L * 0.068, L * 0.04, "Амортизатор в норме, шины целы, течей нет."],
 		["lw", "Левое крыло", -ws, L * 0.10, "Закрылки и огни целы, обшивка без повреждений."],
 		["rw", "Правое крыло", ws, L * 0.10, "Закрылки и огни целы, обшивка без повреждений."],
 		["tail", "Хвостовое оперение", 0.0, L * 0.47, "Руль направления и стабилизатор без люфта."]]
@@ -80,7 +80,7 @@ func start(w: Node3D, defs: Array, all := false):
 		var lb := Label3D.new(); lb.text = "?"; lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lb.fixed_size = true; lb.pixel_size = 0.0016; lb.font_size = 64
 		lb.no_depth_test = true; lb.outline_size = 14; lb.modulate = Color(1, 0.85, 0.2); lb.position = Vector3(s.p.x, GS + 2.6, s.p.y); root3.add_child(lb)
 		s["mk"] = lb; spots.append(s)
-	obst = [[Vector2(-5.7, -L * 0.08), 1.9], [Vector2(5.7, -L * 0.08), 1.9], [Vector2(-3.8, L * 0.04), 1.4], [Vector2(3.8, L * 0.04), 1.4], [Vector2(0, -L * 0.5 + 1.0), 2.4]]
+	obst = [[Vector2(-5.7, -L * 0.08), 1.9], [Vector2(5.7, -L * 0.08), 1.9], [Vector2(-L * 0.068, L * 0.04), 1.4], [Vector2(L * 0.068, L * 0.04), 1.4], [Vector2(0, -L * 0.5 + 1.0), 2.4]]
 	ui = Control.new(); ui.set_anchors_preset(Control.PRESET_FULL_RECT); ui.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(ui)
 	pad = Control.new(); pad.set_anchors_preset(Control.PRESET_FULL_RECT); pad.mouse_filter = Control.MOUSE_FILTER_IGNORE; pad.draw.connect(_draw_pad); ui.add_child(pad)
 	lb_top = _lbl(24, Vector2(24, 14))
@@ -104,7 +104,7 @@ func _build_site(L: float) -> void:
 	for p in [Vector3(-3, 0, -L * 0.5 - 4), Vector3(3, 0, -L * 0.5 - 4), Vector3(-9, 0, -L * 0.5 - 1), Vector3(9, 0, -L * 0.5 - 1)]:   # конусы
 		world._cyl(root3, 0.25, 0.7, Color(1, 0.45, 0.1), Vector3(p.x, GS + 0.35, p.z))
 	for sx in [-1.0, 1.0]:   # колодки
-		world._box(root3, Vector3(0.3, 0.25, 0.8), Color(0.9, 0.8, 0.1), Vector3(sx * 3.8, GS + 0.12, L * 0.04 - 1.3))
+		world._box(root3, Vector3(0.3, 0.25, 0.8), Color(0.9, 0.8, 0.1), Vector3(sx * L * 0.068, GS + 0.12, L * 0.04 - 1.3))
 	world._box(root3, Vector3(2.2, 2.4, 5.0), Color(0.9, 0.9, 0.92), Vector3(-half.x + 4.0, GS + 1.2, L * 0.3))   # топливозаправщик
 	world._box(root3, Vector3(1.6, 1.2, 1.2), Color(0.95, 0.75, 0.1), Vector3(-9.0, GS + 0.6, -L * 0.3))        # наземное питание
 
@@ -187,4 +187,5 @@ func _process(dt: float) -> void:
 	b_insp.visible = cur >= 0
 	if cur >= 0: b_insp.text = "ОСМОТРЕТЬ: " + str(spots[cur].name)
 	msg_t -= dt
+	world._blink_tick()
 	lb_msg.visible = msg_t > 0.0

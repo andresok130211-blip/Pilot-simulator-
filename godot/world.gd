@@ -138,7 +138,58 @@ func build_plane(pid: String, color: Color):
 	var k: float = L / float(MODEL_LEN[m])
 	inst.scale = Vector3.ONE * k; inst.rotation_degrees = Vector3(0, MODEL_YAW, 0)
 	plane.add_child(inst)
+	_build_gear(L)
+	_build_lights(L)
 	_build_boarding(L)
+
+# ---------- шасси и огни (в моделях их нет) ----------
+var gear: Node3D
+var nav_blink: Array = []
+func _wheel(parent: Node3D, r: float, wd: float, pos: Vector3) -> void:
+	_cyl(parent, r, wd, Color(0.07, 0.07, 0.08), pos, Vector3(0, 0, 90))
+	_cyl(parent, r * 0.55, wd + 0.02, Color(0.6, 0.62, 0.66), pos, Vector3(0, 0, 90))
+
+func _leg(parent: Node3D, x: float, z: float, top: float, bot: float, twin: float, r: float) -> void:
+	var leg := Node3D.new(); leg.position = Vector3(x, 0, z); parent.add_child(leg)
+	_cyl(leg, 0.13, top - bot, Color(0.75, 0.77, 0.8), Vector3(0, (top + bot) * 0.5 - top, 0))
+	_cyl(leg, 0.07, (top - bot) * 0.5, Color(0.9, 0.9, 0.92), Vector3(0.0, -(top - bot) * 0.25, 0.22))   # шлиц-шарнир
+	_box(leg, Vector3(0.1, 0.1, twin * 2.0 + 0.2), Color(0.3, 0.3, 0.33), Vector3(0, bot - top + r, 0))
+	for sz in [-1.0, 1.0]:
+		_wheel(leg, r, 0.34, Vector3(0, bot - top + r, sz * twin))
+
+func _build_gear(L: float) -> void:
+	gear = Node3D.new(); gear.position = Vector3(0, -1.1, 0); plane.add_child(gear)
+	var top := -1.1; var bot := -2.3
+	var gx := L * 0.068
+	_leg(gear, 0.0, -L * 0.36, top, bot, 0.2, 0.42)
+	for sx in [-1.0, 1.0]:
+		_leg(gear, sx * gx, L * 0.04, top, bot, 0.45, 0.55)
+		_box(gear, Vector3(0.05, 1.3, 1.6), Color(0.85, 0.86, 0.88), Vector3(sx * (gx - 0.55), -0.1, L * 0.04))   # створка
+
+func _blink_light(pos: Vector3, col: Color, sz: float, strobe: bool) -> void:
+	var sm := SphereMesh.new(); sm.radius = sz; sm.height = sz * 2.0
+	var mt := StandardMaterial3D.new(); mt.albedo_color = col; mt.emission_enabled = true; mt.emission = col; mt.emission_energy_multiplier = 3.0; mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var mi := MeshInstance3D.new(); mi.mesh = sm; mi.material_override = mt; mi.position = pos; plane.add_child(mi)
+	var g := Sprite3D.new(); g.texture = _glow_tex(); g.billboard = BaseMaterial3D.BILLBOARD_ENABLED; g.modulate = Color(col.r, col.g, col.b, 0.8); g.pixel_size = sz * 6.0 / 128.0
+	g.shaded = false; g.no_depth_test = false; g.transparent = true; mi.add_child(g)
+	if strobe: nav_blink.append(mi)
+
+func _build_lights(L: float) -> void:
+	nav_blink.clear()
+	var ws := L * 0.44
+	_blink_light(Vector3(-ws, 0.1, L * 0.11), Color(1, 0.1, 0.1), 0.12, false)
+	_blink_light(Vector3(ws, 0.1, L * 0.11), Color(0.1, 1, 0.2), 0.12, false)
+	_blink_light(Vector3(0, 2.6, L * 0.5), Color(1, 1, 1), 0.1, false)
+	_blink_light(Vector3(-ws, 0.15, L * 0.115), Color(1, 1, 1), 0.1, true)
+	_blink_light(Vector3(ws, 0.15, L * 0.115), Color(1, 1, 1), 0.1, true)
+	_blink_light(Vector3(0, 2.15, -L * 0.1), Color(1, 0.15, 0.1), 0.14, true)   # маяк
+	_blink_light(Vector3(0, -1.9, -L * 0.34), Color(1, 1, 0.9), 0.14, false)    # фара
+
+func _blink_tick() -> void:
+	var t := Time.get_ticks_msec() % 1200
+	for i in range(nav_blink.size()):
+		var on := (t < 90) or (t > 180 and t < 270) if i < 2 else t < 500
+		(nav_blink[i] as Node3D).visible = on
 
 # ---------- подготовка к вылету: телетрап, посадка, багаж, заправка, буксировщик ----------
 const BOARD_T := 14.0
@@ -391,8 +442,39 @@ func set_airports(aps: Array, route_brg: float):
 		twm.position = Vector3(float(a.len) * 0.55, 18, 262); n.add_child(twm)
 		var cab := BoxMesh.new(); cab.size = Vector3(12, 6, 12)
 		var cm := _mk(cab, Color(0.25, 0.4, 0.5), Vector3(float(a.len) * 0.55, 39, 262)); n.add_child(cm)
+		_airport_details(n, float(a.len))
 		airports.append({"node": n, "lat": a.lat, "lon": a.lon, "elev": a.elev, "len": a.len, "id": a.id})
 		n.rotation.y = deg_to_rad(90.0 - route_brg)
+
+func _airport_details(n: Node3D, len: float) -> void:
+	var rnd := RandomNumberGenerator.new(); rnd.seed = int(len * 7.0)
+	for k in range(2):   # ангары
+		var hx := len * (0.22 + 0.07 * k)
+		_box(n, Vector3(60, 14, 48), Color(0.75, 0.77, 0.8), Vector3(hx, 7, 330))
+		var rf := _cyl(n, 24.0, 60.0, Color(0.55, 0.6, 0.68), Vector3(hx, 14, 330), Vector3(0, 0, 90))
+		(rf.mesh as CylinderMesh).height = 60.0; rf.scale = Vector3(0.28, 1, 1); rf.rotation_degrees = Vector3(90, 0, 90)
+		_box(n, Vector3(30, 11, 0.5), Color(0.25, 0.3, 0.38), Vector3(hx, 5.5, 306))
+	var hm := _m(Color(1, 0.9, 0.6)); hm.emission_enabled = true; hm.emission = Color(1, 0.85, 0.5); hm.emission_energy_multiplier = 1.2
+	var x := len * 0.2
+	while x < len * 0.72:   # фонари перрона
+		_box(n, Vector3(0.4, 14, 0.4), Color(0.3, 0.3, 0.33), Vector3(x, 7, 218))
+		var hd := _box(n, Vector3(2.4, 0.4, 0.8), Color(1, 1, 1), Vector3(x, 14.2, 218)); hd.material_override = hm
+		x += 70.0
+	var cols := [Color(0.95, 0.75, 0.1), Color(0.9, 0.9, 0.92), Color(0.85, 0.3, 0.2), Color(0.2, 0.5, 0.85)]
+	for i in range(14):   # наземная техника
+		var vx := len * (0.3 + 0.35 * rnd.randf()); var vz := 200.0 + rnd.randf() * 40.0
+		var c: Color = cols[i % 4]
+		_box(n, Vector3(5.0, 2.0, 2.4), c, Vector3(vx, 1.3, vz))
+		_box(n, Vector3(2.0, 1.4, 2.3), Color(0.15, 0.2, 0.28), Vector3(vx + 1.6, 2.7, vz))
+		if i % 3 == 0:
+			for j in range(3): _box(n, Vector3(2.6, 1.0, 1.8), Color(0.35, 0.37, 0.4), Vector3(vx - 4.5 - j * 3.0, 0.9, vz))   # багажные тележки
+	for i in range(60):   # деревья по периметру
+		var tx := len * (-0.1 + 1.2 * rnd.randf()); var tz := (420.0 + rnd.randf() * 260.0) * (1.0 if rnd.randf() < 0.7 else -1.0)
+		if tz < 0 and absf(tz) < 520.0: tz -= 300.0
+		var h := 7.0 + rnd.randf() * 7.0
+		_cyl(n, 0.4, h * 0.4, Color(0.3, 0.2, 0.12), Vector3(tx, h * 0.2, tz))
+		var cone := CylinderMesh.new(); cone.top_radius = 0.1; cone.bottom_radius = 3.0 + rnd.randf() * 2.0; cone.height = h
+		var ci := MeshInstance3D.new(); ci.mesh = cone; ci.material_override = _m(Color(0.1, 0.3 + rnd.randf() * 0.1, 0.14)); ci.position = Vector3(tx, h * 0.55, tz); n.add_child(ci)
 
 func _local(lat: float, lon: float, clat: float, clon: float) -> Vector2:
 	return Vector2((lon - clon) * 111320.0 * cos(deg_to_rad(lat)), (clat - lat) * 110574.0)
@@ -409,6 +491,9 @@ func update_state(s: Dictionary, delta: float):
 	plane.rotation_order = EULER_ORDER_YXZ
 	plane.rotation = Vector3(float(s.theta), -deg_to_rad(hdg), -float(s.phi))
 	plane.visible = cam_mode != 1
+	var gp: float = clampf(float(s.get("gear", 1.0)), 0.0, 1.0)
+	if gear: gear.visible = gp > 0.03; gear.scale = Vector3(1, gp, 1)
+	_blink_tick()
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []
 	for a in airports:
