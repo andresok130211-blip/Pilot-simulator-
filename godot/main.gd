@@ -86,9 +86,11 @@ func _start(to := "", drill := ""):
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
-	snd.on = bool(Sim.g("game_hub").opts.get("sound", true))
+	snd_opt = bool(Sim.g("game_hub").opts.get("sound", true)); snd.on = snd_opt; hud.set_pause(false)
 	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
-	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)))
+	var qual: int = int(Sim.g("game_hub").opts.get("quality", 1))
+	world.set_quality(qual)
+	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)) and qual >= 1)
 	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
 	for a in r.aps:
 		lo0 = minf(lo0, float(a.lon)); lo1 = maxf(lo1, float(a.lon)); la0 = minf(la0, float(a.lat)); la1 = maxf(la1, float(a.lat))
@@ -115,6 +117,7 @@ var end_t := 0.0
 var screen_arg := ""
 var board_left := 0.0
 var snd
+var snd_opt := true
 var taps := []   # отладка: --tap=x,y,t (касание), --drag=x,y,x2,y2,t
 
 func _process(delta: float):
@@ -132,12 +135,14 @@ func _process(delta: float):
 		snd.eng = 0.0; snd.warn = false; return
 	var dt := minf(delta, 0.1)
 	var w: float = 0.0
-	if board_left > 0.0: board_left -= delta
+	if hud.paused: pass
+	elif board_left > 0.0: board_left -= delta
 	else: w = Sim.step(dt)
 	var s := Sim.state()
 	if s.is_empty(): return
 	world.update_state(s, dt)
 	hud.cockpit = world.cam_mode == 1
+	snd.on = snd_opt and not hud.paused
 	snd.put(s)
 	hud.update_state(s)
 	world.board_tick(board_left > 0.0 and world.cam_mode != 1, world.BOARD_T - board_left)

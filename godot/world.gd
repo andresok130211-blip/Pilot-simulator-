@@ -94,6 +94,12 @@ func _build_terrain():
 
 
 # ---------- облака ----------
+func set_quality(q: int) -> void:
+	for d in get_tree().get_nodes_in_group("det"): (d as Node3D).visible = q >= 1
+	for i in range(cloud_nodes.size()): cloud_nodes[i].visible = q >= 1 or i == 0
+	get_viewport().msaa_3d = Viewport.MSAA_2X if q >= 2 else Viewport.MSAA_DISABLED
+	Engine.max_fps = 30 if q == 0 else 60
+
 func _build_clouds():
 	var pm := PlaneMesh.new(); pm.size = Vector2(320000, 320000); pm.subdivide_width = 64; pm.subdivide_depth = 64
 	var defs := [[2300.0, 0.50, 5200.0], [7200.0, 0.34, 9000.0]]
@@ -446,7 +452,8 @@ func set_airports(aps: Array, route_brg: float):
 		airports.append({"node": n, "lat": a.lat, "lon": a.lon, "elev": a.elev, "len": a.len, "id": a.id})
 		n.rotation.y = deg_to_rad(90.0 - route_brg)
 
-func _airport_details(n: Node3D, len: float) -> void:
+func _airport_details(par: Node3D, len: float) -> void:
+	var n := Node3D.new(); n.add_to_group("det"); par.add_child(n)
 	var rnd := RandomNumberGenerator.new(); rnd.seed = int(len * 7.0)
 	for k in range(2):   # ангары
 		var hx := len * (0.22 + 0.07 * k)

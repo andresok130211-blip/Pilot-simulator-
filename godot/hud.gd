@@ -82,10 +82,24 @@ func boarding(left: float):
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
 		l.add_theme_font_size_override("font_size", 26)
 
+var paused := false
+var pause_ui: Control
+func set_pause(on: bool) -> void:
+	paused = on; pause_ui.visible = on; fingers.clear()
+
+func _build_pause() -> void:
+	pause_ui = Control.new(); pause_ui.set_anchors_preset(Control.PRESET_FULL_RECT); pause_ui.visible = false; pause_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(pause_ui)
+	var bg := ColorRect.new(); bg.color = Color(0, 0.03, 0.08, 0.7); bg.set_anchors_preset(Control.PRESET_FULL_RECT); bg.mouse_filter = Control.MOUSE_FILTER_IGNORE; pause_ui.add_child(bg)
+	var t := _lbl(48); t.text = "ПАУЗА"; t.position = Vector2(520, 130); pause_ui.add_child(t)
+	var b1 := _button("ПРОДОЛЖИТЬ", "resume", 320); b1.position = Vector2(480, 250); b1.custom_minimum_size = Vector2(320, 80); b1.add_theme_font_size_override("font_size", 28); pause_ui.add_child(b1)
+	var b2 := _button("ЗАВЕРШИТЬ РЕЙС", "exit", 320); b2.position = Vector2(480, 360); b2.custom_minimum_size = Vector2(320, 70); b2.add_theme_font_size_override("font_size", 24); pause_ui.add_child(b2)
+
 func _on_act(a: String):
 	match a:
 		"view": get_parent().world.cycle_cam()
-		"exit": exit_pressed.emit()
+		"pause": set_pause(true)
+		"resume": set_pause(false)
+		"exit": set_pause(false); exit_pressed.emit()
 		"skipboard": get_parent().board_left = 0.0
 		"altp": toggle_alts()
 		"link": linked = not linked; _link_look()
@@ -106,7 +120,7 @@ func _ready():
 	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 5); rows.position = Vector2(298, 452); add_child(rows)
 	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 5); r2.add_theme_constant_override("separation", 5); rows.add_child(r1); rows.add_child(r2)
 	var defs1 := [["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["ТОРМОЗ", "brake"], ["×1", "warp"], ["А/П", "ap"], ["А/Т", "at"], ["НАВ", "nav"], ["ВЫС −", "altd"]]
-	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["МЕНЮ", "exit"]]
+	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]
 	for d in defs1: var b := _button(d[0], d[1], 74); btn[d[1]] = b; r1.add_child(b)
 	for d in defs2: var b2 := _button(d[0], d[1], 74); btn[d[1]] = b2; r2.add_child(b2)
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
@@ -114,6 +128,7 @@ func _ready():
 	# запасные
 	altp = PanelContainer.new(); altp.visible = false; altp.position = Vector2(300, 90); add_child(altp)
 	altp_v = VBoxContainer.new(); altp.add_child(altp_v)
+	_build_pause()
 
 const LV_X := [38.0, 155.0]
 func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i], 304.0, 104, 222)
@@ -162,9 +177,10 @@ func _input(e: InputEvent):
 	if e is InputEventScreenTouch:
 		var idx: int = e.index
 		if e.pressed:
-			var bs := []; _all_buttons(self, bs)
+			var bs := []; _all_buttons(pause_ui if paused else self, bs)
 			for b in bs:
 				if b.get_global_rect().has_point(e.position): b.pressed.emit(); return
+			if paused: return
 			if instr.mode > 0 and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
 			for i in range(2):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
