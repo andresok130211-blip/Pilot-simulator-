@@ -177,7 +177,7 @@ func _build_cockpit() -> void:
 	_box(ck, Vector3(0.34, 0.24, 0.5), dk, Vector3(0.0, -0.32, -0.5))        # пьедестал
 	ck_lev.clear()
 	for i in range(2):
-		var piv := Node3D.new(); piv.position = Vector3(-0.05 + i * 0.1, -0.2, -0.5); ck.add_child(piv)
+		var piv := Node3D.new(); piv.position = Vector3(-0.05 + i * 0.1, -0.3, -0.42); ck.add_child(piv)
 		_box(piv, Vector3(0.02, 0.1, 0.02), Color(0.6, 0.62, 0.66), Vector3(0, 0.05, 0))
 		_box(piv, Vector3(0.035, 0.035, 0.035), Color(0.12, 0.12, 0.14), Vector3(0, 0.115, 0))
 		ck_lev.append(piv)
