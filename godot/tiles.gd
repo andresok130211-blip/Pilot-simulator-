@@ -34,6 +34,7 @@ static func merc(lon: float, lat: float) -> Vector2:
 	return Vector2((lon + 180.0) / 360.0, 0.5 - log(tan(PI / 4.0 + la / 2.0)) / (2.0 * PI))
 
 func _process(dt: float):
+	_pf_pump()
 	if not enabled or mat == null: return
 	t_acc += dt
 	_pump()
@@ -120,3 +121,42 @@ func _compose(i: int):
 	tex[i].update(im)
 	var key := "sat_mid" if i == 0 else "sat_near"
 	mat.set_shader_parameter(key + "_org", org[i]); mat.set_shader_parameter(key + "_size", float(GRID) / n)
+
+# ---- загрузка карты для офлайна ----
+var pf_q: Array = []
+var pf_total := 0
+var pf_done := 0
+var pf_active := 0
+var pf_fail := 0
+func start_prefetch(points: Array) -> void:
+	for pt in points:
+		var m := merc(float(pt[0]), float(pt[1]))
+		for z in LEVELS:
+			var n: int = 1 << int(z)
+			var cx := int(floor(m.x * n)); var cy := int(floor(m.y * n))
+			for dx in range(-1, 2):
+				for dy in range(-1, 2):
+					var x := posmod(cx + dx, n); var y := cy + dy
+					if y < 0 or y >= n: continue
+					if FileAccess.file_exists("user://tiles/%d_%d_%d.jpg" % [z, x, y]): continue
+					if not pf_q.has([z, x, y]): pf_q.append([z, x, y])
+	pf_total = pf_q.size() + pf_done; pf_fail = 0 if pf_active == 0 else pf_fail
+
+func pf_text() -> String:
+	if pf_total == 0: return ""
+	if pf_done >= pf_total and pf_q.is_empty() and pf_active == 0: return "Карта загружена: %d плиток%s." % [pf_done - pf_fail, (", не удалось: %d (нет интернета?)" % pf_fail) if pf_fail > 0 else ""]
+	return "Загрузка карты: %d из %d" % [pf_done, pf_total]
+
+func _pf_pump() -> void:
+	while pf_active < 4 and not pf_q.is_empty():
+		var q = pf_q.pop_front(); pf_active += 1
+		var h := HTTPRequest.new(); add_child(h); h.timeout = 20.0
+		h.request_completed.connect(func(res, code, _hd, body):
+			pf_active -= 1; pf_done += 1
+			if res == HTTPRequest.RESULT_SUCCESS and code == 200:
+				var f := FileAccess.open("user://tiles/%d_%d_%d.jpg" % [q[0], q[1], q[2]], FileAccess.WRITE)
+				if f: f.store_buffer(body)
+			else: pf_fail += 1
+			h.queue_free())
+		if h.request(URL % [q[0], q[2], q[1]]) != OK:
+			pf_active -= 1; pf_done += 1; pf_fail += 1; h.queue_free()

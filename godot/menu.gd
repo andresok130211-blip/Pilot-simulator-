@@ -3,6 +3,8 @@ extends CanvasLayer
 signal start_flight(to: String, drill: String)
 signal walk_request
 signal replay_request
+signal prefetch_request
+var pf_status: Callable
 var profile: Array = []
 var has_replay := false
 var walk_found: Array = []
@@ -227,8 +229,10 @@ func _settings():
 	_toggle(b, "Помощник: сам выпускает и убирает шасси и закрылки", "assistCfg", o.assistCfg)
 	_toggle(b, "Подсказки на экране", "hints", o.hints)
 	_toggle(b, "Звук", "sound", o.get("sound", true))
-	_toggle(b, "Спутниковые снимки земли (нужен интернет)", "sat", o.get("sat", true))
+	_toggle(b, "Спутниковые снимки земли (без интернета — из загруженной карты)", "sat", o.get("sat", true))
 	_choice(b, "Режим пилотирования", "mode", ["лёгкий (помощники)", "нормальный (PFD, ручной заход)", "профи (все приборы, без помощи)"], int(o.get("mode", 0)))
+	b.add_child(_btn("Скачать карту для офлайна (спутник и здания, ~40 МБ, нужен интернет)", func(): prefetch_request.emit(), 19))
+	pf_lbl = _lbl("", 18, Color(0.6, 1, 0.75)); b.add_child(pf_lbl)
 	_choice(b, "Качество графики", "quality", ["низкое (для слабых)", "среднее", "высокое"], int(o.get("quality", 1)))
 	_toggle(b, "Самолёт сам держит курс, пока вы не трогаете штурвал", "trackHold", bool(o.get("trackHold", true)))
 	_choice(b, "Снос ветром", "driftIdx", ["полный", "ослаблен", "минимальный", "нет"], int(o.get("driftIdx", 1)))
@@ -336,3 +340,7 @@ func _fetch_metar() -> void:
 		if scr == "pre": _render())
 	var ids := "%s,%s" % [pre.icao[0], pre.icao[1]]
 	rq.request("https://aviationweather.gov/api/data/metar?ids=%s&format=raw" % ids)
+
+var pf_lbl: Label
+func _process(_dt: float) -> void:
+	if scr == "settings" and pf_lbl and is_instance_valid(pf_lbl) and pf_status.is_valid(): pf_lbl.text = str(pf_status.call())

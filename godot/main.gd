@@ -23,6 +23,14 @@ func _ready():
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	menu.walk_request.connect(_walk)
 	menu.replay_request.connect(_replay)
+	menu.pf_status = func(): return world.tiles.pf_text()
+	menu.prefetch_request.connect(func():
+		var pts := []
+		for a in Sim.data.airports: pts.append([float(a.lon), float(a.lat)])
+		world.tiles.start_prefetch(pts)
+		var h = Sim.g("game_hub")
+		for a in Sim.data.airports:
+			if a.id == h.loc: world.bld.prefetch(float(a.lon), float(a.lat)))
 	if not _args(): _show_menu()
 	if screen_arg == "walk":
 		menu.sel_to = "LED"; menu.pre = Sim.g("game_preflight", "\"LED\""); menu.pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; _walk(); return
