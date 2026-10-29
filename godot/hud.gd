@@ -131,7 +131,13 @@ func _ready():
 	_build_pause()
 
 const LV_X := [38.0, 155.0]
-func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i], 304.0, 104, 222)
+var lefty := false
+func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i] if not lefty else 1280.0 - LV_X[1 - i] - 104.0, 304.0, 104, 222)
+func yoke_home() -> Vector2: return Vector2(185, 445) if lefty else Vector2(1095, 445)
+func set_lefty(on: bool) -> void:
+	lefty = on; y_org = Vector2(160, 470) if on else Vector2(1120, 470)
+	get_node("link").position = Vector2(1009, 536) if on else Vector2(33, 536)
+	pads.queue_redraw()
 
 func _draw_pads():
 	var fnt := ThemeDB.fallback_font
@@ -151,7 +157,7 @@ func _draw_pads():
 		pads.draw_string(fnt, Vector2(r.position.x + 30, r.end.y - 8), "%d%%" % int(v * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
 		pads.draw_string(fnt, r.position + Vector2(36, -6), "ДВ%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	if cockpit and not fingers.values().has("yoke"): return
-	var o := y_org if fingers.values().has("yoke") else Vector2(1095, 445)
+	var o := y_org if fingers.values().has("yoke") else yoke_home()
 	var k := o + yoke_knob * 95.0
 	pads.draw_circle(o, 100, Color(0.45, 0.48, 0.5, 0.55)); pads.draw_arc(o, 100, 0, TAU, 48, Color(0.9, 0.95, 1, 0.8), 3.0)
 	# штурвал U-образный: поворот по крену, смещение по тангажу
@@ -184,7 +190,7 @@ func _input(e: InputEvent):
 			if instr.mode > 0 and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
 			for i in range(2):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
-			if e.position.x > 700 and e.position.y > 230: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
+			if (e.position.x < 580 if lefty else e.position.x > 700) and e.position.y > 230: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
 		else:
 			if fingers.get(idx, "") == "yoke": _set_yoke(Vector2.ZERO)
 			fingers.erase(idx)

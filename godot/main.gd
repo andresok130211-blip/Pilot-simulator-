@@ -86,7 +86,7 @@ func _start(to := "", drill := ""):
 	world.build_plane(pid, col)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
-	snd_opt = bool(Sim.g("game_hub").opts.get("sound", true)); snd.on = snd_opt; hud.set_pause(false)
+	snd_opt = bool(Sim.g("game_hub").opts.get("sound", true)); snd.on = snd_opt; hud.set_pause(false); hud.set_lefty(bool(Sim.g("game_hub").opts.get("lefty", false)))
 	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
 	var qual: int = int(Sim.g("game_hub").opts.get("quality", 1))
 	world.set_quality(qual)

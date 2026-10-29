@@ -17,6 +17,7 @@ func boot() -> bool:
 	var sf := FileAccess.open("user://save.json", FileAccess.READ)
 	var js := "{}"
 	if sf: js = sf.get_as_text()
+	if js.begins_with("\""): js = str(JSON.parse_string(js))   # старый формат: строка в кавычках
 	vm.call("game_load", JSON.stringify(js))
 	ok = true
 	return true
@@ -59,7 +60,7 @@ func g(fn: String, args := ""):
 
 func persist() -> void:
 	var f := FileAccess.open("user://save.json", FileAccess.WRITE)
-	if f: f.store_string(vm.call("game_dump_json", ""))
+	if f: f.store_string(str(JSON.parse_string(vm.call("game_dump_json", ""))))
 
 var pf := ""
 func begin(to: String, drill := "") -> Dictionary:

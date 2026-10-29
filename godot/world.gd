@@ -200,6 +200,7 @@ func cockpit_tick(s: Dictionary, thr: Array, roll: float, stick: float) -> void:
 # ---------- шасси и огни (в моделях их нет) ----------
 var gear: Node3D
 var nav_blink: Array = []
+var lland: SpotLight3D
 func _wheel(parent: Node3D, r: float, wd: float, pos: Vector3) -> void:
 	_cyl(parent, r, wd, Color(0.07, 0.07, 0.08), pos, Vector3(0, 0, 90))
 	_cyl(parent, r * 0.55, wd + 0.02, Color(0.6, 0.62, 0.66), pos, Vector3(0, 0, 90))
@@ -239,6 +240,8 @@ func _build_lights(L: float) -> void:
 	_blink_light(Vector3(ws, 0.15, L * 0.115), Color(1, 1, 1), 0.1, true)
 	_blink_light(Vector3(0, 2.15, -L * 0.1), Color(1, 0.15, 0.1), 0.14, true)   # маяк
 	_blink_light(Vector3(0, -1.9, -L * 0.34), Color(1, 1, 0.9), 0.14, false)    # фара
+	lland = SpotLight3D.new(); lland.position = Vector3(0, -1.8, -L * 0.34); lland.rotation_degrees = Vector3(-6, 0, 0)
+	lland.spot_range = 700.0; lland.spot_angle = 16.0; lland.light_energy = 6.0; lland.light_color = Color(1, 1, 0.92); plane.add_child(lland)
 
 func _blink_tick() -> void:
 	var t := Time.get_ticks_msec() % 1200
@@ -549,6 +552,7 @@ func update_state(s: Dictionary, delta: float):
 	plane.visible = cam_mode != 1
 	var gp: float = clampf(float(s.get("gear", 1.0)), 0.0, 1.0)
 	if gear: gear.visible = gp > 0.03; gear.scale = Vector3(1, gp, 1)
+	if lland: lland.visible = gp > 0.5 and light_k > 0.5
 	_blink_tick()
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []
