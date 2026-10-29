@@ -177,6 +177,16 @@ func _radar(c: Vector2, R: float):
 	var k := R / rng; var psi := float(s.psi); var cs := cos(psi); var sn := sin(psi)
 	var px := float(s.x); var pz := float(s.y)
 	var a := _rp(c, k, 0.0, 0.0, px, pz, cs, sn); var b := _rp(c, k, float(s.D), 0.0, px, pz, cs, sn)
+	# осадки: эхо у аэропортов вылета и назначения (по метео рейса)
+	for wp in [[0.0, float(s.wx.get("rain", 0.0))], [float(s.D), float(s.wx.get("rainD", 0.0))]]:
+		if float(wp[1]) <= 0.0: continue
+		for q in range(9):
+			var ang := q * 2.39996; var dist := (2500.0 + float((q * 37) % 11) * 1100.0) * (0.6 + float(wp[1]))
+			var cp := _rp(c, k, float(wp[0]) + cos(ang) * dist, sin(ang) * dist, px, pz, cs, sn)
+			if (cp - c).length() > R - 4.0: continue
+			var rr := (4500.0 + float((q * 53) % 7) * 900.0) * k
+			var ec := Color(0.2, 0.85, 0.3, 0.45) if q % 3 != 0 else (Color(1.0, 0.85, 0.2, 0.5) if float(wp[1]) < 0.7 else Color(1.0, 0.25, 0.2, 0.55))
+			draw_circle(cp, rr, ec); draw_circle(cp, rr * 0.5, Color(ec.r, ec.g, ec.b, ec.a * 0.9))
 	# маршрут пунктиром, точки IAF (25 км) и FAF (12 км) до ВПП назначения
 	var dd := b - a
 	if dd.length() > 1.0:

@@ -187,6 +187,7 @@ func _input(e: InputEvent):
 			for b in bs:
 				if b.get_global_rect().has_point(e.position): b.pressed.emit(); return
 			if paused: return
+			if cockpit and e.position.y < 70.0: get_parent().world.toggle_lights(); return
 			if instr.mode > 0 and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
 			for i in range(2):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return

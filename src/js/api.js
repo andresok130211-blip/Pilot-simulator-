@@ -5,6 +5,7 @@ import { Flight, DEG, FLAP_NAMES, settle, loadInfo } from './sim.js';
 import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { toWorld } from './terrain.js';
 import { geoCities } from './geo.js';
+import { ICAO } from './icao.js';
 
 let F = null;
 const _w = { x: 0, z: 0 }, _ll = { lat: 0, lon: 0 };
@@ -185,6 +186,7 @@ export function game_preflight(to) {
   const base = Math.round(c.fuel / (1 + 0.8 * (wx.jet || 0) / 230)), fuels = [base, base + p.burnHr * 0.5, base + p.burnHr].map(v => Math.min(p.fuelCap, Math.round(v)));
   const cgAuto = 0.22 + ((c.km * 7) % 7) / 100, wc = windComp(wx, brg);
   return { metarDep: wx.level ? metarText(from, wx, 'dep') : '', metarDst: wx.level ? metarText(AP_BY[to], wx, 'dst') : '', head: Math.round(wc.head), cross: Math.round(Math.abs(wc.cross)), vis: Math.min(wx.vis, wx.visD || wx.vis),
+    icao: [ICAO[from.id] || '', ICAO[to] || ''],
     fuels, cgs: [0.19, cgAuto, 0.31], flexOk: from.rwy >= p.minRwy * 1.6 && from.elev < 1200, wear: Math.round(w), mtow: p.mtow, defects: defects.map(d => d.t), mtCost: Math.round(p.value * 0.00012 * w),
     loads: fuels.map(f => [0.19, cgAuto, 0.31].map(g => { const li = loadInfo(p, c, f, g); return { mass: li.mass, over: li.over, v1: Math.round(li.v1), vr: Math.round(li.vr), v2: Math.round(li.v2) }; })) };
 }

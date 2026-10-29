@@ -2,6 +2,9 @@ extends CanvasLayer
 # Меню карьеры: главная, выбор рейса, ангар, тренажёр, рекорды, настройки, итоги рейса.
 signal start_flight(to: String, drill: String)
 signal walk_request
+signal replay_request
+var profile: Array = []
+var has_replay := false
 var walk_found: Array = []
 var walked := false
 var root: Control
@@ -113,7 +116,7 @@ func _select():
 		var bb := _btn(("▶ " if it.to == sel_to else "") + txt, func(): sel_to = it.to; _render(), 22)
 		bb.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.add_child(bb)
 	if sel_to != "":
-		var go := _btn("ЛЕТЕТЬ ✈", func(): pre = Sim.g("game_preflight", JSON.stringify(sel_to)); pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; walk_found = []; walk_request.emit(), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
+		var go := _btn("ЛЕТЕТЬ ✈", func(): pre = Sim.g("game_preflight", JSON.stringify(sel_to)); pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; walk_found = []; real_metar = ""; walk_request.emit(), 34); go.custom_minimum_size = Vector2(0, 80); b.add_child(go)
 
 # ---------- ангар ----------
 func _hangar():
@@ -157,6 +160,9 @@ func _pre():
 	var b := _frame("Предполётная подготовка", "select")
 	if pre.metarDep != "": b.add_child(_lbl("Вылет: %s\nНазначение: %s" % [pre.metarDep, pre.metarDst], 17, Color(0.7, 0.8, 0.95)))
 	b.add_child(_lbl("Ветер по маршруту: %s %d м/с, боковой %d м/с. Видимость %d м." % ["встречный" if int(pre.head) >= 0 else "попутный", absi(int(pre.head)), int(pre.cross), int(pre.vis)], 19))
+	if pre.icao[0] != "":
+		if real_metar != "": b.add_child(_lbl("Реальный METAR (справочно, на игру не влияет):\n" + real_metar, 16, Color(0.6, 1, 0.75)))
+		else: b.add_child(_btn("Показать реальный METAR (нужен интернет)", func(): _fetch_metar(), 18))
 	var fi: int = pf_i.f; var ci: int = pf_i.c
 	_chips(b, "Топливо:", ["минимум %d кг" % int(pre.fuels[0]), "+30 мин %d кг" % int(pre.fuels[1]), "+1 ч %d кг" % int(pre.fuels[2])], "f")
 	_chips(b, "Центровка:", ["багаж вперёд %d%%" % int(float(pre.cgs[0]) * 100), "авто %d%%" % int(float(pre.cgs[1]) * 100), "багаж назад %d%%" % int(float(pre.cgs[2]) * 100)], "c")
@@ -269,7 +275,19 @@ func show_result(r: Dictionary):
 	for e in r.evLog: b.add_child(_lbl("ЧП «%s»: %s" % [e.title, {"ok": "решено ✔", "late": "с опозданием", "fail": "провалено ✖"}.get(str(e.outcome), str(e.outcome))], 20, Color(0.8, 0.9, 1)))
 	if str(r.get("extra", "")) != "": b.add_child(_lbl(str(r.extra), 24, Color(0.5, 1, 0.7)))
 	if str(r.rankUp) != "": b.add_child(_lbl("Новое звание: %s" % r.rankUp, 28, Color(1, 0.85, 0.3)))
+	if profile.size() > 3:
+		var ch := Control.new(); ch.custom_minimum_size = Vector2(0, 150); b.add_child(ch)
+		ch.draw.connect(func():
+			var w := 1100.0; var h := 130.0; var mx := 100.0
+			for v in profile: mx = maxf(mx, float(v))
+			ch.draw_rect(Rect2(0, 0, w, h), Color(0.05, 0.1, 0.18))
+			var pts := PackedVector2Array()
+			for i in range(profile.size()): pts.append(Vector2(w * i / float(profile.size() - 1), h - h * float(profile[i]) / mx))
+			ch.draw_polyline(pts, Color(0.35, 0.8, 1.0), 3.0)
+			ch.draw_string(ThemeDB.fallback_font, Vector2(8, 22), "Профиль высоты: максимум %d м, длительность %d мин" % [int(mx), int(profile.size() * 5 / 60)], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.8, 0.9, 1)))
 	var r2 := _row(); b.add_child(r2)
+	if has_replay:
+		var bp := _btn("▶ Повтор полёта", func(): close(); replay_request.emit()); bp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(bp)
 	var bm := _btn("В меню", func(): scr = "hub"; _render()); bm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(bm)
 	var ba := _btn("Ещё рейс", func(): scr = "select"; _render()); ba.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(ba)
 
@@ -307,3 +325,14 @@ func _input(e: InputEvent) -> void:
 	elif e is InputEventScreenDrag and e.index == t_id:
 		if (e.position - t_org).length() > 16.0: t_moved = true
 		if t_moved and sc: sc.scroll_vertical = t_sc - int(e.position.y - t_org.y)
+
+var real_metar := ""
+func _fetch_metar() -> void:
+	var rq := HTTPRequest.new(); rq.timeout = 8.0; add_child(rq)
+	rq.request_completed.connect(func(res: int, code: int, _h: PackedStringArray, body: PackedByteArray):
+		rq.queue_free()
+		var t := body.get_string_from_utf8().strip_edges()
+		real_metar = t if (res == 0 and code == 200 and t != "") else "Нет данных (нет интернета или нет METAR для этих аэродромов)."
+		if scr == "pre": _render())
+	var ids := "%s,%s" % [pre.icao[0], pre.icao[1]]
+	rq.request("https://aviationweather.gov/api/data/metar?ids=%s&format=raw" % ids)

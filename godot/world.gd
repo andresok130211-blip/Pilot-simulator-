@@ -147,6 +147,7 @@ func build_plane(pid: String, color: Color):
 	plane.add_child(inst)
 	_build_gear(L)
 	_build_lights(L)
+	_lights_ready()
 	_build_boarding(L)
 
 # ---------- 3D-кабина: каркас остекления, козырёк, панель с приборами (SubViewport), рычаги, штурвалы ----------
@@ -169,7 +170,7 @@ func _build_cockpit() -> void:
 	for i in range(34):
 		var on := (i * 7) % 5 == 0
 		var sw := _box(ck, Vector3(0.035, 0.05, 0.03), Color(0.95, 0.6, 0.15) if on else Color(0.35, 0.37, 0.4), Vector3(-1.3 + i * 0.077, 0.52, -0.64))
-		if on: (sw.material_override as StandardMaterial3D).emission_enabled = true; (sw.material_override as StandardMaterial3D).emission = Color(0.9, 0.55, 0.1)
+		var smt := StandardMaterial3D.new(); smt.albedo_color = Color(0.95, 0.6, 0.15) if on else Color(0.35, 0.37, 0.4); smt.emission = Color(0.9, 0.55, 0.1); smt.emission_enabled = on; sw.material_override = smt; ck_sw.append(smt)
 	_box(ck, Vector3(0.06, 0.62, 0.05), dk, Vector3(0, 0.32, -0.95))        # центральная стойка
 	for sx in [-1.0, 1.0]:
 		var pil := _box(ck, Vector3(0.16, 0.7, 0.08), dk, Vector3(sx * 1.0, 0.33, -0.95)); pil.rotation_degrees = Vector3(0, 0, -sx * 12.0)
@@ -200,6 +201,16 @@ func cockpit_tick(s: Dictionary, thr: Array, roll: float, stick: float) -> void:
 # ---------- шасси и огни (в моделях их нет) ----------
 var gear: Node3D
 var nav_blink: Array = []
+var lights_on := true
+var ck_sw: Array = []
+func toggle_lights() -> void:
+	lights_on = not lights_on
+	for i in range(ck_sw.size()):
+		var mt := ck_sw[i] as StandardMaterial3D
+		mt.emission_enabled = lights_on and i % 5 == 0
+		mt.albedo_color = Color(0.95, 0.6, 0.15) if (lights_on and i % 5 == 0) else Color(0.35, 0.37, 0.4)
+	for ch in plane.get_children():
+		if ch.has_meta("nl"): ch.visible = lights_on
 var lland: SpotLight3D
 func _wheel(parent: Node3D, r: float, wd: float, pos: Vector3) -> void:
 	_cyl(parent, r, wd, Color(0.07, 0.07, 0.08), pos, Vector3(0, 0, 90))
@@ -225,13 +236,13 @@ func _build_gear(L: float) -> void:
 func _blink_light(pos: Vector3, col: Color, sz: float, strobe: bool) -> void:
 	var sm := SphereMesh.new(); sm.radius = sz; sm.height = sz * 2.0
 	var mt := StandardMaterial3D.new(); mt.albedo_color = col; mt.emission_enabled = true; mt.emission = col; mt.emission_energy_multiplier = 3.0; mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var mi := MeshInstance3D.new(); mi.mesh = sm; mi.material_override = mt; mi.position = pos; plane.add_child(mi)
+	var mi := MeshInstance3D.new(); mi.mesh = sm; mi.material_override = mt; mi.position = pos; mi.set_meta("nl", true); plane.add_child(mi)
 	var g := Sprite3D.new(); g.texture = _glow_tex(); g.billboard = BaseMaterial3D.BILLBOARD_ENABLED; g.modulate = Color(col.r, col.g, col.b, 0.8); g.pixel_size = sz * 6.0 / 128.0
 	g.shaded = false; g.no_depth_test = false; g.transparent = true; mi.add_child(g)
 	if strobe: nav_blink.append(mi)
 
 func _build_lights(L: float) -> void:
-	nav_blink.clear()
+	nav_blink.clear(); lights_on = false
 	var ws := L * 0.44
 	_blink_light(Vector3(-ws, 0.1, L * 0.11), Color(1, 0.1, 0.1), 0.12, false)
 	_blink_light(Vector3(ws, 0.1, L * 0.11), Color(0.1, 1, 0.2), 0.12, false)
@@ -243,11 +254,14 @@ func _build_lights(L: float) -> void:
 	lland = SpotLight3D.new(); lland.position = Vector3(0, -1.8, -L * 0.34); lland.rotation_degrees = Vector3(-6, 0, 0)
 	lland.spot_range = 700.0; lland.spot_angle = 16.0; lland.light_energy = 6.0; lland.light_color = Color(1, 1, 0.92); plane.add_child(lland)
 
+func _lights_ready() -> void:
+	toggle_lights()
+
 func _blink_tick() -> void:
 	var t := Time.get_ticks_msec() % 1200
 	for i in range(nav_blink.size()):
 		var on := (t < 90) or (t > 180 and t < 270) if i < 2 else t < 500
-		(nav_blink[i] as Node3D).visible = on
+		(nav_blink[i] as Node3D).visible = on and lights_on
 
 # ---------- подготовка к вылету: телетрап, посадка, багаж, заправка, буксировщик ----------
 const BOARD_T := 14.0
@@ -552,7 +566,7 @@ func update_state(s: Dictionary, delta: float):
 	plane.visible = cam_mode != 1
 	var gp: float = clampf(float(s.get("gear", 1.0)), 0.0, 1.0)
 	if gear: gear.visible = gp > 0.03; gear.scale = Vector3(1, gp, 1)
-	if lland: lland.visible = gp > 0.5 and light_k > 0.5
+	if lland: lland.visible = gp > 0.5 and light_k > 0.5 and lights_on
 	_blink_tick()
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []
