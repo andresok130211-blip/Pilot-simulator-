@@ -156,7 +156,7 @@ var ck_instr: Control
 var ck_lev: Array = []
 var ck_yoke: Array = []
 func _build_cockpit() -> void:
-	ck = Node3D.new(); ck.scale = Vector3.ONE * 3.5; ck.visible = false; cam.add_child(ck)
+	ck = Node3D.new(); ck.scale = Vector3.ONE * 3.5; ck.position = Vector3(0, -0.35, 0); ck.visible = false; cam.add_child(ck)
 	ck_vp = SubViewport.new(); ck_vp.size = Vector2i(1280, 190); ck_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS; add_child(ck_vp)
 	ck_instr = Control.new(); ck_instr.set_script(load("res://instr.gd")); ck_instr.set("panel", true); ck_vp.add_child(ck_instr)
 	var dk := Color(0.07, 0.075, 0.085); var md := Color(0.14, 0.15, 0.17)
@@ -615,7 +615,7 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 		var fwd := -back
 		cam.position = pp + fwd * 14.0 + Vector3(0, 1.5, 0)
 		cam.rotation_order = EULER_ORDER_YXZ
-		cam.rotation = Vector3(float(s.theta), -deg_to_rad(hdg), -float(s.phi) * 0.9)
+		cam.rotation = Vector3(float(s.theta) - 0.28, -deg_to_rad(hdg), -float(s.phi) * 0.9)
 	else:
 		var tl := _local(tower_ll.y, tower_ll.x, cur_ll.y, cur_ll.x)
 		if not tower_set or tl.length() > 4500.0 or tl.length() < 150.0:
