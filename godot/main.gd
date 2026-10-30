@@ -18,6 +18,7 @@ func _ready():
 	world = load("res://world.gd").new(); world.name = "World"; add_child(world)
 	hud = load("res://hud.gd").new(); hud.name = "HUD"; add_child(hud); hud.visible = false
 	hud.exit_pressed.connect(_to_menu)
+	hud.cabin_pressed.connect(_cabin)
 	snd = load("res://sound.gd").new(); add_child(snd)
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
@@ -144,6 +145,14 @@ func _start(to := "", drill := ""):
 	Sim.ctl({"thr": 0.0, "brake": true})
 	if dbg != "": Sim.vm.eval("sim_debug(%s)" % dbg, "dbg")
 	hud.thr = [0.0, 0.0]; hud.pads.queue_redraw()
+	if "--cabin" in OS.get_cmdline_user_args(): _cabin.call_deferred()
+
+var cabin: Node
+func _cabin() -> void:
+	if cabin != null or not playing or hud.paused: return
+	cabin = load("res://cabin.gd").new(); add_child(cabin); hud.visible = false
+	cabin.closed.connect(func(): cabin = null; hud.visible = playing)
+	cabin.start(world, hud)
 
 func _to_menu():
 	if playing:
@@ -152,6 +161,7 @@ func _to_menu():
 		_show_menu()
 
 func _end_flight():
+	if cabin != null: cabin._close()
 	playing = false; hud.visible = false
 	var r := Sim.finish()
 	last_r = r; menu.profile = prof.duplicate(); menu.has_replay = rec.size() > 20

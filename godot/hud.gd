@@ -1,6 +1,7 @@
 extends CanvasLayer
 # Интерфейс полёта: приборы, органы управления касанием, кнопки, сообщения.
 signal exit_pressed
+signal cabin_pressed
 var info: Label
 var hint: Label
 var log_l: Label
@@ -76,7 +77,7 @@ func boarding(left: float):
 		l = _lbl(34); l.name = "board_l"; l.position = Vector2(200, 90); add_child(l)
 		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
-	for n in [instr, pads, rows, get_node("link"), info, hint, log_l]: n.visible = not on
+	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
@@ -98,6 +99,7 @@ func _on_act(a: String):
 	match a:
 		"view": get_parent().world.cycle_cam()
 		"pause": set_pause(true)
+		"cabin": cabin_pressed.emit()
 		"resume": set_pause(false)
 		"exit": set_pause(false); exit_pressed.emit()
 		"skipboard": get_parent().board_left = 0.0
@@ -115,7 +117,8 @@ func _ready():
 	evbox = _lbl(20); evbox.set_anchors_preset(Control.PRESET_TOP_RIGHT); evbox.position = Vector2(-560, 10); evbox.size = Vector2(540, 200); evbox.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; add_child(evbox)
 	# рычаги газа и штурвал рисуются одним слоем, касания обрабатываются в _input (мультитач)
 	pads = Control.new(); pads.set_anchors_preset(Control.PRESET_FULL_RECT); pads.mouse_filter = Control.MOUSE_FILTER_IGNORE; pads.draw.connect(_draw_pads); add_child(pads)
-	var lk := _button("СВЯЗАНЫ", "link", 238); lk.position = Vector2(33, 536); lk.add_theme_font_size_override("font_size", 20); lk.name = "link"; add_child(lk); _link_look()
+	var lk := _button("СВЯЗАНЫ", "link", 118); lk.position = Vector2(33, 536); lk.add_theme_font_size_override("font_size", 14); lk.name = "link"; add_child(lk); _link_look()
+	var cb := _button("САЛОН", "cabin", 114); cb.position = Vector2(157, 536); cb.add_theme_font_size_override("font_size", 16); cb.name = "cabin"; add_child(cb)
 	# кнопки (ряды)
 	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 5); rows.position = Vector2(298, 452); add_child(rows)
 	var r1 := HBoxContainer.new(); var r2 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 5); r2.add_theme_constant_override("separation", 5); rows.add_child(r1); rows.add_child(r2)
@@ -137,6 +140,7 @@ func yoke_home() -> Vector2: return Vector2(185, 445) if lefty else Vector2(1095
 func set_lefty(on: bool) -> void:
 	lefty = on; y_org = Vector2(160, 470) if on else Vector2(1120, 470)
 	get_node("link").position = Vector2(1009, 536) if on else Vector2(33, 536)
+	get_node("cabin").position = Vector2(1133, 536) if on else Vector2(157, 536)
 	pads.queue_redraw()
 
 func _draw_pads():
