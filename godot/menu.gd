@@ -4,6 +4,7 @@ signal start_flight(to: String, drill: String)
 signal walk_request
 signal replay_request
 signal prefetch_request
+signal poi_request
 var pf_status: Callable
 var profile: Array = []
 var has_replay := false
@@ -241,6 +242,12 @@ func _settings():
 	_choice(b, "Погода", "wxLvl", ["штиль", "обычная", "сложная"], int(o.wxLvl))
 	_choice(b, "Время суток", "tod", ["случайно", "день", "закат", "ночь"], 0 if str(o.tod) == "rnd" else int(o.tod) + 1, true)
 	_choice(b, "Сезон", "season", ["лето", "осень", "зима"], int(o.season))
+	_toggle(b, "Придуманные дома в городах (если нет данных карты). Выкл — только настоящие здания", "fakebld", bool(o.get("fakebld", false)))
+	b.add_child(_lbl("Моя точка (дом, достопримечательность): широта, долгота — столб света и настоящие здания вокруг", 17, Color(0.8, 0.9, 1)))
+	poi_ed = LineEdit.new(); poi_ed.text = str(o.get("poi", "")); poi_ed.placeholder_text = "например 59.9343, 30.3351"
+	poi_ed.custom_minimum_size = Vector2(0, 52); poi_ed.add_theme_font_size_override("font_size", 22); b.add_child(poi_ed)
+	b.add_child(_btn("Поставить точку и скачать здания вокруг (нужен интернет)", func():
+		Sim.g("game_opt", "\"poi\",%s" % JSON.stringify(poi_ed.text.strip_edges())); Sim.persist(); poi_request.emit(), 19))
 	b.add_child(_lbl("Модели самолётов: amvlab/aircraft-models (CC BY 4.0). Снимки Земли: Sentinel-2 cloudless 2020 by EOX (CC BY-NC 4.0), содержит изменённые данные Copernicus Sentinel.", 15, Color(0.5, 0.6, 0.75)))
 	b.add_child(_lbl("Версия: Godot-предпросмотр. Сохранение хранится на устройстве.", 16, Color(0.5, 0.6, 0.75)))
 
@@ -307,7 +314,15 @@ func _btns(n: Node, out: Array) -> void:
 	if n is BaseButton and (n as Control).is_visible_in_tree() and not (n as BaseButton).disabled: out.append(n)
 	for c in n.get_children(): _btns(c, out)
 
+func _edits(n: Node, out: Array) -> void:
+	if n is LineEdit and (n as Control).is_visible_in_tree(): out.append(n)
+	for c in n.get_children(): _edits(c, out)
+
 func _tap(p: Vector2) -> void:
+	var es := []; _edits(root, es)
+	for e in es:
+		if (e as LineEdit).get_global_rect().has_point(p) and (not sc or sc.get_global_rect().has_point(p)):
+			(e as LineEdit).grab_focus(); DisplayServer.virtual_keyboard_show((e as LineEdit).text); return
 	var bs := []; _btns(root, bs)
 	for i in range(bs.size() - 1, -1, -1):
 		var b: BaseButton = bs[i]
@@ -342,5 +357,6 @@ func _fetch_metar() -> void:
 	rq.request("https://aviationweather.gov/api/data/metar?ids=%s&format=raw" % ids)
 
 var pf_lbl: Label
+var poi_ed: LineEdit
 func _process(_dt: float) -> void:
 	if scr == "settings" and pf_lbl and is_instance_valid(pf_lbl) and pf_status.is_valid(): pf_lbl.text = str(pf_status.call())

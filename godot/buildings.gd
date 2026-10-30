@@ -12,10 +12,16 @@ var cities: Array = []
 var cur := Vector2.ZERO
 var online := true
 var apts: Array = []
+var procedural_on := false
+var poi := Vector2(999, 999)
+var poi_node: MeshInstance3D
+var beam_mat: ShaderMaterial
 
 func setup(terrain_mat: ShaderMaterial) -> void:
 	mat = ShaderMaterial.new(); mat.shader = load("res://building.gdshader")
-	mat.set_shader_parameter("dem", terrain_mat.get_shader_parameter("dem")); mat.set_shader_parameter("coast", terrain_mat.get_shader_parameter("coast"))
+	beam_mat = ShaderMaterial.new(); beam_mat.shader = mat.shader; beam_mat.set_shader_parameter("glow", 1.0)
+	for m in [mat, beam_mat]:
+		m.set_shader_parameter("dem", terrain_mat.get_shader_parameter("dem")); m.set_shader_parameter("coast", terrain_mat.get_shader_parameter("coast"))
 	DirAccess.make_dir_recursive_absolute("user://bld")
 
 static func _hash(a: int, b: int) -> float:
@@ -26,10 +32,14 @@ static func _hash(a: int, b: int) -> float:
 func update(lon: float, lat: float, alt: float, terrain_mat: ShaderMaterial, night: float) -> void:
 	cur = Vector2(lon, lat)
 	var show := alt < MAX_ALT
-	visible = show
+	visible = true
+	for k in cells: if cells[k].node: cells[k].node.visible = show
 	if not show: return
-	mat.set_shader_parameter("center_ll", cur); mat.set_shader_parameter("night", night)
-	mat.set_shader_parameter("apt", terrain_mat.get_shader_parameter("apt")); mat.set_shader_parameter("apt_n", terrain_mat.get_shader_parameter("apt_n"))
+	for m in [mat, beam_mat]:
+		m.set_shader_parameter("center_ll", cur); m.set_shader_parameter("night", night)
+		m.set_shader_parameter("apt", terrain_mat.get_shader_parameter("apt")); m.set_shader_parameter("apt_n", terrain_mat.get_shader_parameter("apt_n"))
+	if poi_node:
+		poi_node.position = Vector3((poi.x - lon) * 111320.0 * cos(deg_to_rad(poi.y)), 0.0, (lat - poi.y) * 110574.0)
 	var cx := int(floor(lon / STEP)); var cy := int(floor(lat / STEP))
 	var ring := 2 if alt < 700.0 else 1
 	for dx in range(-ring, ring + 1):
@@ -58,7 +68,14 @@ func _process(dt: float) -> void:
 		if j.i >= list.size():
 			jobs.pop_front(); _finish(j)
 	net_t += dt
-	if online and not net_busy and not net_q.is_empty() and net_t > 1.0: net_t = 0.0; _fetch(net_q.pop_front())
+	if online and not net_busy and not net_q.is_empty() and net_t > 0.6:
+		net_t = 0.0
+		var bi := 0; var bd := 1e9
+		for qi in range(net_q.size()):
+			var pp: PackedStringArray = (net_q[qi] as String).split("_")
+			var dd := Vector2((float(pp[0]) + 0.5) * STEP - cur.x, (float(pp[1]) + 0.5) * STEP - cur.y).length()
+			if dd < bd: bd = dd; bi = qi
+		var kk: String = net_q[bi]; net_q.remove_at(bi); _fetch(kk)
 
 func _bounds(k: String) -> Array:
 	var p := k.split("_"); var x := int(p[0]); var y := int(p[1])
@@ -72,7 +89,7 @@ func _want(x: int, y: int, k: String) -> void:
 		var data = JSON.parse_string(f.get_as_text())
 		if data is Array and data.size() > 0: _queue(k, _from_real(k, data), true); return
 		if data is Array: return   # кеш: в клетке зданий нет
-	_queue(k, _procedural(k), false)
+	if procedural_on: _queue(k, _procedural(k), false)
 	if online: net_q.append(k)
 
 func _queue(k: String, list: Array, real: bool) -> void:
@@ -122,8 +139,7 @@ func _procedural(k: String) -> Array:
 		var dens := 1.0 - sqrt(dx * dx + dy * dy) / (rr * 1.15)
 		if dens > best: best = dens; pop = float(c[2]); cc = Vector2(dx, dy)
 	if best <= 0.02: return []
-	for a in apts:
-		if Vector2((float(a[0]) - cen.x) * 111320.0 * cl, (float(a[1]) - cen.y) * 110574.0).length() < 2300.0: return []
+
 	var out := []
 	var kx := int(b[1] / STEP); var ky := int(b[0] / STEP)
 	var blk := 64.0
@@ -132,6 +148,10 @@ func _procedural(k: String) -> Array:
 		for j in range(int(h / blk)):
 			var r := _hash(kx * 131 + i, ky * 197 + j)
 			if r > best * 1.25: continue
+			var near_apt := false
+			for a in apts:
+				if Vector2((float(a[0]) - (o_lon + (float(i) + 0.5) * blk / (111320.0 * cl))) * 111320.0 * cl, (float(a[1]) - (o_lat + (float(j) + 0.5) * blk / 110574.0)) * 110574.0).length() < 4500.0: near_apt = true
+			if near_apt: continue
 			var px := (float(i) + 0.5) * blk + (r - 0.5) * 12.0; var py := (float(j) + 0.5) * blk
 			var cdist := Vector2(px - w * 0.5 + cen.x * 0.0, py - h * 0.5).distance_to(cc)
 			var core := clampf(1.0 - cdist / (1500.0 + 2500.0 * tall), 0.0, 1.0)
@@ -158,7 +178,7 @@ func _add_building(j: Dictionary, e: Array) -> void:
 		var p := poly[i]; var q := poly[(i + 1) % poly.size()]
 		area += p.x * q.y - q.x * p.y
 	var sg := 1.0 if area > 0.0 else -1.0
-	if absf(area) < 30.0: return
+	if absf(area) < 10.0: return
 	for i in range(poly.size()):
 		var p := poly[i]; var q := poly[(i + 1) % poly.size()]
 		var d := q - p; var ln := d.length()
@@ -179,7 +199,8 @@ func _fetch(k: String) -> void:
 	if not cells.has(k): return
 	net_busy = true
 	var b := _bounds(k)
-	var q := "[out:json][timeout:25];way[\"building\"](%f,%f,%f,%f);out tags geom;" % [b[0], b[1], b[2], b[3]]
+	var bb := "(%f,%f,%f,%f)" % [b[0], b[1], b[2], b[3]]
+	var q := "[out:json][timeout:25];(way[\"building\"]%s;way[\"man_made\"~\"^(tower|chimney|mast)$\"]%s;);out tags geom;" % [bb, bb]
 	var rq := HTTPRequest.new(); rq.timeout = 30.0; rq.body_size_limit = 24 * 1024 * 1024; add_child(rq)
 	rq.request_completed.connect(func(res: int, code: int, _h: PackedStringArray, body: PackedByteArray):
 		rq.queue_free(); net_busy = false
@@ -193,7 +214,7 @@ func _fetch(k: String) -> void:
 			var hh := 0.0
 			if tg.has("height"): hh = float(str(tg.height).replace(",", "."))
 			elif tg.has("building:levels"): hh = float(str(tg["building:levels"])) * 3.3 + 1.5
-			if hh <= 0.0: hh = 6.0 + 8.0 * _hash(int(el.get("id", 0)) % 9973, 7)
+			if hh <= 0.0: hh = (40.0 if tg.has("man_made") else 6.0 + 8.0 * _hash(int(el.get("id", 0)) % 9973, 7))
 			var pts := []
 			for g in el.geometry: pts.append(snappedf(float(g.lat), 0.000001)); pts.append(snappedf(float(g.lon), 0.000001))
 			data.append([snappedf(hh, 0.1), pts])
@@ -203,3 +224,18 @@ func _fetch(k: String) -> void:
 		if cells.has(k): _queue(k, _from_real(k, data), true))
 	if rq.request("https://overpass-api.de/api/interpreter?data=" + q.uri_encode()) != OK:
 		rq.queue_free(); net_busy = false
+
+# ---- моя точка: световой столб над заданным местом ----
+func set_poi(lon: float, lat: float) -> void:
+	poi = Vector2(lon, lat)
+	if poi_node: poi_node.queue_free(); poi_node = null
+	if lon > 180.0: return
+	var j := {"v": PackedVector3Array(), "n": PackedVector3Array(), "c": PackedColorArray(), "idx": PackedInt32Array()}
+	_add_building(j, [420.0, PackedVector2Array([Vector2(-20, -20), Vector2(20, -20), Vector2(20, 20), Vector2(-20, 20)])])
+	var cc: PackedColorArray = j.c
+	for i in range(cc.size()): cc[i] = Color(0.3, 0.9, 1.0)
+	var arr := []; arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = j.v; arr[Mesh.ARRAY_NORMAL] = j.n; arr[Mesh.ARRAY_COLOR] = cc; arr[Mesh.ARRAY_INDEX] = j.idx
+	var m := ArrayMesh.new(); m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	poi_node = MeshInstance3D.new(); poi_node.mesh = m; poi_node.material_override = beam_mat; poi_node.extra_cull_margin = 2000.0; poi_node.custom_aabb = AABB(Vector3(-50, -200, -50), Vector3(100, 1200, 100))
+	add_child(poi_node)

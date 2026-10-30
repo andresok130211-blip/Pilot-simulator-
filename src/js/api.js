@@ -141,7 +141,7 @@ export function game_hub() {
   const ap = AP_BY[save.loc], p = PL_BY[save.plane];
   return { money: save.money, moneyText: fmtRub(save.money), loc: ap.id, city: ap.city, locName: ap.name, plane: p.id, planeName: p.name, short: p.short, flights: save.flights, landings: save.landings, pax: save.pax,
     bestSink: save.bestSink, rank: rankOf(save.xp), xp: save.xp, fatigue: Math.round(save.fatigue || 0), rep: Math.round(save.rep), crews: save.crews || 0, copilot: !!save.copilot, fuelMul: save.fuelMul || 1,
-    opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, sat: save.sat !== false, sound: save.sound !== false, mode: save.mode || 0, quality: save.quality == null ? 1 : save.quality, driftIdx: save.driftIdx == null ? 1 : save.driftIdx, trackHold: save.trackHold !== false, lefty: !!save.lefty, emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
+    opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, sat: save.sat !== false, sound: save.sound !== false, mode: save.mode || 0, quality: save.quality == null ? 1 : save.quality, driftIdx: save.driftIdx == null ? 1 : save.driftIdx, trackHold: save.trackHold !== false, lefty: !!save.lefty, fakebld: !!save.fakebld, poi: save.poi || "", emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
     stat: save.stat, top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
 }
 export function game_opt(k, v) { save[k] = v; return true; }

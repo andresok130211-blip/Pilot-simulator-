@@ -31,6 +31,7 @@ func _ready():
 		var h = Sim.g("game_hub")
 		for a in Sim.data.airports:
 			if a.id == h.loc: world.bld.prefetch(float(a.lon), float(a.lat)))
+	menu.poi_request.connect(func(): _apply_poi(true))
 	if not _args(): _show_menu()
 	if screen_arg == "walk":
 		menu.sel_to = "LED"; menu.pre = Sim.g("game_preflight", "\"LED\""); menu.pf_i = {"f": 1, "c": 1, "flex": false, "ck": [false, false, false, false, false]}; _walk(); return
@@ -51,6 +52,7 @@ func _args() -> bool:
 		elif s.begins_with("--orbit="):
 			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		elif s.begins_with("--mode="): Sim.g("game_opt", "\"mode\",%s" % s.substr(7))
+		elif s.begins_with("--poi="): Sim.g("game_opt", "\"poi\",%s" % JSON.stringify(s.substr(6)))
 		elif s.begins_with("--tap="): taps.append(s.substr(6).split(","))
 		elif s.begins_with("--tod="): tod = int(s.substr(6))
 		elif s.begins_with("--endat="): endat = float(s.substr(8))
@@ -129,6 +131,8 @@ func _start(to := "", drill := ""):
 	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
 	var qual: int = int(Sim.g("game_hub").opts.get("quality", 1))
 	world.set_quality(qual)
+	world.bld.procedural_on = bool(Sim.g("game_hub").opts.get("fakebld", false))
+	_apply_poi(false)
 	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)) and qual >= 1)
 	var lo0 := 999.0; var lo1 := -999.0; var la0 := 999.0; var la1 := -999.0
 	for a in r.aps:
@@ -213,3 +217,12 @@ func _process(delta: float):
 	if s.get("done", false):
 		end_t += delta
 		if end_t > 3.0: _end_flight()
+
+func _apply_poi(fetch: bool) -> void:
+	var t := str(Sim.g("game_hub").opts.get("poi", "")).replace(";", ",")
+	var p := t.split(",")
+	if p.size() != 2 or not p[0].strip_edges().is_valid_float() or not p[1].strip_edges().is_valid_float():
+		world.bld.set_poi(999.0, 0.0); return
+	var la := p[0].strip_edges().to_float(); var lo := p[1].strip_edges().to_float()
+	world.bld.set_poi(lo, la)
+	if fetch: world.bld.prefetch(lo, la)
