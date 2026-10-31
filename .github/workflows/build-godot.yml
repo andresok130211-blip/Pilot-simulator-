@@ -80,6 +80,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: godot-preview
-          name: Pilot Sim 3D (Godot, предпросмотр)
+          tag_name: ${{ github.ref_name == 'main' && 'godot-preview' || format('godot-test-{0}', github.ref_name) }}
+          prerelease: ${{ github.ref_name != 'main' }}
+          name: ${{ github.ref_name == 'main' && 'Pilot Sim 3D (Godot, предпросмотр)' || format('Тест {0}', github.ref_name) }}
           files: pilot-sim-3d.apk
