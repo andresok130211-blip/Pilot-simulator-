@@ -2971,7 +2971,7 @@ function game_hub() {
   return { money: save.money, moneyText: fmtRub(save.money), loc: ap.id, city: ap.city, locName: ap.name, plane: p.id, planeName: p.name, short: p.short, flights: save.flights, landings: save.landings, pax: save.pax,
     bestSink: save.bestSink, rank: rankOf(save.xp), xp: save.xp, fatigue: Math.round(save.fatigue || 0), rep: Math.round(save.rep), crews: save.crews || 0, copilot: !!save.copilot, fuelMul: save.fuelMul || 1,
     opts: { assistAuto: save.assistAuto, assistCfg: save.assistCfg, taxiOps: save.taxiOps, hints: save.hints, sat: save.sat !== false, sound: save.sound !== false, mode: save.mode || 0, quality: save.quality == null ? 1 : save.quality, driftIdx: save.driftIdx == null ? 1 : save.driftIdx, trackHold: save.trackHold !== false, lefty: !!save.lefty, fakebld: !!save.fakebld, poi: save.poi || "", emerg: save.emerg, wxLvl: save.wxLvl, tod: save.tod, season: save.season },
-    stat: save.stat, top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
+    stat: save.stat, journal: (save.journal || []).slice(0, 40), top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
 }
 function game_opt(k, v) { save[k] = v; return true; }
 function game_set_plane(id) { if (fleetIds().includes(id)) save.plane = id; return save.plane; }
@@ -3091,6 +3091,7 @@ function game_finish() {
       r.repD = dr; save.rep = Math.max(0, Math.min(100, save.rep + dr));
       if (save.lease[id] > 0 && !save.owned.includes(id)) { save.lease[id]--; if (!save.lease[id]) { delete save.lease[id]; if (save.plane === id) save.plane = save.owned[0]; } }
     }
+    if (r.kind !== 'abort') { save.journal = (save.journal || []); save.journal.unshift({ a: f.fromAp.id, b: f.toAp.id, pl: f.p.short, t: r.kind === 'ok' ? r.quality : r.kind, st: r.stars || 0, sink: r.sink == null ? null : r.sink, km: Math.round(r.km), net: r.net, min: Math.round(f.simTime / 60) }); save.journal = save.journal.slice(0, 40); }
     save.xp += r.xp; save.evOk += r.evOk; save.evLate += r.evLate; save.evFail += r.evFail;
   }
   let extra = '';

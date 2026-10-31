@@ -22,12 +22,27 @@ var st_v := Vector2.ZERO
 var look_id := -1
 var t := 0.0
 var old_cam: Camera3D
+var crew: Dictionary
+var sign_mat: StandardMaterial3D
+var belts := true
+var chime: AudioStreamPlayer
+var chime_t := -1.0
 
 func start(w: Node3D, h: Node) -> void:
 	world = w; hud = h; layer = 8
 	root3 = Node3D.new(); root3.position = Vector3(0, 20000, 0); world.add_child(root3)
 	_build()
-	cam = Camera3D.new(); cam.near = 0.05; cam.far = 80.0; cam.fov = 75.0; cam.rotation_order = EULER_ORDER_YXZ; root3.add_child(cam)
+	crew = world._person(Color(0.08, 0.12, 0.3), true); root3.add_child(crew.root); crew.root.position = Vector3(0, 0, -6.0)
+	var sg: MeshInstance3D = world._box(root3, Vector3(0.5, 0.14, 0.05), Color(0.2, 0.9, 0.3), Vector3(0, 2.05, -L * 0.5 + 0.8))
+	sign_mat = sg.material_override; sign_mat.emission_enabled = true
+	_layers(root3)
+	for o in root3.get_children(): if o is OmniLight3D: o.light_cull_mask = 2
+	_wl(world, 1)
+	chime = AudioStreamPlayer.new(); var g := AudioStreamGenerator.new(); g.mix_rate = 22050.0; g.buffer_length = 0.5; chime.stream = g; add_child(chime); chime.play()
+	cam = Camera3D.new(); cam.cull_mask = 2; cam.near = 0.05; cam.far = 80.0; cam.fov = 75.0; cam.rotation_order = EULER_ORDER_YXZ; root3.add_child(cam)
+	var en := Environment.new(); en.background_mode = Environment.BG_COLOR; en.background_color = Color(0.05, 0.06, 0.1)
+	en.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; en.ambient_light_color = Color(0.85, 0.87, 0.92); en.ambient_light_energy = 0.75
+	cam.environment = en
 	old_cam = world.cam; cam.make_current()
 	ui = Control.new(); ui.set_anchors_preset(Control.PRESET_FULL_RECT); ui.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(ui)
 	pad = Control.new(); pad.set_anchors_preset(Control.PRESET_FULL_RECT); pad.mouse_filter = Control.MOUSE_FILTER_IGNORE; pad.draw.connect(_draw_pad); ui.add_child(pad)
@@ -38,6 +53,21 @@ func start(w: Node3D, h: Node) -> void:
 	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.12, 0.2, 0.34); sb.set_corner_radius_all(14); sb.border_color = Color(1, 1, 1, 0.4); sb.set_border_width_all(2)
 	for n in ["normal", "hover", "pressed", "disabled"]: b_exit.add_theme_stylebox_override(n, sb)
 	ui.add_child(b_exit)
+
+func _wl(n: Node, m: int) -> void:
+	if n is Light3D and not root3.is_ancestor_of(n): (n as Light3D).light_cull_mask = m
+	for c in n.get_children(): _wl(c, m)
+
+func _layers(n: Node) -> void:
+	if n is MeshInstance3D: (n as MeshInstance3D).layers = 2
+	for c in n.get_children(): _layers(c)
+
+func _ding() -> void:
+	var pb := chime.get_stream_playback() as AudioStreamGeneratorPlayback
+	for i in range(11000):
+		var tt := float(i) / 22050.0; var f := 880.0 if tt < 0.25 else 660.0
+		var v := sin(tt * f * TAU) * exp(-fposmod(tt, 0.25) * 9.0) * 0.25
+		pb.push_frame(Vector2(v, v))
 
 func _build() -> void:
 	var W := 3.4; var H := 2.2
@@ -98,6 +128,7 @@ func _input(e: InputEvent) -> void:
 			yaw -= e.relative.x * 0.006; pitch = clampf(pitch - e.relative.y * 0.005, -1.0, 1.0)
 
 func _close() -> void:
+	_wl(world, 0xFFFFF)
 	if is_instance_valid(old_cam): old_cam.make_current()
 	root3.queue_free(); queue_free(); closed.emit()
 
@@ -115,3 +146,13 @@ func _process(dt: float) -> void:
 	cam.position = Vector3(pos.x, 1.62 + sin(t * 9.0) * 0.02 * st_v.length(), pos.y)
 	cam.rotation = Vector3(pitch, yaw, bank + sin(t * 0.7) * 0.004)
 	lb.text = hud.info.text if hud.info else ""
+	# бортпроводница ходит по проходу
+	var cz: float = -4.0 + sin(t * 0.12) * 12.0
+	var dz: float = cos(t * 0.12) * 12.0 * 0.12
+	crew.root.position = Vector3(0.0, 0.0, cz); crew.root.rotation.y = 0.0 if dz > 0.0 else PI
+	crew.root.rotation.y += PI
+	var sw := sin(t * 5.0) * 0.5
+	(crew.l as Node3D).rotation.x = sw; (crew.r as Node3D).rotation.x = -sw
+	var on: bool = float(s.get("h", 9999.0)) < 2800.0
+	if on != belts: belts = on; _ding()
+	sign_mat.albedo_color = Color(1.0, 0.25, 0.2) if belts else Color(0.2, 0.9, 0.3); sign_mat.emission = sign_mat.albedo_color

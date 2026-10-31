@@ -220,6 +220,11 @@ func _records():
 	var i := 1
 	for t in h.top:
 		b.add_child(_lbl("%d. %s · %s — %.2f м/с" % [i, t.pl, t.ap, float(t.sink)], 22)); i += 1
+	b.add_child(_lbl("Журнал полётов", 26, Color(1, 1, 1)))
+	if h.journal.is_empty(): b.add_child(_lbl("Пока пусто."))
+	for j in h.journal:
+		var sk := "" if j.sink == null else " · %.2f м/с" % float(j.sink)
+		b.add_child(_lbl("%s → %s · %s · %s%s · %d км · %d мин · %s" % [j.a, j.b, j.pl, str(j.t), sk, int(j.km), int(j.min), str(j.net)], 18, Color(0.75, 0.85, 1)))
 
 # ---------- настройки ----------
 func _settings():
