@@ -21,6 +21,7 @@ var st_org := Vector2.ZERO
 var st_v := Vector2.ZERO
 var look_id := -1
 var t := 0.0
+var _wl_done := false
 var old_cam: Camera3D
 var crew: Dictionary
 var sign_mat: StandardMaterial3D
@@ -37,7 +38,7 @@ func start(w: Node3D, h: Node) -> void:
 	sign_mat = sg.material_override; sign_mat.emission_enabled = true
 	_layers(root3)
 	for o in root3.get_children(): if o is OmniLight3D: o.light_cull_mask = 2
-	_wl(world, 1)
+	_wl(world, 1); world.sun.visible = false
 	chime = AudioStreamPlayer.new(); var g := AudioStreamGenerator.new(); g.mix_rate = 22050.0; g.buffer_length = 0.5; chime.stream = g; add_child(chime); chime.play()
 	cam = Camera3D.new(); cam.cull_mask = 2; cam.near = 0.05; cam.far = 80.0; cam.fov = 75.0; cam.rotation_order = EULER_ORDER_YXZ; root3.add_child(cam)
 	for a in OS.get_cmdline_user_args():
@@ -136,14 +137,17 @@ func _g(sk: Skeleton3D, bone: String, rot: Basis, from_rest: bool) -> void:
 	if from_rest and bone.ends_with("Leg") and not bone.ends_with("UpLeg"): want = sk.get_bone_global_rest(i).basis
 	sk.set_bone_pose_rotation(i, (pg.inverse() * want).get_rotation_quaternion())
 
+func _flat(mi: MeshInstance3D, c: Color) -> void:
+	var m := StandardMaterial3D.new(); m.albedo_color = c; m.roughness = 1.0; m.metallic_specular = 0.0; mi.material_override = m
+
 func _build() -> void:
 	var W := 3.4; var H := 2.2
 	var wall := Color(0.86, 0.87, 0.9); var carpet := Color(0.16, 0.2, 0.3)
 	(world._box(root3, Vector3(W, 0.1, L), carpet, Vector3(0, -0.05, 0))).material_override = _wool(Color(0.35, 0.4, 0.55), 1.6)
 	world._box(root3, Vector3(0.7, 0.02, L), Color(0.45, 0.1, 0.12), Vector3(0, 0.01, 0))
-	world._box(root3, Vector3(W, 0.1, L), Color(0.93, 0.94, 0.96), Vector3(0, H + 0.05, 0))
+	_flat(world._box(root3, Vector3(W, 0.1, L), Color(0.93, 0.94, 0.96), Vector3(0, H + 0.05, 0)), Color(0.93, 0.94, 0.96))
 	for sx in [-1.0, 1.0]:
-		world._box(root3, Vector3(0.1, H, L), wall, Vector3(sx * W * 0.5, H * 0.5, 0))
+		_flat(world._box(root3, Vector3(0.1, H, L), wall, Vector3(sx * W * 0.5, H * 0.5, 0)), wall)
 	for sz in [-1.0, 1.0]:
 		world._box(root3, Vector3(W, H + 0.2, 0.1), Color(0.75, 0.77, 0.82), Vector3(0, H * 0.5, sz * L * 0.5))
 	world._box(root3, Vector3(1.0, 1.9, 0.12), Color(0.25, 0.27, 0.32), Vector3(0, 0.95, -L * 0.5 + 0.1))   # дверь в кабину
@@ -174,6 +178,7 @@ func _build() -> void:
 					m.position = Vector3(x, 0.52 - 0.97 * sc, z + 0.05)
 					root3.add_child(m); _sit(m, true)
 		for sx in [-1.0, 1.0]:
+			world._box(root3, Vector3(0.05, 0.5, 0.38), Color(0.78, 0.8, 0.84), Vector3(sx * (W * 0.5 - 0.07), 1.15, z))   # рамка окна
 			var wm: MeshInstance3D = world._box(root3, Vector3(0.04, 0.38, 0.28), Color(0.55, 0.78, 1.0), Vector3(sx * (W * 0.5 - 0.06), 1.15, z))
 			(wm.material_override as StandardMaterial3D).emission_enabled = true; (wm.material_override as StandardMaterial3D).emission = Color(0.4, 0.65, 1.0)
 		world._box(root3, Vector3(0.9, 0.12, 0.5), Color(0.8, 0.82, 0.86), Vector3(-1.2 * 0.0 + 1.0, 1.85, z)).visible = false
@@ -204,12 +209,13 @@ func _input(e: InputEvent) -> void:
 			yaw -= e.relative.x * 0.006; pitch = clampf(pitch - e.relative.y * 0.005, -1.0, 1.0)
 
 func _close() -> void:
-	_wl(world, 0xFFFFF)
+	_wl(world, 0xFFFFF); world.sun.visible = true
 	if is_instance_valid(old_cam): old_cam.make_current()
 	root3.queue_free(); queue_free(); closed.emit()
 
 func _process(dt: float) -> void:
 	t += dt
+	if not _wl_done and t > 0.3: _wl_done = true; _wl(world, 1)
 	var f := Vector2(-sin(yaw), -cos(yaw)); var r := Vector2(cos(yaw), -sin(yaw))
 	var kd := Vector2(Input.get_axis("ui_left", "ui_right"), Input.get_axis("ui_down", "ui_up"))
 	var v := st_v + Vector2(kd.x, -kd.y)
