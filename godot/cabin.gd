@@ -32,7 +32,7 @@ func start(w: Node3D, h: Node) -> void:
 	world = w; hud = h; layer = 8
 	root3 = Node3D.new(); root3.position = Vector3(0, 20000, 0); world.add_child(root3)
 	_build()
-	var cm: Node3D = (load("res://assets/people/Michelle.glb") as PackedScene).instantiate(); root3.add_child(cm); _sit(cm, false); crew = {"root": cm}
+	var cm: Node3D = (load("res://assets/people/Michelle.glb") as PackedScene).instantiate(); root3.add_child(cm); _sit(cm, false); crew = {"root": cm}; _uniform(cm)
 	var sg: MeshInstance3D = world._box(root3, Vector3(0.5, 0.14, 0.05), Color(0.2, 0.9, 0.3), Vector3(0, 2.05, -L * 0.5 + 0.8))
 	sign_mat = sg.material_override; sign_mat.emission_enabled = true
 	_layers(root3)
@@ -40,7 +40,9 @@ func start(w: Node3D, h: Node) -> void:
 	_wl(world, 1)
 	chime = AudioStreamPlayer.new(); var g := AudioStreamGenerator.new(); g.mix_rate = 22050.0; g.buffer_length = 0.5; chime.stream = g; add_child(chime); chime.play()
 	cam = Camera3D.new(); cam.cull_mask = 2; cam.near = 0.05; cam.far = 80.0; cam.fov = 75.0; cam.rotation_order = EULER_ORDER_YXZ; root3.add_child(cam)
-	for a in OS.get_cmdline_user_args(): if a.begins_with("--cz="): pos.y = float(a.substr(5))
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--cz="): pos.y = float(a.substr(5))
+		if a.begins_with("--cy="): yaw = float(a.substr(5))
 	var en := Environment.new(); en.background_mode = Environment.BG_COLOR; en.background_color = Color(0.05, 0.06, 0.1)
 	en.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; en.ambient_light_color = Color(0.85, 0.87, 0.92); en.ambient_light_energy = 0.75
 	cam.environment = en
@@ -94,6 +96,29 @@ func _tint(n: Node, rng: RandomNumberGenerator) -> void:
 			mt.albedo_color = Color.from_hsv(rng.randf(), 0.45, 0.95) if mi.name == "Wolf3D_Outfit_Top" else Color.WHITE
 			mi.material_override = mt
 	for c in n.get_children(): _tint(c, rng)
+
+func _uniform(m: Node3D) -> void:
+	var sk := _skel(m)
+	for mi in sk.get_children():
+		if mi is MeshInstance3D:
+			var mt := (mi as MeshInstance3D).get_active_material(0).duplicate() as StandardMaterial3D
+			mt.albedo_texture = load("res://assets/people/michelle_uniform.png"); (mi as MeshInstance3D).material_override = mt
+	var red := Color(0.9, 0.18, 0.1); var white := Color(0.95, 0.95, 0.95)
+	var at := func(bone: String) -> BoneAttachment3D:
+		var a := BoneAttachment3D.new(); a.bone_name = bone; sk.add_child(a); return a
+	var hd: BoneAttachment3D = at.call("mixamorig_Head")
+	hd.add_child(_part(world._box(hd, Vector3(0.1, 0.1, 0.2), red, Vector3(0, 0.14, 0.0)), 0.0))
+	var hp: BoneAttachment3D = at.call("mixamorig_Hips")
+	var sk_m := CylinderMesh.new(); sk_m.top_radius = 0.19; sk_m.bottom_radius = 0.2; sk_m.height = 0.5
+	var skirt := MeshInstance3D.new(); skirt.mesh = sk_m; skirt.material_override = world._m(red); skirt.position = Vector3(0, -0.2, 0); hp.add_child(skirt)
+	var sc: BoneAttachment3D = at.call("mixamorig_Neck")
+	world._box(sc, Vector3(0.14, 0.07, 0.13), red, Vector3(0, 0.02, 0.05))
+	for hn in ["mixamorig_LeftHand", "mixamorig_RightHand"]:
+		var ha: BoneAttachment3D = at.call(hn)
+		var sp := SphereMesh.new(); sp.radius = 0.055; sp.height = 0.11
+		var g := MeshInstance3D.new(); g.mesh = sp; g.material_override = world._m(white); ha.add_child(g)
+
+func _part(n: Node3D, _x: float) -> Node3D: return n
 
 func _skel(n: Node) -> Skeleton3D:
 	if n is Skeleton3D: return n
