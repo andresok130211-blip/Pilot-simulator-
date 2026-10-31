@@ -1,2 +1,4 @@
 grass.jpg, det_g.png — "grasslight-big" from three.js examples (opengameart.org "dark-grass"), CC BY 3.0.
 det_r.png — rock_albedo from godotengine/godot-demo-projects (material_testers), MIT/CC.
+wool_albedo.png, wool_normal.png — godotengine/godot-demo-projects (material_testers), MIT.
+../people/Michelle.glb (Mixamo character) and readyplayer.me.glb (Ready Player Me avatar) — from mrdoob/three.js examples/models/gltf (MIT repo; character assets for free use per Mixamo / Ready Player Me terms).
