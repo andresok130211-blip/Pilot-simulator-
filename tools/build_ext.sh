@@ -3,8 +3,9 @@
 set -e
 cd "$(dirname "$0")/../godot/ext"
 mkdir -p third_party
-[ -d third_party/godot-cpp ] || git clone -q --depth 1 -b 4.3 https://github.com/godotengine/godot-cpp.git third_party/godot-cpp
-[ -d third_party/quickjs ] || git clone -q --depth 1 https://github.com/bellard/quickjs.git third_party/quickjs
+pin() { git -C third_party/$1 fetch -q --depth 1 origin $2 && git -C third_party/$1 checkout -q $2; }
+[ -d third_party/godot-cpp ] || { git clone -q https://github.com/godotengine/godot-cpp.git third_party/godot-cpp && pin godot-cpp d5cc777a89d899665fb61f1650ef0dc0cf6488c4; }
+[ -d third_party/quickjs ] || { git clone -q https://github.com/bellard/quickjs.git third_party/quickjs && pin quickjs 7d1c13c5d8f8c6b32893786ed35cdcebd88194d2; }
 if [ "$1" = "android" ]; then
   NDK=${ANDROID_NDK_ROOT:-${ANDROID_NDK_LATEST_HOME:-$ANDROID_HOME/ndk-bundle}}
   cmake -S . -B build-android -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
