@@ -31,7 +31,7 @@ func _ready():
 		world.tiles.start_prefetch(pts)
 		var h = Sim.g("game_hub")
 		for a in Sim.data.airports:
-			if a.id == h.loc: world.bld.prefetch(float(a.lon), float(a.lat)))
+			if a.id == h.loc: world.bld.prefetch(float(a.lon), float(a.lat)); world.geo.prefetch(float(a.lon), float(a.lat)))
 	menu.poi_request.connect(func(): _apply_poi(true))
 	if not _args(): _show_menu()
 	if screen_arg == "walk":
@@ -132,6 +132,7 @@ func _start(to := "", drill := ""):
 	hud.mode = int(Sim.g("game_hub").opts.get("mode", 0))
 	var qual: int = int(Sim.g("game_hub").opts.get("quality", 1))
 	world.set_quality(qual)
+	world.geo.trees_on = qual >= 1
 	world.bld.procedural_on = bool(Sim.g("game_hub").opts.get("fakebld", false))
 	_apply_poi(false)
 	world.tiles.set_enabled(bool(Sim.g("game_hub").opts.get("sat", true)) and qual >= 1)

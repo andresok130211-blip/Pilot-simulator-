@@ -3,6 +3,7 @@ render_mode cull_disabled;
 #include "res://terrain_h.gdshaderinc"
 uniform float night = 0.0;
 uniform float glow = 0.0;
+uniform float plain = 0.0;
 varying float v_y;
 varying vec3 v_wp;
 varying vec3 v_col;
@@ -21,7 +22,7 @@ void fragment(){
   float wall = 1.0 - abs(NORMAL.y);
   vec3 c = v_col;
   float em = 0.0;
-  if (wall > 0.5 && glow < 0.5) {
+  if (wall > 0.5 && glow < 0.5 && plain < 0.5) {
     float u = (v_wp.x + v_wp.z * 1.0) / 3.6;
     float rw = v_y / 3.2;
     vec2 f = fract(vec2(u, rw));

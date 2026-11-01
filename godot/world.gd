@@ -19,6 +19,7 @@ var plane_id := ""
 var orbit := 0.0
 var tiles
 var bld
+var geo
 var orbit_up := 0.28
 var orbit_d := 1.5
 var clouds := []        # материалы облачных слоёв
@@ -94,6 +95,7 @@ func _build_terrain():
 	terrain.material_override = mat; add_child(terrain)
 	tiles = load("res://tiles.gd").new(); add_child(tiles); tiles.setup(mat)
 	bld = load("res://buildings.gd").new(); add_child(bld); bld.setup(mat)
+	geo = load("res://geo.gd").new(); add_child(geo); geo.setup(mat, bld.mat.shader)
 
 
 # ---------- облака ----------
@@ -586,6 +588,7 @@ func update_state(s: Dictionary, delta: float):
 		bld.apts = []
 		for a in airports: bld.apts.append([a.lon, a.lat])
 	bld.update(lon, lat, float(s.h), mat, float(mat.get_shader_parameter("night")))
+	geo.update(lon, lat, float(s.h), mat, float(mat.get_shader_parameter("night")))
 	var alt: float = s.alt
 	plane.position = Vector3(0, alt + 3.0, 0)
 	var hdg: float = s.hdg
