@@ -159,11 +159,38 @@ var wcam: Array = []
 var _wshader: Shader
 func _windows() -> void:
 	_wshader = Shader.new()
-	_wshader.code = "shader_type spatial;\nrender_mode unshaded;\nuniform sampler2D tex : source_color, filter_linear;\nuniform float sgn;\nvarying vec3 lp;\nvoid vertex(){ lp = VERTEX; }\nvoid fragment(){ vec2 uv = vec2(0.5 + sgn * lp.z * 2.2, 0.5 - lp.y * 2.0); ALBEDO = texture(tex, uv).rgb; }"
+	_wshader.code = "shader_type spatial;\nrender_mode unshaded;\nuniform sampler2D tex : source_color, filter_linear;\nuniform float sgn;\nvarying vec3 lp;\nvoid vertex(){ lp = VERTEX; }\nfloat rb(vec2 p, vec2 h, float r){ vec2 q = abs(p) - h + vec2(r); return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }\nvoid fragment(){ vec2 p = vec2(lp.z, lp.y); if (rb(p, vec2(0.19, 0.25), 0.11) > 0.0) discard; float d = rb(p, vec2(0.14, 0.19), 0.085); if (d < 0.0) { vec2 uv = vec2(0.5 + sgn * lp.z * 2.2, 0.5 - lp.y * 2.0); ALBEDO = texture(tex, uv).rgb * (1.0 - 0.25 * smoothstep(-0.02, 0.0, d)); } else { ALBEDO = vec3(0.86, 0.87, 0.9) * (1.0 - 0.3 * smoothstep(0.0, 0.05, d)); } }"
 	for i in range(2):
 		var vp := SubViewport.new(); vp.size = Vector2i(256, 256); vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS; add_child(vp)
 		var c := Camera3D.new(); c.fov = 70.0; c.cull_mask = 1; c.far = 40000.0; vp.add_child(c)
 		wvp.append(vp); wcam.append(c)
+
+func _glow(size: Vector3, c: Color, pos: Vector3) -> void:
+	var mi: MeshInstance3D = world._box(root3, size, c, pos)
+	var m := mi.material_override as StandardMaterial3D; m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+
+func _details() -> void:
+	var bin := Color(0.9, 0.91, 0.94)
+	for sx in [-1.0, 1.0]:
+		# багажные полки: наклонные закруглённые крышки по бокам потолка
+		var bm := MeshInstance3D.new(); var cb := BoxMesh.new(); cb.size = Vector3(0.6, 0.34, L - 7.0); bm.mesh = cb
+		bm.position = Vector3(sx * 1.36, 1.98, 0); bm.rotation.z = sx * 0.35; bm.material_override = world._m(bin); root3.add_child(bm)
+		_glow(Vector3(0.03, 0.03, L - 7.0), Color(1.0, 0.95, 0.8), Vector3(sx * 0.6, 2.28, 0))   # потолочная подсветка
+		for zz in range(-int((L - 8.0) / 2.0), int((L - 8.0) / 2.0), 2):   # путеводные огни в полу вдоль прохода
+			_glow(Vector3(0.04, 0.012, 0.12), Color(0.2, 0.9, 0.4), Vector3(sx * 0.32, 0.03, float(zz)))
+	var seats_z: Array = []
+	for r in range(ROWS):
+		var z: float = -L * 0.5 + 4.0 + r * PITCH * 1.35
+		if z > L * 0.5 - 4.0: break
+		seats_z.append(z)
+	for z in seats_z:
+		for sx in [-1.0, 1.0]:
+			for k in range(3):
+				var x: float = sx * (0.55 + k * 0.47)
+				_glow(Vector3(0.3, 0.2, 0.012), Color(0.15, 0.35, 0.7), Vector3(x, 0.78, z - 0.04))                       # экран в спинке (виден сзади сидящему)
+				world._box(root3, Vector3(0.05, 0.05, 0.4), Color(0.2, 0.2, 0.24), Vector3(x + sx * 0.0 - 0.23, 0.55, z + 0.02))   # подлокотник
+		_glow(Vector3(0.05, 0.02, 0.05), Color(1, 1, 1), Vector3(-0.9, 2.15, z))     # лампа индивидуальная
+		_glow(Vector3(0.05, 0.02, 0.05), Color(1, 1, 1), Vector3(0.9, 2.15, z))
 
 func _build() -> void:
 	var W := 3.4; var H := 2.2
@@ -209,11 +236,11 @@ func _build() -> void:
 					m.position = Vector3(x, 0.52 - 0.97 * sc, z + 0.05)
 					root3.add_child(m); _sit(m, true)
 		for sx in [-1.0, 1.0]:
-			world._box(root3, Vector3(0.05, 0.5, 0.38), Color(0.78, 0.8, 0.84), Vector3(sx * 1.885, 1.2, z))   # рамка окна
-			var wm: MeshInstance3D = world._box(root3, Vector3(0.04, 0.38, 0.28), Color.WHITE, Vector3(sx * 1.86, 1.2, z))
+			var wm: MeshInstance3D = world._box(root3, Vector3(0.04, 0.5, 0.38), Color.WHITE, Vector3(sx * 1.88, 1.2, z))
 			var sm2 := ShaderMaterial.new(); sm2.shader = _wshader; sm2.set_shader_parameter("tex", wvp[0 if sx < 0.0 else 1].get_texture()); sm2.set_shader_parameter("sgn", -1.0 if sx < 0.0 else 1.0)
 			wm.material_override = sm2
 		world._box(root3, Vector3(0.9, 0.12, 0.5), Color(0.8, 0.82, 0.86), Vector3(-1.2 * 0.0 + 1.0, 1.85, z)).visible = false
+	_details()
 	for z in [-L * 0.5 + 1.5, 0.0, L * 0.5 - 1.5]:
 		var o := OmniLight3D.new(); o.position = Vector3(0, 2.0, z); o.omni_range = 14.0; o.light_energy = 1.1; root3.add_child(o)
 	for z in [-L * 0.25, L * 0.25]:
