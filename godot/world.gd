@@ -543,6 +543,27 @@ func _airport_details(par: Node3D, len: float) -> void:
 		_box(n, Vector3(2.0, 1.4, 2.3), Color(0.15, 0.2, 0.28), Vector3(vx + 1.6, 2.7, vz))
 		if i % 3 == 0:
 			for j in range(3): _box(n, Vector3(2.6, 1.0, 1.8), Color(0.35, 0.37, 0.4), Vector3(vx - 4.5 - j * 3.0, 0.9, vz))   # багажные тележки
+	# терминал со стеклом, телетрапы, припаркованные самолёты, диспетчерская башня, ветроуказатель
+	var tx0 := len * 0.30; var tlen := len * 0.30
+	_box(n, Vector3(tlen, 12, 36), Color(0.82, 0.84, 0.88), Vector3(tx0 + tlen * 0.5, 6, 300))
+	_box(n, Vector3(tlen + 4, 1.2, 40), Color(0.35, 0.38, 0.44), Vector3(tx0 + tlen * 0.5, 12.6, 300))
+	var gl := _box(n, Vector3(tlen - 4, 7, 0.4), Color(0.2, 0.3, 0.42), Vector3(tx0 + tlen * 0.5, 6.2, 281.6))
+	var gm := _m(Color(0.25, 0.4, 0.55)); gm.emission_enabled = true; gm.emission = Color(0.5, 0.7, 0.9); gm.emission_energy_multiplier = 0.35; gl.material_override = gm
+	var acs: PackedScene = load("res://assets/planes/A320_nologo.glb")
+	var nac := int(clampf(tlen / 62.0, 2.0, 5.0))
+	for i in range(nac):
+		var gx := tx0 + 40.0 + i * 62.0
+		_box(n, Vector3(3.2, 3.2, 26.0), Color(0.7, 0.72, 0.76), Vector3(gx + 6.0, 5.0, 266.0))   # телетрап
+		_box(n, Vector3(1.2, 5.0, 1.2), Color(0.5, 0.5, 0.55), Vector3(gx + 6.0, 2.5, 253.0))
+		var ac: Node3D = acs.instantiate(); n.add_child(ac)
+		var kk := 36.0 / float(MODEL_LEN["A320"])
+		ac.scale = Vector3.ONE * kk; ac.rotation_degrees = Vector3(0, -90.0, 0); ac.position = Vector3(gx, 3.0, 232.0)
+	_cyl(n, 4.0, 60.0, Color(0.8, 0.82, 0.85), Vector3(tx0 + tlen + 60.0, 30, 320))   # башня
+	_cyl(n, 8.0, 7.0, Color(0.25, 0.4, 0.5), Vector3(tx0 + tlen + 60.0, 63.5, 320))
+	_cyl(n, 9.0, 1.0, Color(0.3, 0.3, 0.34), Vector3(tx0 + tlen + 60.0, 67.5, 320))
+	_cyl(n, 0.12, 9.0, Color(0.85, 0.85, 0.88), Vector3(len * 0.12, 4.5, -70))   # ветроуказатель
+	var ws := CylinderMesh.new(); ws.top_radius = 0.2; ws.bottom_radius = 0.6; ws.height = 3.5
+	var wi := MeshInstance3D.new(); wi.mesh = ws; wi.material_override = _m(Color(1.0, 0.45, 0.1)); wi.position = Vector3(len * 0.12 + 1.8, 8.6, -70); wi.rotation_degrees = Vector3(0, 0, 90); n.add_child(wi)
 	for i in range(60):   # деревья по периметру
 		var tx := len * (-0.1 + 1.2 * rnd.randf()); var tz := (420.0 + rnd.randf() * 260.0) * (1.0 if rnd.randf() < 0.7 else -1.0)
 		if tz < 0 and absf(tz) < 520.0: tz -= 300.0
