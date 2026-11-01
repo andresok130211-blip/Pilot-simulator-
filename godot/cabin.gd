@@ -32,6 +32,7 @@ var chime_t := -1.0
 func start(w: Node3D, h: Node) -> void:
 	world = w; hud = h; layer = 8
 	root3 = Node3D.new(); root3.position = Vector3(0, 20000, 0); world.add_child(root3)
+	_windows()
 	_build()
 	var cm: Node3D = (load("res://assets/people/Michelle.glb") as PackedScene).instantiate(); root3.add_child(cm); _sit(cm, false); crew = {"root": cm}; _uniform(cm)
 	var sg: MeshInstance3D = world._box(root3, Vector3(0.5, 0.14, 0.05), Color(0.2, 0.9, 0.3), Vector3(0, 2.05, -L * 0.5 + 0.8))
@@ -88,13 +89,26 @@ func _sit(model: Node3D, sitting: bool) -> void:
 			_g(sk, pre + l + "Leg", Basis.IDENTITY, true)
 		for l in ["Left", "Right"]: _g(sk, pre + l + "ForeArm", Basis(Vector3(1, 0, 0), -0.9) , false)
 
+func _tint_f(n: Node, rng: RandomNumberGenerator) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		var mt := mi.get_active_material(0).duplicate() as StandardMaterial3D
+		mt.albedo_texture = load("res://assets/people/mv%d.png" % rng.randi_range(0, 4)); mi.material_override = mt
+	for c in n.get_children(): _tint_f(c, rng)
+
+var _skin := Color.WHITE
 func _tint(n: Node, rng: RandomNumberGenerator) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
-		if mi.name == "Wolf3D_Headwear": mi.visible = rng.randf() < 0.35
-		elif mi.name == "Wolf3D_Outfit_Top" or mi.name == "Wolf3D_Body":
+		if mi.name == "Wolf3D_Headwear": mi.visible = rng.randf() < 0.25
+		elif mi.name == "Wolf3D_Beard": mi.visible = rng.randf() < 0.4
+		elif mi.name == "Wolf3D_Head" or mi.name == "Wolf3D_Body":
+			var ms := mi.get_active_material(0).duplicate() as StandardMaterial3D; ms.albedo_color = _skin; mi.material_override = ms
+		elif mi.name == "Wolf3D_Outfit_Bottom":
+			var mb := mi.get_active_material(0).duplicate() as StandardMaterial3D; mb.albedo_color = Color.from_hsv(rng.randf(), 0.3, 0.55 + rng.randf() * 0.4); mi.material_override = mb
+		elif mi.name == "Wolf3D_Outfit_Top":
 			var mt := mi.get_active_material(0).duplicate() as StandardMaterial3D
-			mt.albedo_color = Color.from_hsv(rng.randf(), 0.45, 0.95) if mi.name == "Wolf3D_Outfit_Top" else Color.WHITE
+			mt.albedo_color = Color.from_hsv(rng.randf(), 0.5, 0.95)
 			mi.material_override = mt
 	for c in n.get_children(): _tint(c, rng)
 
@@ -140,16 +154,30 @@ func _g(sk: Skeleton3D, bone: String, rot: Basis, from_rest: bool) -> void:
 func _flat(mi: MeshInstance3D, c: Color) -> void:
 	var m := StandardMaterial3D.new(); m.albedo_color = c; m.roughness = 1.0; m.metallic_specular = 0.0; mi.material_override = m
 
+var wvp: Array = []
+var wcam: Array = []
+var _wshader: Shader
+func _windows() -> void:
+	_wshader = Shader.new()
+	_wshader.code = "shader_type spatial;\nrender_mode unshaded;\nuniform sampler2D tex : source_color, filter_linear;\nuniform float sgn;\nvarying vec3 lp;\nvoid vertex(){ lp = VERTEX; }\nvoid fragment(){ vec2 uv = vec2(0.5 + sgn * lp.z * 2.2, 0.5 - lp.y * 2.0); ALBEDO = texture(tex, uv).rgb; }"
+	for i in range(2):
+		var vp := SubViewport.new(); vp.size = Vector2i(256, 256); vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS; add_child(vp)
+		var c := Camera3D.new(); c.fov = 70.0; c.cull_mask = 1; c.far = 40000.0; vp.add_child(c)
+		wvp.append(vp); wcam.append(c)
+
 func _build() -> void:
 	var W := 3.4; var H := 2.2
 	var wall := Color(0.86, 0.87, 0.9); var carpet := Color(0.16, 0.2, 0.3)
-	(world._box(root3, Vector3(W, 0.1, L), carpet, Vector3(0, -0.05, 0))).material_override = _wool(Color(0.35, 0.4, 0.55), 1.6)
+	(world._box(root3, Vector3(3.9, 0.1, L), carpet, Vector3(0, -0.05, 0))).material_override = _wool(Color(0.35, 0.4, 0.55), 1.6)
 	world._box(root3, Vector3(0.7, 0.02, L), Color(0.45, 0.1, 0.12), Vector3(0, 0.01, 0))
-	_flat(world._box(root3, Vector3(W, 0.1, L), Color(0.93, 0.94, 0.96), Vector3(0, H + 0.05, 0)), Color(0.93, 0.94, 0.96))
-	for sx in [-1.0, 1.0]:
-		_flat(world._box(root3, Vector3(0.1, H, L), wall, Vector3(sx * W * 0.5, H * 0.5, 0)), wall)
+	var cm := CylinderMesh.new(); cm.top_radius = 1.9; cm.bottom_radius = 1.9; cm.height = L; cm.radial_segments = 48; cm.cap_top = false; cm.cap_bottom = false
+	var tube := MeshInstance3D.new(); tube.mesh = cm; tube.rotation_degrees = Vector3(90, 0, 0); tube.position = Vector3(0, 1.15, 0)
+	var tm := StandardMaterial3D.new(); tm.albedo_color = wall; tm.cull_mode = BaseMaterial3D.CULL_DISABLED; tm.roughness = 1.0; tm.metallic_specular = 0.0
+	var ts := Shader.new()
+	ts.code = "shader_type spatial;\nrender_mode unshaded, cull_disabled;\nvarying float hh;\nvoid vertex(){ hh = -VERTEX.z; }\nvoid fragment(){ float k = clamp(hh / 1.9 * 0.5 + 0.5, 0.0, 1.0); vec3 c = mix(vec3(0.55, 0.57, 0.62), vec3(0.97, 0.97, 0.99), pow(k, 0.8)); ALBEDO = c; }"
+	var tsm := ShaderMaterial.new(); tsm.shader = ts; tube.material_override = tsm; root3.add_child(tube)
 	for sz in [-1.0, 1.0]:
-		world._box(root3, Vector3(W, H + 0.2, 0.1), Color(0.75, 0.77, 0.82), Vector3(0, H * 0.5, sz * L * 0.5))
+		world._box(root3, Vector3(3.9, 4.0, 0.1), Color(0.75, 0.77, 0.82), Vector3(0, 1.15, sz * L * 0.5))
 	world._box(root3, Vector3(1.0, 1.9, 0.12), Color(0.25, 0.27, 0.32), Vector3(0, 0.95, -L * 0.5 + 0.1))   # дверь в кабину
 	world._box(root3, Vector3(1.0, 1.9, 0.12), Color(0.3, 0.3, 0.34), Vector3(1.1, 0.95, L * 0.5 - 0.1))     # туалет
 	world._box(root3, Vector3(1.3, 1.1, 0.7), Color(0.7, 0.72, 0.76), Vector3(-1.0, 0.55, L * 0.5 - 0.6))     # галерея
@@ -162,7 +190,7 @@ func _build() -> void:
 		if z > L * 0.5 - 4.0: break
 		for sx in [-1.0, 1.0]:
 			for k in range(3):
-				var x: float = sx * (0.55 + k * 0.5)
+				var x: float = sx * (0.55 + k * 0.47)
 				var c: Color = seatc[(r / 6) % 2]
 				var sm := _wool(c, 2.0)
 				(world._box(root3, Vector3(0.46, 0.18, 0.46), c, Vector3(x, 0.4, z))).material_override = sm
@@ -171,16 +199,20 @@ func _build() -> void:
 				(world._box(root3, Vector3(0.28, 0.14, 0.1), c, Vector3(x, 1.22, z + 0.24))).material_override = sm
 				if rng.randf() < 0.3 and pcount < 34:
 					pcount += 1
-					var m: Node3D = (load(pm[0]) as PackedScene).instantiate()
-					_tint(m, rng)
-					var sc: float = 0.92 + rng.randf() * 0.1
-					m.scale = Vector3(sc, sc, sc); m.rotation.y = PI + (rng.randf() - 0.5) * 0.3
+					var fem: bool = rng.randf() < 0.5
+					var m: Node3D = (load(pm[1 if fem else 0]) as PackedScene).instantiate()
+					if fem: _tint_f(m, rng)
+					else:
+						_skin = [Color(1, 1, 1), Color(0.85, 0.72, 0.6), Color(0.62, 0.46, 0.36), Color(0.48, 0.36, 0.28)][rng.randi_range(0, 3)]; _tint(m, rng)
+					var sc: float = (0.93 + rng.randf() * 0.07) if fem else (0.9 + rng.randf() * 0.1)
+					m.scale = Vector3(sc, sc, sc); m.rotation.y = PI + (rng.randf() - 0.5) * 0.4
 					m.position = Vector3(x, 0.52 - 0.97 * sc, z + 0.05)
 					root3.add_child(m); _sit(m, true)
 		for sx in [-1.0, 1.0]:
-			world._box(root3, Vector3(0.05, 0.5, 0.38), Color(0.78, 0.8, 0.84), Vector3(sx * (W * 0.5 - 0.07), 1.15, z))   # рамка окна
-			var wm: MeshInstance3D = world._box(root3, Vector3(0.04, 0.38, 0.28), Color(0.55, 0.78, 1.0), Vector3(sx * (W * 0.5 - 0.06), 1.15, z))
-			(wm.material_override as StandardMaterial3D).emission_enabled = true; (wm.material_override as StandardMaterial3D).emission = Color(0.4, 0.65, 1.0)
+			world._box(root3, Vector3(0.05, 0.5, 0.38), Color(0.78, 0.8, 0.84), Vector3(sx * 1.885, 1.2, z))   # рамка окна
+			var wm: MeshInstance3D = world._box(root3, Vector3(0.04, 0.38, 0.28), Color.WHITE, Vector3(sx * 1.86, 1.2, z))
+			var sm2 := ShaderMaterial.new(); sm2.shader = _wshader; sm2.set_shader_parameter("tex", wvp[0 if sx < 0.0 else 1].get_texture()); sm2.set_shader_parameter("sgn", -1.0 if sx < 0.0 else 1.0)
+			wm.material_override = sm2
 		world._box(root3, Vector3(0.9, 0.12, 0.5), Color(0.8, 0.82, 0.86), Vector3(-1.2 * 0.0 + 1.0, 1.85, z)).visible = false
 	for z in [-L * 0.5 + 1.5, 0.0, L * 0.5 - 1.5]:
 		var o := OmniLight3D.new(); o.position = Vector3(0, 2.0, z); o.omni_range = 14.0; o.light_energy = 1.1; root3.add_child(o)
@@ -215,6 +247,10 @@ func _close() -> void:
 
 func _process(dt: float) -> void:
 	t += dt
+	for i in range(2):
+		var sd: float = -1.0 if i == 0 else 1.0
+		var off := Transform3D(Basis(Vector3.UP, -sd * PI * 0.5) * Basis(Vector3.RIGHT, -0.22), Vector3(sd * 2.4, 0.2, -3.0))
+		(wcam[i] as Camera3D).global_transform = world.plane.global_transform * off
 	if not _wl_done and t > 0.3: _wl_done = true; _wl(world, 1)
 	var f := Vector2(-sin(yaw), -cos(yaw)); var r := Vector2(cos(yaw), -sin(yaw))
 	var kd := Vector2(Input.get_axis("ui_left", "ui_right"), Input.get_axis("ui_down", "ui_up"))
