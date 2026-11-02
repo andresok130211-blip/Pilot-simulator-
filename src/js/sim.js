@@ -107,7 +107,9 @@ export class Flight {
     this.wl = { x: 0, z: 0 }; this.gustF = 0; this.wxNow = { vis: 10000, rain: 0 };
     this.origTo = o.to; this.divTo = null; this.tfA = 0;
     this.tf = { a: 0, c: 1, s: 0, ox: 0, oz: 0 };
-    this.world = buildWorld(o.from, o.to, o.distM, o.plane);
+    this.hd0 = o.hd0 == null ? null : o.hd0; this.hd1 = o.hd1 == null ? null : o.hd1; this.real = this.hd0 != null && this.hd1 != null; this.rebased = false; this.arrDone = false;
+    if (this.real) { const a0 = (this.hd0 - this.brg) * DEG; this.tf = { a: a0, c: Math.cos(a0), s: Math.sin(a0), ox: 0, oz: 0 }; }
+    this.world = buildWorld(o.from, o.to, o.distM, o.plane, this.hd0, this.hd1);
     this._tw = 0;
     this.updateMass();
     this.computeSpeeds();
@@ -289,7 +291,7 @@ export class Flight {
     if (this.diverted && (this.trf.length || this.hold)) { this.trf = []; this.hold = null; this.starOff = 0; }
     const w = this.wx || { dir: 0, spd: 0 }, c = this.c, dist = this.dist, cs = this.cs;
     const wind = Math.round(w.dir / 10) * 10 + '° ' + Math.round(w.spd) + ' м/с';
-    const rw = String(Math.round((((this.brg || 0) + 360) % 360) / 10) || 36).padStart(2, '0');
+    const rw = String(Math.round(((((this.brg || 0) + this.tf.a / DEG) % 360 + 360) % 360) / 10) || 36).padStart(2, '0');
     if (this.holdTo && !this.atcDone.hto && this.onGround && !this.airborneOnce && this.guide && this.guide.label === 'Выезд на ВПП' && Math.abs(this.yPos) < 190) { this.atc('hto', cs + ', ' + this.fromAp.id + ' вышка, остановитесь перед полосой, на посадке борт.'); this.clrTo = false; this.addTraffic({ kind: 'land0', tLand: this.time + 55 }); }
     if (!this.clrTo && !this.airborneOnce) { const lt = this.trf.find(t => t.kind === 'land0'); if (lt && this.time > lt.tLand + 38 && !this.rwyBusy('land0')) { this.clrTo = true; this.atc('rel', cs + ', полоса свободна, занимайте полосу и взлёт разрешаю.'); } }
     if (!this.airborneOnce && this.onGround && this.lined && !this.td) {
@@ -481,6 +483,7 @@ export class Flight {
     this.updateMass();
     this.aero();
     this.updateWind();
+    if (this.real) this.framing();
     { const e1 = this.toAp.elev !== undefined ? this.toAp.elev : this.elevA; this.elev = this.elevA + (e1 - this.elevA) * clamp(this.x / Math.max(this.D, 1), 0, 1); }
     const A = this.A, v = this.v, m = this.mass;
     const ias = this.ias;
@@ -975,6 +978,7 @@ export class Flight {
     this.D = d; this.toAp = w.ap; this.rwy1 = { s: d, e: d + w.len }; this.fr1 = frameOf(d, w.len);
     this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
     this.elevA = this.elev; this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
+    if (this.real && w.hd != null) { this.arrFrame({ wx: w.wx, wz: w.wz, hd: w.hd }, true); this.arrDone = true; }
     c.appr = false; this.apprCap = false; this.autoDescDone = false; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
     if (this.ga) this.ga = false;
     if (this.apLock <= 0 && (this.assist.auto || c.apOn)) { c.apOn = true; c.nav = true; }
@@ -1009,6 +1013,39 @@ export class Flight {
     this.msg('Аварийное снижение до 3000 м');
   }
   canGoAround() { return !this.onGround && !this.ga && this.airborneOnce && this.dist < 20000 && this.dist > -300 && this.h < 1500 && !this.td; }
+  // настоящие полосы: после взлёта перестраиваем ось на прямую к порогу назначения, за ~75 км — на ось настоящей ВПП назначения
+  framing() {
+    if (this.diverted || !this.airborneOnce) return;
+    if (!this.rebased && this.h > 150 && this.x > this.rwy0.e) this.rebase();
+    if (this.rebased && !this.arrDone && !this.onGround) {
+      const A = this.world[1], p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+      if (Math.hypot(A.wx - p.x, A.wz - p.z) < 75000) this.arrFrame(A, false);
+    }
+  }
+  rebase() {
+    const A = this.world[1], p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+    const dx = A.wx - p.x, dz = A.wz - p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx), hdgW = this.tf.a + this.psi;
+    const c = Math.cos(a), s = Math.sin(a);
+    this.tf = { a, c, s, ox: A.wx - this.D * c, oz: A.wz - this.D * s };
+    this.x = this.D - d; this.yPos = 0; this.psi = wrapPi(hdgW - a);
+    this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
+    this.rebased = true; this.trf = []; this.hold = null; this.inXc = undefined;
+  }
+  // A — порог полосы в мировых координатах и её курс hd; ось кадра переносится на ось этой полосы
+  arrFrame(A, force) {
+    const aN = (A.hd - this.brg) * DEG, c2 = Math.cos(aN), s2 = Math.sin(aN);
+    const ox = A.wx - this.D * c2, oz = A.wz - this.D * s2;
+    const p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 }), rx = p.x - ox, rz = p.z - oz;
+    let x2 = rx * c2 + rz * s2, y2 = -rx * s2 + rz * c2, psi2 = wrapPi(this.tf.a + this.psi - aN), tele = false;
+    if (Math.abs(y2) > 22000 || Math.abs(psi2) > 1.3 || x2 > this.D - 18000) {
+      const d = Math.hypot(A.wx - p.x, A.wz - p.z);
+      x2 = this.D - Math.max(30000, Math.min(80000, d)); y2 = 0; psi2 = 0; this.phi = 0; tele = true;
+    }
+    this.tf = { a: aN, c: c2, s: s2, ox, oz }; this.x = x2; this.yPos = y2; this.psi = psi2;
+    this.arrDone = true; this.trf = []; this.hold = null; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
+    const rw = Math.round((((A.hd % 360) + 360) % 360) / 10) || 36; this.rwyName = rw;
+    if (tele) { this.fade = 1; this.fadeText = 'Радарное векторение: заход на ВПП ' + String(rw).padStart(2, '0'); this.msg('Выведены на посадочную прямую, ВПП ' + String(rw).padStart(2, '0')); }
+  }
   // смена полосы: поворачиваем ось захода вокруг аэропорта и выводим самолёт на новую прямую
   changeRunway() {
     if (this.onGround || this.done) return false;

@@ -1,12 +1,14 @@
 // Автопилот-бот: проверяет, что рейс проходим (взлёт → набор → крейсер → снижение → посадка).
 import { PL_BY, AP_BY, bearing, distKm, tripFuel, makeContract, recommendedCruise, PAX_KG } from '../src/js/data.js';
 import { Flight, settle, DEG } from '../src/js/sim.js';
+import { realFlight } from '../src/js/rwy.js';
 
 export function fly(planeId, fromId, toId, opts = {}) {
   const plane = PL_BY[planeId], from = AP_BY[fromId], to = AP_BY[toId];
   const km = distKm(from, to);
   const c0 = makeContract(plane, from, to, () => opts.load ?? 0.9);
-  const f = new Flight({ plane, from, to, bearing: bearing(from, to), taxi: opts.taxi !== false, distM: km * 1000, pax: c0.pax, fuelKg: Math.min(plane.fuelCap, c0.fuel + (opts.emerg || opts.force ? plane.burnHr * 0.25 : 0)), assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km), force: opts.force, emerg: opts.emerg || 0, rnd: opts.rnd, wx: opts.wx });
+  const rf = opts.real ? realFlight(from, to, opts.wdir == null ? null : opts.wdir) : null;
+  const f = new Flight({ plane, from: rf ? rf.from : from, to: rf ? rf.to : to, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, bearing: rf ? rf.bearing : bearing(from, to), taxi: opts.taxi !== false, distM: rf ? rf.distM : km * 1000, pax: c0.pax, fuelKg: Math.min(plane.fuelCap, c0.fuel + (opts.emerg || opts.force ? plane.burnHr * 0.25 : 0)), assist: Object.assign({ taxi: true }, opts.assist || { auto: true, config: true }), recAlt: recommendedCruise(km), force: opts.force, emerg: opts.emerg || 0, rnd: opts.rnd, wx: opts.wx });
   const c = f.c;
   const dt = 1 / 60;
   let t = 0, phase = 'roll', log = [];
@@ -98,11 +100,11 @@ export function fly(planeId, fromId, toId, opts = {}) {
       c.thr = Math.max(0, Math.min(1, c.thr + (tgt - f.ias) * 0.0006));
     }
     if (f.ga && f.apLock <= 0) { c.stick = 0; c.roll = 0; }
-    if (opts.onStep) opts.onStep(f);
+    if (opts.onStep) opts.onStep(f); if (process.env.DBG && f.dist < 30000 && f.dist > 28000 && Math.abs(t - Math.round(t)) < 0.01 && Math.round(t) % 10 === 0) console.log("DBG", t.toFixed(0), (f.dist|0), f.h|0, f.c.flaps, f.c.gear, f.ias.toFixed(0), f.p.flapLim);
     c.warp = wantWarp;
     const w = f.effectiveWarp();
     for (let i = 0; i < w && !f.done; i++) { f.step(dt); t += dt; }
-    if (Math.floor(t) % 60 === 0 && Math.floor(t) !== opts._lt) { opts._lt = Math.floor(t); L(`vs=${f.vs.toFixed(1)} thr=${c.thr.toFixed(2)} fuel=${f.fuel.toFixed(0)} w=${w} cap=${f.apprCap} fl=${c.flaps}`); }
+    if (Math.floor(t) % 60 === 0 && Math.floor(t) !== opts._lt) { opts._lt = Math.floor(t); L(`D=${(f.D/1000).toFixed(1)} dist=${(f.dist/1000).toFixed(1)} y=${f.yPos.toFixed(0)} psi=${f.psi.toFixed(2)} ap=${c.apOn} appr=${c.appr} gear=${c.gear} diverted=${f.diverted} vs=${f.vs.toFixed(1)} thr=${c.thr.toFixed(2)} fuel=${f.fuel.toFixed(0)} w=${w} cap=${f.apprCap} fl=${c.flaps}`); }
   }
   const r = settle(f, c0);
   return { f, r, log, t, c0 };
@@ -110,7 +112,7 @@ export function fly(planeId, fromId, toId, opts = {}) {
 
 if (process.argv[1].endsWith('bot.mjs')) {
   const [pl = 'a320', a = 'SVO', b = 'LED'] = process.argv.slice(2);
-  const { f, r, log, t } = fly(pl, a, b, { y0: +process.env.Y0 || 0, assist: { auto: process.env.MANUAL ? false : true, config: process.env.MANUAL ? false : true } });
+  const { f, r, log, t } = fly(pl, a, b, { real: !!process.env.REAL, wdir: process.env.WDIR ? +process.env.WDIR : null, y0: +process.env.Y0 || 0, assist: { auto: process.env.MANUAL ? false : true, config: process.env.MANUAL ? false : true } });
   if (process.env.V) console.log(log.join('\n'));
   console.log(pl, a, b, 'flight time', (t / 60).toFixed(1), 'min  result', f.result, 'td', f.td && { sink: f.td.sink.toFixed(2), v: (f.td.ias * 3.6).toFixed(0), pitch: f.td.pitch.toFixed(1), past: f.td.past.toFixed(0) }, 'stop at', ((f.x - f.D)).toFixed(0), 'incidents', f.incidents.map(i => i.text), 'net', r.net, 'fuelUsed', r.fuelUsed.toFixed(0));
 }

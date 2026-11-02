@@ -519,8 +519,9 @@ func set_airports(aps: Array, route_brg: float):
 		var cab := BoxMesh.new(); cab.size = Vector3(12, 6, 12)
 		var cm := _mk(cab, Color(0.25, 0.4, 0.5), Vector3(float(a.len) * 0.55, 39, 262)); n.add_child(cm)
 		_airport_details(n, float(a.len))
-		airports.append({"node": n, "lat": a.lat, "lon": a.lon, "elev": a.elev, "len": a.len, "id": a.id})
-		n.rotation.y = deg_to_rad(90.0 - route_brg)
+		var hd: float = float(a.hd) if a.has("hd") and a.hd != null else route_brg
+		airports.append({"node": n, "lat": a.lat, "lon": a.lon, "elev": a.elev, "len": a.len, "id": a.id, "hd": hd})
+		n.rotation.y = deg_to_rad(90.0 - hd)
 
 func _airport_details(par: Node3D, len: float) -> void:
 	var n := Node3D.new(); n.add_to_group("det"); par.add_child(n)
@@ -603,10 +604,10 @@ func update_state(s: Dictionary, delta: float):
 	var near := []
 	for a in airports:
 		var l := _local(a.lat, a.lon, lat, lon)
-		var c := l + Vector2.RIGHT.rotated(deg_to_rad(90.0 - brg)) * (float(a.len) * 0.5)   # центр полосы
-		# направление полосы в мировых (x=восток, z=юг): (sin brg, -cos brg)
-		var dirv := Vector2(sin(deg_to_rad(brg)), -cos(deg_to_rad(brg)))
-		c = l + dirv * (float(a.len) * 0.5)
+		# направление полосы в мировых (x=восток, z=юг): (sin hd, -cos hd)
+		var ahd: float = float(a.hd)
+		var dirv := Vector2(sin(deg_to_rad(ahd)), -cos(deg_to_rad(ahd)))
+		var c := l + dirv * (float(a.len) * 0.5)   # центр полосы
 		var d := c.length()
 		var y := float(a.elev) - d * d / (2.0 * R_E)
 		a.node.position = Vector3(l.x, y, l.y)

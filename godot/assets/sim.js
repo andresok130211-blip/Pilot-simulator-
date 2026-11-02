@@ -244,6 +244,34 @@ function applyMetar(wx, live, which) {
 
 return {AIRPORTS,AP_BY,PLANES,PL_BY,distKm,bearing,PAX_KG,FUEL_PRICE,reserveFuel,tripFuel,maxRangeKm,recommendedCruise,makeContract,contractsFor,fmtRub,WX_NAMES,makeWeather,metarText,windComp,fetchMetar,applyMetar};
 })();
+__m.rwydata = (function(){
+// Настоящие ВПП (OurAirports, общественное достояние): центр и истинный курс самой длинной полосы [lat, lon, курс одного конца]
+const RWY = {"SVO":[55.9714,37.415,75.0],"DME":[55.40809,37.88773,145.6],"LED":[59.79515,30.2506,106.3],"AER":[43.44505,39.9422,64.9],"KRR":[45.0342,39.1885,52.5],"KZN":[55.6075,49.27545,124.4],"GOJ":[56.23055,43.78595,191.5],"UFA":[54.55845,55.86354,150.8],"SVX":[56.74145,60.80365,94.0],"OVB":[55.03333,82.59833,170.2],"KJA":[56.17295,92.4933,113.2],"IKT":[52.268,104.3915,113.4],"KHV":[48.528,135.191,41.9],"VVO":[43.3991,132.1555,61.2],"KGD":[54.89163,20.5986,65.7],"MMK":[68.7817,32.7508,146.2],"MSQ":[53.8928,28.05185,138.8],"IST":[41.28037,28.7274,179.2],"DXB":[25.24438,55.37963,121.5],"CDG":[48.99725,2.58146,85.3],"FRA":[50.03885,8.5608,69.6],"LHR":[51.47759,-0.46133,89.7],"PEK":[40.07587,116.61495,353.2],"HND":[35.55279,139.79585,150.0],"JFK":[40.63815,-73.79415,120.9],"INN":[47.2602,11.34395,81.0],"ZQN":[-45.01828,168.74664,77.5],"GIB":[36.15117,-5.34984,87.5],"FNC":[32.6979,-16.7744,44.5],"SXM":[18.04093,-63.10896,81.4],"MRV":[44.22505,43.0819,122.3],"GDZ":[44.582,38.013,13.9],"NSK":[69.30872,87.32776,32.3],"YKS":[62.0941,129.7765,36.8],"LXA":[29.29807,90.91226,89.0],"LPB":[-16.5133,-68.19225,91.9],"UIO":[-0.12413,-78.35442,177.5],"DEN":[39.87385,-104.6965,181.0],"MEX":[19.43665,-99.07435,59.3],"JNB":[-26.12715,28.2403,15.7],"SIN":[1.34546,103.992,22.8],"SYD":[-33.94685,151.1765,167.9],"LAX":[33.93772,-118.40094,83.0],"GRU":[-23.42955,-46.46588,73.6]};
+
+return {RWY};
+})();
+__m.rwy = (function(){
+// Настоящая ориентация полос: выбор конца по ветру, пороги в широте/долготе.
+const { RWY } = __m.rwydata;
+const { bearing, distKm } = __m.data;
+const D2R = Math.PI / 180;
+function rwyEnd(ap, wdir, centerOnly) {
+  const r = RWY[ap.id]; if (!r) return null;
+  let h = r[2];
+  if (wdir != null && Math.cos((wdir - (h + 180)) * D2R) > Math.cos((wdir - h) * D2R)) h = (h + 180) % 360;
+  const half = ap.rwy / 2;
+  return { clat: r[0], clon: r[1], hd: h, lat: r[0] - half * Math.cos(h * D2R) / 110574, lon: r[1] - half * Math.sin(h * D2R) / (111320 * Math.cos(r[0] * D2R)) };
+}
+// { from, to, bearing, distM, hd0, hd1 } для рейса с настоящими полосами; null — если данных нет
+function realFlight(from, to, wdir) {
+  const e0 = rwyEnd(from, wdir), e1 = rwyEnd(to, wdir);
+  if (!e0 || !e1) return null;
+  const f2 = Object.assign({}, from, { lat: e0.lat, lon: e0.lon }), t2 = Object.assign({}, to, { lat: e1.lat, lon: e1.lon });
+  return { from: f2, to: t2, bearing: bearing(f2, t2), distM: distKm(f2, t2) * 1000, hd0: e0.hd, hd1: e1.hd };
+}
+
+return {rwyEnd,realFlight};
+})();
 __m.icao = (function(){
 const ICAO = {"FRA": "EDDF", "LHR": "EGLL", "JNB": "FAOR", "DEN": "KDEN", "JFK": "KJFK", "LAX": "KLAX", "CDG": "LFPG", "INN": "LOWI", "FNC": "LPMA", "IST": "LTFM", "GIB": "LXGB", "MEX": "MMMX", "ZQN": "NZQN", "DXB": "OMDB", "HND": "RJTT", "GRU": "SBGR", "UIO": "SEQM", "LPB": "SLLP", "SXM": "TNCM", "YKS": "UEEE", "KHV": "UHHH", "VVO": "UHWW", "IKT": "UIII", "LED": "ULLI", "MMK": "ULMM", "KGD": "UMKK", "MSQ": "UMMS", "KJA": "UNKL", "OVB": "UNNT", "NSK": "UOOO", "GDZ": "URKG", "KRR": "URKK", "MRV": "URMM", "AER": "URSS", "SVX": "USSS", "DME": "UUDD", "SVO": "UUEE", "GOJ": "UWGG", "KZN": "UWKD", "UFA": "UWUU", "SIN": "WSSS", "SYD": "YSSY", "PEK": "ZBAA", "LXA": "ZULS"};
 
@@ -1520,6 +1548,7 @@ __m.terrain = (function(){
 // Система координат самолёта (локальная) связана с мировой поворотом/сдвигом f.tf (меняется при уходе на запасной).
 const { AIRPORTS, distKm, bearing } = __m.data;
 const { makeGeo } = __m.geo;
+const { RWY } = __m.rwydata;
 
 const smooth = t => t * t * (3 - 2 * t);
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -1541,22 +1570,27 @@ function fbm(x, z, oct, s) {
 const worldHash = hs;
 
 // ---- аэродромы мира (в мировой системе координат) ----
-function buildWorld(from, to, D, plane) {
+function buildWorld(from, to, D, plane, hd0, hd1) {
   const brg0 = bearing(from, to) * Math.PI / 180;
   const list = [];
   try { list.geo = makeGeo(from, bearing(from, to), D); } catch (e) { list.geo = null; }
   list.ref = wx => from.elev + (to.elev - from.elev) * Math.max(0, Math.min(1, wx / D)); // «нулевой» уровень по маршруту (м над морем)
-  const push = (id, ap, wx, wz, len, gen) => list.push({ id, ap, wx, wz, len, gen: !!gen });
-  push(from.id, from, 0, 0, from.rwy, false);
-  push(to.id, to, D, 0, to.rwy, false);
+  // wx, wz — порог полосы (начало), hd — курс полосы; wx0, wz0 — центр
+  const push = (id, ap, wx, wz, len, gen, hd) => {
+    const h = hd == null ? bearing(from, to) : hd, a = (h - bearing(from, to)) * Math.PI / 180;
+    list.push({ id, ap, wx: wx - Math.cos(a) * len / 2, wz: wz - Math.sin(a) * len / 2, len, gen: !!gen, hd: h });
+  };
+  list.push({ id: from.id, ap: from, wx: 0, wz: 0, len: from.rwy, gen: false, hd: hd0 == null ? bearing(from, to) : hd0 });
+  list.push({ id: to.id, ap: to, wx: D, wz: 0, len: to.rwy, gen: false, hd: hd1 == null ? bearing(from, to) : hd1 });
   // реальные аэродромы рядом с маршрутом
   for (const a of AIRPORTS) {
     if (a.id === from.id || a.id === to.id) continue;
-    const d = distKm(from, a) * 1000, ang = bearing(from, a) * Math.PI / 180 - brg0;
+    const rr = RWY[a.id], pos = rr ? { lat: rr[0], lon: rr[1] } : a;
+    const d = distKm(from, pos) * 1000, ang = bearing(from, pos) * Math.PI / 180 - brg0;
     const wx = d * Math.cos(ang), wz = d * Math.sin(ang);
     const t = Math.max(0, Math.min(D, wx));
     if (Math.hypot(wx - t, wz) > 260000) continue;
-    push(a.id, a, wx, wz, a.rwy, false);
+    push(a.id, a, wx, wz, a.rwy, false, rr ? rr[2] : null);
   }
   // запасные аэродромы вдоль трассы
   const minLen = Math.max(2400, (plane ? plane.minRwy : 2000) + 300);
@@ -1576,7 +1610,7 @@ function buildWorld(from, to, D, plane) {
   const altsOk = list.geo ? alts.filter(a => a.ok) : alts;
   altsOk.forEach((a, i) => {
     const code = 'Z' + (i + 1);
-    push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true);
+    push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true, hd0 == null ? null : (Math.round((bearing(from, to) + (hs(i, 4, seed) - 0.5) * 140 + 360) / 10) * 10) % 360);
   });
   return list;
 }
@@ -1742,7 +1776,9 @@ class Flight {
     this.wl = { x: 0, z: 0 }; this.gustF = 0; this.wxNow = { vis: 10000, rain: 0 };
     this.origTo = o.to; this.divTo = null; this.tfA = 0;
     this.tf = { a: 0, c: 1, s: 0, ox: 0, oz: 0 };
-    this.world = buildWorld(o.from, o.to, o.distM, o.plane);
+    this.hd0 = o.hd0 == null ? null : o.hd0; this.hd1 = o.hd1 == null ? null : o.hd1; this.real = this.hd0 != null && this.hd1 != null; this.rebased = false; this.arrDone = false;
+    if (this.real) { const a0 = (this.hd0 - this.brg) * DEG; this.tf = { a: a0, c: Math.cos(a0), s: Math.sin(a0), ox: 0, oz: 0 }; }
+    this.world = buildWorld(o.from, o.to, o.distM, o.plane, this.hd0, this.hd1);
     this._tw = 0;
     this.updateMass();
     this.computeSpeeds();
@@ -1924,7 +1960,7 @@ class Flight {
     if (this.diverted && (this.trf.length || this.hold)) { this.trf = []; this.hold = null; this.starOff = 0; }
     const w = this.wx || { dir: 0, spd: 0 }, c = this.c, dist = this.dist, cs = this.cs;
     const wind = Math.round(w.dir / 10) * 10 + '° ' + Math.round(w.spd) + ' м/с';
-    const rw = String(Math.round((((this.brg || 0) + 360) % 360) / 10) || 36).padStart(2, '0');
+    const rw = String(Math.round(((((this.brg || 0) + this.tf.a / DEG) % 360 + 360) % 360) / 10) || 36).padStart(2, '0');
     if (this.holdTo && !this.atcDone.hto && this.onGround && !this.airborneOnce && this.guide && this.guide.label === 'Выезд на ВПП' && Math.abs(this.yPos) < 190) { this.atc('hto', cs + ', ' + this.fromAp.id + ' вышка, остановитесь перед полосой, на посадке борт.'); this.clrTo = false; this.addTraffic({ kind: 'land0', tLand: this.time + 55 }); }
     if (!this.clrTo && !this.airborneOnce) { const lt = this.trf.find(t => t.kind === 'land0'); if (lt && this.time > lt.tLand + 38 && !this.rwyBusy('land0')) { this.clrTo = true; this.atc('rel', cs + ', полоса свободна, занимайте полосу и взлёт разрешаю.'); } }
     if (!this.airborneOnce && this.onGround && this.lined && !this.td) {
@@ -2116,6 +2152,7 @@ class Flight {
     this.updateMass();
     this.aero();
     this.updateWind();
+    if (this.real) this.framing();
     { const e1 = this.toAp.elev !== undefined ? this.toAp.elev : this.elevA; this.elev = this.elevA + (e1 - this.elevA) * clamp(this.x / Math.max(this.D, 1), 0, 1); }
     const A = this.A, v = this.v, m = this.mass;
     const ias = this.ias;
@@ -2610,6 +2647,7 @@ class Flight {
     this.D = d; this.toAp = w.ap; this.rwy1 = { s: d, e: d + w.len }; this.fr1 = frameOf(d, w.len);
     this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
     this.elevA = this.elev; this.diverted = true; this.divTo = w.id; this.evq = []; this.rwyBlocked = false;
+    if (this.real && w.hd != null) { this.arrFrame({ wx: w.wx, wz: w.wz, hd: w.hd }, true); this.arrDone = true; }
     c.appr = false; this.apprCap = false; this.autoDescDone = false; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
     if (this.ga) this.ga = false;
     if (this.apLock <= 0 && (this.assist.auto || c.apOn)) { c.apOn = true; c.nav = true; }
@@ -2644,6 +2682,39 @@ class Flight {
     this.msg('Аварийное снижение до 3000 м');
   }
   canGoAround() { return !this.onGround && !this.ga && this.airborneOnce && this.dist < 20000 && this.dist > -300 && this.h < 1500 && !this.td; }
+  // настоящие полосы: после взлёта перестраиваем ось на прямую к порогу назначения, за ~75 км — на ось настоящей ВПП назначения
+  framing() {
+    if (this.diverted || !this.airborneOnce) return;
+    if (!this.rebased && this.h > 150 && this.x > this.rwy0.e) this.rebase();
+    if (this.rebased && !this.arrDone && !this.onGround) {
+      const A = this.world[1], p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+      if (Math.hypot(A.wx - p.x, A.wz - p.z) < 75000) this.arrFrame(A, false);
+    }
+  }
+  rebase() {
+    const A = this.world[1], p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 });
+    const dx = A.wx - p.x, dz = A.wz - p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx), hdgW = this.tf.a + this.psi;
+    const c = Math.cos(a), s = Math.sin(a);
+    this.tf = { a, c, s, ox: A.wx - this.D * c, oz: A.wz - this.D * s };
+    this.x = this.D - d; this.yPos = 0; this.psi = wrapPi(hdgW - a);
+    this.rwy0 = { s: -1e7, e: -1e7 + 10 }; this.fr0 = frameOf(-1e7, 10);
+    this.rebased = true; this.trf = []; this.hold = null; this.inXc = undefined;
+  }
+  // A — порог полосы в мировых координатах и её курс hd; ось кадра переносится на ось этой полосы
+  arrFrame(A, force) {
+    const aN = (A.hd - this.brg) * DEG, c2 = Math.cos(aN), s2 = Math.sin(aN);
+    const ox = A.wx - this.D * c2, oz = A.wz - this.D * s2;
+    const p = toWorld(this.tf, this.x, this.yPos, { x: 0, z: 0 }), rx = p.x - ox, rz = p.z - oz;
+    let x2 = rx * c2 + rz * s2, y2 = -rx * s2 + rz * c2, psi2 = wrapPi(this.tf.a + this.psi - aN), tele = false;
+    if (Math.abs(y2) > 22000 || Math.abs(psi2) > 1.3 || x2 > this.D - 18000) {
+      const d = Math.hypot(A.wx - p.x, A.wz - p.z);
+      x2 = this.D - Math.max(30000, Math.min(80000, d)); y2 = 0; psi2 = 0; this.phi = 0; tele = true;
+    }
+    this.tf = { a: aN, c: c2, s: s2, ox, oz }; this.x = x2; this.yPos = y2; this.psi = psi2;
+    this.arrDone = true; this.trf = []; this.hold = null; this.inXc = undefined; this.gHold = null; this.vsCmdS = 0;
+    const rw = Math.round((((A.hd % 360) + 360) % 360) / 10) || 36; this.rwyName = rw;
+    if (tele) { this.fade = 1; this.fadeText = 'Радарное векторение: заход на ВПП ' + String(rw).padStart(2, '0'); this.msg('Выведены на посадочную прямую, ВПП ' + String(rw).padStart(2, '0')); }
+  }
   // смена полосы: поворачиваем ось захода вокруг аэропорта и выводим самолёт на новую прямую
   changeRunway() {
     if (this.onGround || this.done) return false;
@@ -2835,6 +2906,7 @@ const { EVENT_DEFS, EVENT_IDS } = __m.events;
 const { toWorld } = __m.terrain;
 const { geoCities } = __m.geo;
 const { ICAO } = __m.icao;
+const { realFlight } = __m.rwy;
 
 let F = null;
 const _w = { x: 0, z: 0 }, _ll = { lat: 0, lon: 0 };
@@ -2866,9 +2938,8 @@ function sim_start(o) {
   F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
   const g = F.world.geo, q = { lat: 0, lon: 0 };
   const aps = F.world.map((w, i) => {
-    const start = i < 2 ? w.wx : w.wx - w.len / 2;
-    g.ll(start, w.wz, q);
-    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city };
+    g.ll(w.wx, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, hd: w.hd, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city };
   });
   return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to.id, aps };
 }
@@ -3049,19 +3120,20 @@ function game_begin(to, drill, kind, id, pf) {
     if (pf) o = { fuel: pf.fuel, cg: pf.cg, flex: !!pf.flex, extraEv: (pend ? pend.defects : []).map(d => d.ev) };
     pend = null;
   }
-  const to2 = AP_BY[c.to], brg = bearing(from, to2);
+  const to2o = AP_BY[c.to], rf = (!drill && kind !== 'lesson' && kind !== 'daily') ? realFlight(from, to2o, wx.dir) : null;
+  const to2 = rf ? rf.to : to2o, from2 = rf ? rf.from : from, brg = rf ? rf.bearing : bearing(from, to2o);
   const tod = o.tod != null ? o.tod : save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
-  F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+  F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from: from2, to: to2, bearing: brg, distM: rf ? rf.distM : c.km * 1000, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
     driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
   F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
   const g = F.world.geo, q = { lat: 0, lon: 0 };
-  const aps = F.world.map((w, i) => { const start = i < 2 ? w.wx : w.wx - w.len / 2; g.ll(start, w.wz, q);
-    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city }; });
+  const aps = F.world.map((w, i) => { g.ll(w.wx, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, hd: w.hd, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city }; });
   return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to2.id, aps, tod };
 }
 function game_contracts_raw() {

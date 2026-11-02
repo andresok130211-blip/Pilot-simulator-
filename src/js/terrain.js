@@ -3,6 +3,7 @@
 // Система координат самолёта (локальная) связана с мировой поворотом/сдвигом f.tf (меняется при уходе на запасной).
 import { AIRPORTS, distKm, bearing } from './data.js';
 import { makeGeo } from './geo.js';
+import { RWY } from './rwydata.js';
 
 const smooth = t => t * t * (3 - 2 * t);
 export const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -24,22 +25,27 @@ export function fbm(x, z, oct, s) {
 export const worldHash = hs;
 
 // ---- аэродромы мира (в мировой системе координат) ----
-export function buildWorld(from, to, D, plane) {
+export function buildWorld(from, to, D, plane, hd0, hd1) {
   const brg0 = bearing(from, to) * Math.PI / 180;
   const list = [];
   try { list.geo = makeGeo(from, bearing(from, to), D); } catch (e) { list.geo = null; }
   list.ref = wx => from.elev + (to.elev - from.elev) * Math.max(0, Math.min(1, wx / D)); // «нулевой» уровень по маршруту (м над морем)
-  const push = (id, ap, wx, wz, len, gen) => list.push({ id, ap, wx, wz, len, gen: !!gen });
-  push(from.id, from, 0, 0, from.rwy, false);
-  push(to.id, to, D, 0, to.rwy, false);
+  // wx, wz — порог полосы (начало), hd — курс полосы; wx0, wz0 — центр
+  const push = (id, ap, wx, wz, len, gen, hd) => {
+    const h = hd == null ? bearing(from, to) : hd, a = (h - bearing(from, to)) * Math.PI / 180;
+    list.push({ id, ap, wx: wx - Math.cos(a) * len / 2, wz: wz - Math.sin(a) * len / 2, len, gen: !!gen, hd: h });
+  };
+  list.push({ id: from.id, ap: from, wx: 0, wz: 0, len: from.rwy, gen: false, hd: hd0 == null ? bearing(from, to) : hd0 });
+  list.push({ id: to.id, ap: to, wx: D, wz: 0, len: to.rwy, gen: false, hd: hd1 == null ? bearing(from, to) : hd1 });
   // реальные аэродромы рядом с маршрутом
   for (const a of AIRPORTS) {
     if (a.id === from.id || a.id === to.id) continue;
-    const d = distKm(from, a) * 1000, ang = bearing(from, a) * Math.PI / 180 - brg0;
+    const rr = RWY[a.id], pos = rr ? { lat: rr[0], lon: rr[1] } : a;
+    const d = distKm(from, pos) * 1000, ang = bearing(from, pos) * Math.PI / 180 - brg0;
     const wx = d * Math.cos(ang), wz = d * Math.sin(ang);
     const t = Math.max(0, Math.min(D, wx));
     if (Math.hypot(wx - t, wz) > 260000) continue;
-    push(a.id, a, wx, wz, a.rwy, false);
+    push(a.id, a, wx, wz, a.rwy, false, rr ? rr[2] : null);
   }
   // запасные аэродромы вдоль трассы
   const minLen = Math.max(2400, (plane ? plane.minRwy : 2000) + 300);
@@ -59,7 +65,7 @@ export function buildWorld(from, to, D, plane) {
   const altsOk = list.geo ? alts.filter(a => a.ok) : alts;
   altsOk.forEach((a, i) => {
     const code = 'Z' + (i + 1);
-    push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true);
+    push(code, { id: code, city: 'Запасной аэродром ' + (i + 1), name: 'Запасной аэродром ' + (i + 1), rwy: a.len, elev: 0, gen: true }, a.x, a.z, a.len, true, hd0 == null ? null : (Math.round((bearing(from, to) + (hs(i, 4, seed) - 0.5) * 140 + 360) / 10) * 10) % 360);
   });
   return list;
 }

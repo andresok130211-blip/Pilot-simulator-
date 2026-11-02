@@ -6,6 +6,7 @@ import { EVENT_DEFS, EVENT_IDS } from './events.js';
 import { toWorld } from './terrain.js';
 import { geoCities } from './geo.js';
 import { ICAO } from './icao.js';
+import { realFlight } from './rwy.js';
 
 let F = null;
 const _w = { x: 0, z: 0 }, _ll = { lat: 0, lon: 0 };
@@ -37,9 +38,8 @@ export function sim_start(o) {
   F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
   const g = F.world.geo, q = { lat: 0, lon: 0 };
   const aps = F.world.map((w, i) => {
-    const start = i < 2 ? w.wx : w.wx - w.len / 2;
-    g.ll(start, w.wz, q);
-    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city };
+    g.ll(w.wx, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, hd: w.hd, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city };
   });
   return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to.id, aps };
 }
@@ -220,19 +220,20 @@ export function game_begin(to, drill, kind, id, pf) {
     if (pf) o = { fuel: pf.fuel, cg: pf.cg, flex: !!pf.flex, extraEv: (pend ? pend.defects : []).map(d => d.ev) };
     pend = null;
   }
-  const to2 = AP_BY[c.to], brg = bearing(from, to2);
+  const to2o = AP_BY[c.to], rf = (!drill && kind !== 'lesson' && kind !== 'daily') ? realFlight(from, to2o, wx.dir) : null;
+  const to2 = rf ? rf.to : to2o, from2 = rf ? rf.from : from, brg = rf ? rf.bearing : bearing(from, to2o);
   const tod = o.tod != null ? o.tod : save.tod === 'rnd' ? [0, 0, 0, 1, 2][Math.floor(Math.random() * 5)] : +save.tod;
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
-  F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from, to: to2, bearing: brg, distM: c.km * 1000, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
+  F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from: from2, to: to2, bearing: brg, distM: rf ? rf.distM : c.km * 1000, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
     driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
   F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;
   const g = F.world.geo, q = { lat: 0, lon: 0 };
-  const aps = F.world.map((w, i) => { const start = i < 2 ? w.wx : w.wx - w.len / 2; g.ll(start, w.wz, q);
-    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city }; });
+  const aps = F.world.map((w, i) => { g.ll(w.wx, w.wz, q);
+    return { id: w.id, lat: q.lat, lon: q.lon, len: w.len, hd: w.hd, elev: i < 2 || !w.gen ? w.ap.elev : Math.round(F.world.ref(w.wx)), gen: !!w.gen, name: w.ap.name || w.ap.city }; });
   return { km: c.km, pax: c.pax, fuel: Math.round(F.fuel), brg, from: from.id, to: to2.id, aps, tod };
 }
 function game_contracts_raw() {
