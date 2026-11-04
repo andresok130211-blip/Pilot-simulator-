@@ -37,6 +37,8 @@ var amb_lamps: Array = []
 var snd: Node
 var hud: Node
 var _lbl_cache := {}
+var style := ""
+const AIRBUS := ["ssj", "mc21", "a320", "a321", "a223", "a333", "a359"]
 
 func setup(w: Node3D, h: Node, sn: Node) -> void:
 	world = w; hud = h; snd = sn
@@ -53,8 +55,16 @@ func setup(w: Node3D, h: Node, sn: Node) -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color(0.62, 0.64, 0.7); env.ambient_light_energy = 0.9
 	we.environment = env; vp.add_child(we)
 	light = DirectionalLight3D.new(); light.rotation_degrees = Vector3(-55, 25, 0); light.light_energy = 0.7; vp.add_child(light)
-	_build()
-	_flush()
+	configure("b738")
+
+# перестраивает кабину под самолёт: Airbus-подобные — боковая ручка и светлая панель, остальные — штурвал
+func configure(pid: String) -> void:
+	var st := "airbus" if pid in AIRBUS else "boeing"
+	if st == style: return
+	style = st
+	for c in root.get_children(): c.queue_free()
+	items.clear(); thr_lev.clear(); yokes.clear(); mcp.clear(); pilots.clear(); _st.clear()
+	_build(); _flush()
 
 # ---------- материалы и статика ----------
 func _mat(c: Color) -> StandardMaterial3D:
@@ -123,6 +133,9 @@ func _tog(par: Node3D, p: Vector3, label: String, act := "", on := false, col :=
 	var cm := CapsuleMesh.new(); cm.radius = 0.0034; cm.height = 0.026; cm.radial_segments = 6; cm.rings = 2
 	var mi := MeshInstance3D.new(); mi.mesh = cm; mi.material_override = _mat(col); mi.position = Vector3(0, 0, 0.011); mi.rotation_degrees = Vector3(90, 0, 0); pv.add_child(mi)
 	var it := _item(pv, "tog", act, Vector3(0.0135, 0.0135, 0.02), Vector3(0, 0, 0.01)); it["on"] = on; it["ang"] = 0.5 if on else -0.5; pv.rotation.x = it["ang"]; it["kk"] = "tog"
+	var lm := StandardMaterial3D.new(); lm.albedo_color = Color(0.05, 0.2, 0.08); lm.emission = Color(0.2, 1.0, 0.4); lm.emission_energy_multiplier = 1.8; lm.emission_enabled = on
+	var lp := MeshInstance3D.new(); var lb := BoxMesh.new(); lb.size = Vector3(0.007, 0.004, 0.003); lp.mesh = lb; lp.material_override = lm; lp.position = p + Vector3(0.0, 0.0125, 0.002); par.add_child(lp)
+	it["lamp"] = lm
 	if label != "": _lab(par, label, p + Vector3(0, (0.019 if lab_up else -0.019), 0), 0.0056)
 	return it
 
@@ -143,7 +156,8 @@ func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 
 # ---------- сборка ----------
 func _build() -> void:
-	var dk := Color(0.13, 0.14, 0.16); var md := Color(0.24, 0.25, 0.28); var wall := Color(0.46, 0.47, 0.5); var ceil_c := Color(0.55, 0.56, 0.58)
+	var ab := style == "airbus"
+	var dk := Color(0.17, 0.19, 0.23) if ab else Color(0.13, 0.14, 0.16); var md := Color(0.3, 0.32, 0.36) if ab else Color(0.24, 0.25, 0.28); var wall := Color(0.55, 0.56, 0.6) if ab else Color(0.46, 0.47, 0.5); var ceil_c := Color(0.55, 0.56, 0.58)
 	var I := Transform3D.IDENTITY
 	# оболочка кабины
 	_sb(_xf(Vector3(0, -1.02, 0.0)), Vector3(2.4, 0.04, 2.6), Color(0.14, 0.14, 0.16))                # пол
@@ -256,6 +270,7 @@ func _gear_lever(pn: Node3D, p: Vector3) -> Node3D:
 
 func _glareshield() -> void:
 	var gs := _panel(Vector3(0, -0.03, -0.92), Vector3(0, 0.88, 0.48), Vector3(0, 0.48, -0.88), Vector2(0.9, 0.125), Color(0.06, 0.065, 0.07))
+	_lab(gs, "FCU" if style == "airbus" else "MCP", Vector3(-0.44, 0.052, 0), 0.008, Color(0.9, 0.9, 0.95))
 	# дисплеи MCP
 	var vals := [["SPD", -0.30], ["HDG", -0.1], ["ALT", 0.12], ["V/S", 0.31]]
 	for v in vals:
@@ -426,15 +441,25 @@ func _yokes_seats() -> void:
 		_sb(_xf(Vector3(x + sgn * 0.3, -0.55, 0.15)), Vector3(0.07, 0.04, 0.38), dk)
 		_sb(_xf(Vector3(x - sgn * 0.3, -0.55, 0.15)), Vector3(0.07, 0.04, 0.38), dk)
 		_sb(_xf(Vector3(x, -0.9, 0.2)), Vector3(0.1, 0.25, 0.1), dk)
+		if style == "airbus":
+			# боковая ручка снаружи от каждого пилота
+			var sx: float = sgn * 0.88
+			_sb(_xf(Vector3(sx, -0.55, -0.02)), Vector3(0.1, 0.06, 0.2), Color(0.2, 0.21, 0.24))   # подлокотник-площадка
+			var y := Node3D.new(); y.position = Vector3(sx, -0.5, -0.02); root.add_child(y)
+			var bm := MeshInstance3D.new(); var bb := BoxMesh.new(); bb.size = Vector3(0.05, 0.03, 0.06); bm.mesh = bb; bm.material_override = _mat(dk); y.add_child(bm)
+			var hm := MeshInstance3D.new(); var cm := CapsuleMesh.new(); cm.radius = 0.022; cm.height = 0.16; hm.mesh = cm; hm.material_override = _mat(Color(0.06, 0.06, 0.07)); hm.position = Vector3(0, 0.08, -0.01); hm.rotation_degrees = Vector3(-12, 0, 0); y.add_child(hm)
+			var rb := MeshInstance3D.new(); var rbb := BoxMesh.new(); rbb.size = Vector3(0.012, 0.008, 0.012); rb.mesh = rbb; rb.material_override = _mat(Color(0.9, 0.15, 0.1)); rb.position = Vector3(-sgn * 0.02, 0.14, -0.03); y.add_child(rb)
+			y.set_meta("ss", true); yokes.append(y)
+			continue
 		# колонка
 		_sb(_xf(Vector3(x, -0.6, -0.55)), Vector3(0.05, 0.38, 0.05), Color(0.12, 0.12, 0.13))
 		var y := Node3D.new(); y.position = Vector3(x, -0.38, -0.5); root.add_child(y)
 		var tm := TorusMesh.new(); tm.inner_radius = 0.1; tm.outer_radius = 0.118; tm.rings = 18; tm.ring_segments = 8
 		var ti := MeshInstance3D.new(); ti.mesh = tm; ti.material_override = _mat(Color(0.06, 0.06, 0.07)); ti.rotation_degrees = Vector3(90, 0, 0); y.add_child(ti)
-		var hub := MeshInstance3D.new(); var hm := CylinderMesh.new(); hm.top_radius = 0.035; hm.bottom_radius = 0.035; hm.height = 0.06; hub.mesh = hm; hub.material_override = _mat(dk); hub.rotation_degrees = Vector3(90, 0, 0); y.add_child(hub)
+		var hub := MeshInstance3D.new(); var hm2 := CylinderMesh.new(); hm2.top_radius = 0.035; hm2.bottom_radius = 0.035; hm2.height = 0.06; hub.mesh = hm2; hub.material_override = _mat(dk); hub.rotation_degrees = Vector3(90, 0, 0); y.add_child(hub)
 		for sx2 in [-1.0, 1.0]:
 			var gp := MeshInstance3D.new(); var gm := BoxMesh.new(); gm.size = Vector3(0.025, 0.07, 0.03); gp.mesh = gm; gp.material_override = _mat(Color(0.05, 0.05, 0.06)); gp.position = Vector3(sx2 * 0.118, 0.0, 0.0); y.add_child(gp)
-			var bt := MeshInstance3D.new(); var bb := BoxMesh.new(); bb.size = Vector3(0.012, 0.012, 0.012); bt.mesh = bb; bt.material_override = _mat(Color(0.9, 0.9, 0.2)); bt.position = Vector3(sx2 * 0.118, 0.025, 0.02); y.add_child(bt)
+			var bt := MeshInstance3D.new(); var bb2 := BoxMesh.new(); bb2.size = Vector3(0.012, 0.012, 0.012); bt.mesh = bb2; bt.material_override = _mat(Color(0.9, 0.9, 0.2)); bt.position = Vector3(sx2 * 0.118, 0.025, 0.02); y.add_child(bt)
 		yokes.append(y)
 
 func _side_consoles() -> void:
@@ -580,7 +605,10 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	_mcp(s, c)
 	for i in range(2): (thr_lev[i] as Node3D).rotation.x = (float(thr[i]) * 0.9) - 0.0
 	for y in yokes:
-		(y as Node3D).rotation.z = -roll * 0.9; (y as Node3D).position.z = -0.5 + stick * 0.06
+		if (y as Node3D).has_meta("ss"):
+			(y as Node3D).rotation.z = -roll * 0.5; (y as Node3D).rotation.x = -stick * 0.5
+		else:
+			(y as Node3D).rotation.z = -roll * 0.9; (y as Node3D).position.z = -0.5 + stick * 0.06
 	var gr := float(s.gear)
 	gear_lever.rotation.x = 0.0 if c.gear else -0.0
 	gear_lever.position.y = (-0.12 + (0.03 if c.gear else -0.02)) if false else gear_lever.position.y
@@ -631,9 +659,13 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 				it["t"] = maxf(0.0, float(it.t) - dt * 5.0)
 				n.position = (it.rest as Vector3) + Vector3(0, 0, -0.005 * sin(clampf(float(it.t), 0.0, 1.0) * PI))
 		elif kind == "tog":
+			if it.has("lamp"): (it.lamp as StandardMaterial3D).emission_enabled = bool(it.on)
 			var target: float = 0.5 if it.on else -0.5
 			it["ang"] = lerpf(float(it.ang), target, minf(1.0, dt * 14.0)); n.rotation.x = float(it.ang)
 		elif kind == "knob":
+			if it.has("rt"):
+				it["rt"] = float(it.rt) - dt
+				if float(it.rt) <= 0.0: it["step"] = 1; it.erase("rt")
 			if it.has("spin"): n.rotation.x = lerpf(n.rotation.x, float(it.step) * 0.8, minf(1.0, dt * 8.0))
 			else:
 				var tz: float = -(float(it.step) - float(int(it.steps) - 1) * 0.5) * 0.7

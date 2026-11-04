@@ -83,6 +83,7 @@ func _walk():
 	var col := Color.WHITE
 	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
 	world.build_plane(pid, col)
+	world.ckp.configure(pid)
 	world.set_tod(0 if tod < 0 else tod)
 	var wk = load("res://walk.gd").new(); add_child(wk)
 	wk.finished.connect(func(found: Array):
@@ -131,6 +132,7 @@ func _start(to := "", drill := ""):
 	var col := Color.WHITE
 	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
 	world.build_plane(pid, col)
+	world.ckp.configure(pid)
 	world.set_airports(r.aps, float(r.brg))
 	world.set_tod(int(r.tod) if tod < 0 else tod)
 	snd_opt = bool(Sim.g("game_hub").opts.get("sound", true)); snd.on = snd_opt; hud.set_pause(false); hud.set_lefty(bool(Sim.g("game_hub").opts.get("lefty", false)))
