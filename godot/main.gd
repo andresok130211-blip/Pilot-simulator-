@@ -166,6 +166,9 @@ func _cabin() -> void:
 	cabin.start(world, hud)
 
 var viewer := false
+var belt_ov := -1
+func _seatbelt_sign(on: bool) -> void:
+	belt_ov = 1 if on else 0
 func _view(id: String) -> void:
 	Sim.g("game_view_plane", JSON.stringify(id))
 	viewer = true
