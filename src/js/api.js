@@ -132,6 +132,8 @@ const etaMin = km => Math.round(km / 760 * 60 + 22);
 export function game_load(json) {
   try { Object.assign(save, JSON.parse(json || '{}')); } catch (e) { }
   save.stat = Object.assign({ maxKm: 0, streak: 0, best: 0, min: 0 }, save.stat || {});
+  // ВЕРСИЯ «ВСЁ ОТКРЫТО»: все самолёты куплены, много денег, максимальные экипажи
+  save.owned = PLANES.map(p => p.id); save.money = Math.max(save.money, 5e9); save.crews = 5; save.rep = Math.max(save.rep, 100);
   if (!AP_BY[save.loc]) save.loc = 'SVO';
   if (!PL_BY[save.plane] || !fleetIds().includes(save.plane)) save.plane = save.owned[0] || 'ssj';
   return true;
