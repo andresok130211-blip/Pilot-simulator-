@@ -11,6 +11,9 @@ var pads: Control
 var thr := [0.0, 0.0]
 var linked := true
 var fingers := {}
+var look_mv := {}
+var look_p0 := {}
+var ckbar: HBoxContainer
 var y_org := Vector2(1120, 470)
 var yoke_knob := Vector2.ZERO
 var stick := 0.0
@@ -78,6 +81,9 @@ func boarding(left: float):
 		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
 	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
+	if cockpit and not on:
+		rows.visible = false; get_node("cabin").visible = false
+	if ckbar: ckbar.visible = cockpit and not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
@@ -98,6 +104,9 @@ func _build_pause() -> void:
 func _on_act(a: String):
 	match a:
 		"view": get_parent().world.cycle_cam()
+		"ck:fwd", "ck:left", "ck:right", "ck:up", "ck:down", "ck:other": get_parent().world.ckp.look_to(a.substr(3))
+		"ck:zoom": get_parent().world.ckp.toggle_zoom()
+		"ck:seat": get_parent().world.ckp.swap_seat()
 		"pause": set_pause(true)
 		"cabin": cabin_pressed.emit()
 		"resume": set_pause(false)
@@ -126,6 +135,11 @@ func _ready():
 	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]
 	for d in defs1: var b := _button(d[0], d[1], 74); btn[d[1]] = b; r1.add_child(b)
 	for d in defs2: var b2 := _button(d[0], d[1], 74); btn[d[1]] = b2; r2.add_child(b2)
+	ckbar = HBoxContainer.new(); ckbar.add_theme_constant_override("separation", 4); ckbar.position = Vector2(284, 586); ckbar.visible = false; add_child(ckbar)
+	for d in [["◀", "ck:left"], ["▲", "ck:up"], ["▼", "ck:down"], ["▶", "ck:right"], ["ВПЕРЁД", "ck:fwd"], ["ДРУГОЙ\nПИЛОТ", "ck:other"], ["МЕСТО\nКАП/2П", "ck:seat"], ["ЗУМ", "ck:zoom"], ["АВТО\nРУЛ", "taxi"], ["ВИД", "view"], ["×1", "warp"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]:
+		var kb := _button(d[0], d[1], 62); kb.add_theme_font_size_override("font_size", 11)
+		if d[1] == "warp" or d[1] == "taxi": btn["c_" + d[1]] = kb
+		ckbar.add_child(kb)
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
@@ -136,7 +150,9 @@ func _ready():
 const LV_X := [38.0, 155.0]
 var lefty := false
 func _lv_rect(i: int) -> Rect2: return Rect2(LV_X[i] if not lefty else 1280.0 - LV_X[1 - i] - 104.0, 304.0, 104, 222)
-func yoke_home() -> Vector2: return Vector2(185, 445) if lefty else Vector2(1095, 445)
+func yoke_home() -> Vector2:
+	if cockpit: return Vector2(130, 535) if lefty else Vector2(1150, 530)
+	return Vector2(185, 445) if lefty else Vector2(1095, 445)
 func set_lefty(on: bool) -> void:
 	lefty = on; y_org = Vector2(160, 470) if on else Vector2(1120, 470)
 	get_node("link").position = Vector2(1009, 536) if on else Vector2(33, 536)
@@ -160,7 +176,11 @@ func _draw_pads():
 		pads.draw_string(fnt, Vector2(r.position.x + 8, dy + 22), "▼ РУЛЕНИЕ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.95))
 		pads.draw_string(fnt, Vector2(r.position.x + 30, r.end.y - 8), "%d%%" % int(v * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
 		pads.draw_string(fnt, r.position + Vector2(36, -6), "ДВ%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-	if cockpit and not fingers.values().has("yoke"): return
+	if cockpit and not fingers.values().has("yoke"):
+		var h0 := yoke_home()
+		pads.draw_arc(h0, 90, 0, TAU, 48, Color(0.9, 0.95, 1, 0.3), 3.0)
+		pads.draw_string(fnt, h0 + Vector2(-30, -10), "ШТУРВАЛ", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.5))
+		return
 	var o := y_org if fingers.values().has("yoke") else yoke_home()
 	var k := o + yoke_knob * 95.0
 	pads.draw_circle(o, 100, Color(0.45, 0.48, 0.5, 0.55)); pads.draw_arc(o, 100, 0, TAU, 48, Color(0.9, 0.95, 1, 0.8), 3.0)
@@ -191,17 +211,25 @@ func _input(e: InputEvent):
 			for b in bs:
 				if b.get_global_rect().has_point(e.position): b.pressed.emit(); return
 			if paused: return
-			if cockpit and e.position.y < 70.0: get_parent().world.toggle_lights(); return
-			if instr.mode > 0 and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
+			if cockpit and e.position.y < 40.0: get_parent().world.toggle_lights(); return
+			if instr.mode > 0 and not cockpit and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
 			for i in range(2):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
+			if cockpit:
+				if yoke_home().distance_to(e.position) < 92.0: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
+				else: fingers[idx] = "look"; look_mv[idx] = 0.0; look_p0[idx] = e.position
+				return
 			if (e.position.x < 580 if lefty else e.position.x > 700) and e.position.y > 230: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
 		else:
 			if fingers.get(idx, "") == "yoke": _set_yoke(Vector2.ZERO)
+			if fingers.get(idx, "") == "look" and float(look_mv.get(idx, 99.0)) < 14.0: get_parent().world.ckp.pick(look_p0[idx])
 			fingers.erase(idx)
 	elif e is InputEventScreenDrag:
 		var f: String = fingers.get(e.index, "")
-		if f == "yoke": _set_yoke(e.position - y_org)
+		if f == "look":
+			look_mv[e.index] = float(look_mv.get(e.index, 0.0)) + e.relative.length()
+			if float(look_mv[e.index]) >= 14.0: get_parent().world.ckp.look_drag(e.relative)
+		elif f == "yoke": _set_yoke(e.position - y_org)
 		elif f.begins_with("t"): _set_thr(int(f.substr(1)), e.position)
 
 func _set_thr(i: int, p: Vector2):
@@ -274,7 +302,7 @@ func _labels(s: Dictionary, c: Dictionary):
 	var gr := float(s.gear)
 	btn["gear"].text = "ШАССИ\n" + ("▼" if gr > 0.98 else ("▲" if gr < 0.02 else "…"))
 	btn["fl-"].text = "ЗАКР −\n(%s)" % str(s.flapName)
-	btn["warp"].text = "×%d" % int(c.warp)
+	btn["warp"].text = "×%d" % int(c.warp); btn["c_warp"].text = "×%d" % int(c.warp)
 	btn["abrk"].text = "АВТОТОРМ\n" + ["—", "1", "2", "MAX"][clampi(int(c.get("abrk", 0)), 0, 3)]
 	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ"][get_parent().world.cam_mode]
 	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false))

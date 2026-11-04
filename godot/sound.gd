@@ -19,6 +19,10 @@ var whine := 0.0
 var thump := 0.0
 var squeal := 0.0
 var whine_ph := 0.0
+var click_e := 0.0
+var click_f := 1800.0
+func click(f := 1800.0) -> void:
+	click_e = 1.0; click_f = f
 
 func _ready():
 	pl = AudioStreamPlayer.new(); var g := AudioStreamGenerator.new(); g.mix_rate = RATE; g.buffer_length = 0.25
@@ -56,4 +60,7 @@ func _process(_d: float):
 		if squeal > 0.0:
 			v += sin(fmod(t * 1400.0, 1.0) * TAU) * 0.04 * squeal * (1.0 if on else 0.0)
 		if warn and on: v += (1.0 if fmod(t * 2.5, 1.0) < 0.5 and fmod(t * 880.0, 1.0) < 0.5 else -1.0) * 0.05 * (1.0 if fmod(t * 2.5, 1.0) < 0.5 else 0.0)
+		if click_e > 0.001:
+			click_e *= 0.9965
+			v += (nz * 0.6 + sin(fmod(t * click_f, 1.0) * TAU) * 0.8) * click_e * 0.22
 		pb.push_frame(Vector2(v, v))

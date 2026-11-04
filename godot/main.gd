@@ -20,6 +20,7 @@ func _ready():
 	hud.exit_pressed.connect(_to_menu)
 	hud.cabin_pressed.connect(_cabin)
 	snd = load("res://sound.gd").new(); add_child(snd)
+	world.ckp.setup(world, hud, snd)
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	menu.walk_request.connect(_walk)
@@ -50,6 +51,10 @@ func _args() -> bool:
 		elif s.begins_with("--wait="): shot_t = float(s.substr(7))
 		elif s.begins_with("--debug="): dbg = s.substr(8)
 		elif s.begins_with("--cam="): world.cam_mode = int(s.substr(6))
+		elif s.begins_with("--look="):
+			var lq := s.substr(7).split(","); world.ckp.tyaw = deg_to_rad(float(lq[0])); world.ckp.tpitch = deg_to_rad(float(lq[1])); world.ckp.yaw = world.ckp.tyaw; world.ckp.pitch = world.ckp.tpitch
+		elif s.begins_with("--seat="): world.ckp.seat = int(s.substr(7))
+		elif s.begins_with("--zoom="): world.ckp.zoom = true
 		elif s.begins_with("--orbit="):
 			var q := s.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		elif s.begins_with("--mode="): Sim.g("game_opt", "\"mode\",%s" % s.substr(7))
@@ -212,7 +217,7 @@ func _process(delta: float):
 	snd.on = snd_opt and not hud.paused
 	snd.put(s)
 	hud.update_state(s)
-	world.cockpit_tick(s, hud.thr, hud.roll, hud.stick)
+	world.cockpit_tick(s, hud.thr, hud.roll, hud.stick, dt)
 	if board_left <= 0.0 and not hud.paused:
 		rec_t += delta; prof_t += delta
 		if rec_t >= 0.2:

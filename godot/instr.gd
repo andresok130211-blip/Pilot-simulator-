@@ -3,6 +3,7 @@ extends Control
 var s := {}
 var mode := 0
 var cockpit := false
+var kind := ""      # экран кабины: pfd / nd / eng / sys
 var panel := false   # отрисовка приборной панели в текстуру 3D-кабины
 var font: Font
 
@@ -19,6 +20,7 @@ func _t(p: Vector2, txt: String, sz := 18, col := Color.WHITE):
 
 func _draw():
 	if s.is_empty(): return
+	if kind != "": _screen(); return
 	if panel: draw_set_transform(Vector2(0, -300)); _panel(); return
 	if cockpit: return
 	_topbar()
@@ -88,6 +90,28 @@ func _panel():
 	_pfd(Vector2(200, 340), 70.0); _pfd(Vector2(950, 340), 70.0)
 	_radar(Vector2(468, 408), 56.0); _radar(Vector2(812, 408), 56.0)
 	_eicas(Vector2(560, 345))
+
+# отдельные дисплеи 3D-кабины (каждый рисуется в свою текстуру)
+func _screen():
+	var sz: Vector2i = (get_viewport() as Viewport).size if get_viewport() is SubViewport else Vector2i(256, 256)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(sz)), Color(0.01, 0.015, 0.02))
+	cockpit = true
+	var c: Dictionary = s.c
+	match kind:
+		"pfd":
+			var fg := Color(0.4, 1, 0.5)
+			_t(Vector2(8, 20), "SPD" if c.atOn else "", 15, fg); _t(Vector2(70, 20), ("LNAV" if c.get("nav", false) else "HDG") if c.apOn else "", 15, fg)
+			_t(Vector2(140, 20), ("G/S" if c.appr else "ALT") if c.apOn else "", 15, fg); _t(Vector2(206, 20), "CMD" if c.apOn else "FD", 15, Color(0.9, 0.9, 0.9))
+			_pfd(Vector2(58, 58), 70.0)
+			var hd := float(s.hdg)
+			draw_rect(Rect2(88, 214, 80, 26), Color(0, 0, 0)); draw_rect(Rect2(88, 214, 80, 26), Color(1, 1, 1, 0.6), false, 1.0)
+			_t(Vector2(100, 233), "%03d°" % hd, 20, Color(1, 1, 1))
+			_t(Vector2(8, 240), "V/S %+d" % float(s.vs), 14, Color(0.7, 0.9, 1)); _t(Vector2(180, 240), "M %.2f" % float(s.mach), 14, Color(0.7, 0.9, 1))
+		"nd":
+			_radar(Vector2(sz.x * 0.5, sz.y * 0.5), minf(sz.x, sz.y) * 0.46)
+			_t(Vector2(8, 18), "GS %d" % (float(s.v) * 3.6), 15, Color(0.4, 1, 0.5)); _t(Vector2(sz.x - 90, 18), "HDG %03d" % float(s.hdg), 15, Color(1, 1, 1))
+		"eng": _eicas(Vector2(48, 24)); _t(Vector2(52, 12), "N1 / EGT", 13, Color(0.7, 0.85, 1))
+		"sys": _eng(Vector2(14, 22))
 
 func _eicas(o: Vector2):
 	draw_rect(Rect2(o, Vector2(160, 130)), Color(0, 0, 0, 0.85))
