@@ -145,6 +145,10 @@ export function game_hub() {
     stat: save.stat, journal: (save.journal || []).slice(0, 40), top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
 }
 export function game_opt(k, v) { save[k] = v; return true; }
+// осмотр любого самолёта без покупки: временно подставляем модель, game_view_end возвращает прежний
+let viewSaved = null;
+export function game_view_plane(id) { if (!PL_BY[id]) return null; if (viewSaved == null) viewSaved = save.plane; save.plane = id; return id; }
+export function game_view_end() { if (viewSaved != null) { save.plane = viewSaved; viewSaved = null; } return save.plane; }
 export function game_set_plane(id) { if (fleetIds().includes(id)) save.plane = id; return save.plane; }
 export function game_rest() { if (save.money >= 40000) { save.money -= 40000; save.fatigue = 0; return true; } return false; }
 export function game_contracts() {

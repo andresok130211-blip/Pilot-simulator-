@@ -11,6 +11,7 @@ var pads: Control
 var thr := [0.0, 0.0]
 var linked := true
 var fingers := {}
+var viewer := false
 var look_mv := {}
 var look_p0 := {}
 var ckbar: HBoxContainer
@@ -73,6 +74,15 @@ func _link_look():
 	for st in ["normal", "hover", "pressed"]: b.add_theme_stylebox_override(st, sb)
 	b.modulate = Color.WHITE
 
+func set_viewer(on: bool) -> void:
+	viewer = on
+	pads.visible = not on
+	(ckbar.get_child(ckbar.get_child_count() - 1) as Button).text = "ВЫХОД" if on else "ПАУЗА"
+	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
+	if on:
+		var t := _lbl(24); t.name = "view_t"; t.position = Vector2(20, 12); t.text = "ОСМОТР САМОЛЁТА — ВИД: двигайте пальцем; кабина: нажимайте тумблеры"; add_child(t)
+	elif get_node_or_null("view_t"): get_node("view_t").queue_free()
+
 func boarding(left: float):
 	var on := left > 0.0
 	var l = get_node_or_null("board_l")
@@ -81,9 +91,12 @@ func boarding(left: float):
 		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
 	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
-	if cockpit and not on:
+	if (cockpit or viewer) and not on:
 		rows.visible = false; get_node("cabin").visible = false
-	if ckbar: ckbar.visible = cockpit and not on
+	if viewer:
+		for n in [info, hint, log_l, get_node("link"), pads]: n.visible = false
+		instr.visible = cockpit
+	if ckbar: ckbar.visible = (cockpit or viewer) and not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
@@ -103,11 +116,15 @@ func _build_pause() -> void:
 
 func _on_act(a: String):
 	match a:
-		"view": get_parent().world.cycle_cam()
+		"view":
+			if viewer: get_parent().world.cam_mode = 1 - get_parent().world.cam_mode
+			else: get_parent().world.cycle_cam()
 		"ck:fwd", "ck:left", "ck:right", "ck:up", "ck:down", "ck:other": get_parent().world.ckp.look_to(a.substr(3))
 		"ck:zoom": get_parent().world.ckp.toggle_zoom()
 		"ck:seat": get_parent().world.ckp.swap_seat()
-		"pause": set_pause(true)
+		"pause":
+			if viewer: exit_pressed.emit()
+			else: set_pause(true)
 		"cabin": cabin_pressed.emit()
 		"resume": set_pause(false)
 		"exit": set_pause(false); exit_pressed.emit()
@@ -213,6 +230,10 @@ func _input(e: InputEvent):
 			if paused: return
 			if cockpit and e.position.y < 40.0: get_parent().world.toggle_lights(); return
 			if instr.mode > 0 and not cockpit and instr.radar_rect().has_point(e.position): instr.cycle_range(); return
+			if viewer:
+				if cockpit: fingers[idx] = "look"; look_mv[idx] = 0.0; look_p0[idx] = e.position
+				else: fingers[idx] = "orb"
+				return
 			for i in range(2):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
 			if cockpit:
@@ -226,7 +247,10 @@ func _input(e: InputEvent):
 			fingers.erase(idx)
 	elif e is InputEventScreenDrag:
 		var f: String = fingers.get(e.index, "")
-		if f == "look":
+		if f == "orb":
+			var w3: Node3D = get_parent().world
+			w3.orbit -= e.relative.x * 0.35; w3.orbit_up = clampf(w3.orbit_up + e.relative.y * 0.004, -0.2, 1.4)
+		elif f == "look":
 			look_mv[e.index] = float(look_mv.get(e.index, 0.0)) + e.relative.length()
 			if float(look_mv[e.index]) >= 14.0: get_parent().world.ckp.look_drag(e.relative)
 		elif f == "yoke": _set_yoke(e.position - y_org)
@@ -270,7 +294,9 @@ func update_state(s: Dictionary):
 	last_s = s
 	if cockpit != _ck_prev: _ck_prev = cockpit; pads.queue_redraw()
 	instr.put(s, mode, cockpit)
-	info.visible = mode == 0 and not cockpit
+	info.visible = mode == 0 and not cockpit and not viewer
+	if viewer:
+		for n in [hint, alert, log_l, evbox]: n.visible = false
 	log_l.position = Vector2(130, -540) if cockpit else Vector2(300, -300)
 	evbox.position.y = 70.0 if cockpit else 10.0
 	info.text = "СК %d км/ч   ВЫС %d м   В/С %+d м/с   КУРС %03d°   М %.2f   до ВПП %.1f км   топливо %d кг   закр %s   шасси %s" % [
@@ -295,7 +321,7 @@ func update_state(s: Dictionary):
 			var bb := _button(str(b.t), "ev:" + str(b.k), 200); ev_row.add_child(bb)
 	_labels(s, c)
 	_mark("gear", c.gear); _mark("brake", c.brake); _mark("ap", c.apOn); _mark("at", c.atOn); _mark("appr", c.appr); _mark("rev", c.rev)
-	var st = get_node_or_null("start"); if st: st.visible = not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
+	var st = get_node_or_null("start"); if st: st.visible = not viewer and not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
 	if c.atOn and not fingers.values().has("t0") and not fingers.values().has("t1"): thr = [float(c.thr), float(c.thr)]; pads.queue_redraw()
 
 func _labels(s: Dictionary, c: Dictionary):

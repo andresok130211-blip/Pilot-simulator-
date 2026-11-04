@@ -3045,6 +3045,10 @@ function game_hub() {
     stat: save.stat, journal: (save.journal || []).slice(0, 40), top: (save.top || []).slice(0, 10), fleet: fleetIds().map(id => ({ id, short: PL_BY[id].short, name: PL_BY[id].name })) };
 }
 function game_opt(k, v) { save[k] = v; return true; }
+// осмотр любого самолёта без покупки: временно подставляем модель, game_view_end возвращает прежний
+let viewSaved = null;
+function game_view_plane(id) { if (!PL_BY[id]) return null; if (viewSaved == null) viewSaved = save.plane; save.plane = id; return id; }
+function game_view_end() { if (viewSaved != null) { save.plane = viewSaved; viewSaved = null; } return save.plane; }
 function game_set_plane(id) { if (fleetIds().includes(id)) save.plane = id; return save.plane; }
 function game_rest() { if (save.money >= 40000) { save.money -= 40000; save.fatigue = 0; return true; } return false; }
 function game_contracts() {
@@ -3180,7 +3184,7 @@ function game_finish() {
 function game_drills() { return EVENT_IDS.map(id => ({ id, short: EVENT_DEFS[id].short, desc: EVENT_DEFS[id].desc })); }
 function game_dump_json() { return JSON.stringify(save); }
 
-return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_cities,sim_ll,sim_debug,game_load,game_dump,game_hub,game_opt,game_set_plane,game_rest,game_contracts,game_hangar,game_buy,game_lease,game_maint,game_crew,game_copilot,game_preflight,game_maint,game_lessons,game_daily_info,game_begin,game_finish,game_drills,game_dump_json};
+return {sim_data,sim_routes,sim_start,sim_step,sim_ctl,sim_act,sim_alts,sim_divert,sim_state,sim_cities,sim_ll,sim_debug,game_load,game_dump,game_hub,game_opt,game_view_plane,game_view_end,game_set_plane,game_rest,game_contracts,game_hangar,game_buy,game_lease,game_maint,game_crew,game_copilot,game_preflight,game_maint,game_lessons,game_daily_info,game_begin,game_finish,game_drills,game_dump_json};
 })();
 var sim_data = __m.api.sim_data;
 var sim_routes = __m.api.sim_routes;
@@ -3198,6 +3202,8 @@ var game_load = __m.api.game_load;
 var game_dump = __m.api.game_dump;
 var game_hub = __m.api.game_hub;
 var game_opt = __m.api.game_opt;
+var game_view_plane = __m.api.game_view_plane;
+var game_view_end = __m.api.game_view_end;
 var game_set_plane = __m.api.game_set_plane;
 var game_rest = __m.api.game_rest;
 var game_contracts = __m.api.game_contracts;

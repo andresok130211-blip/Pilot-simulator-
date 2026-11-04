@@ -24,6 +24,7 @@ func _ready():
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	menu.walk_request.connect(_walk)
+	menu.view_plane.connect(_view)
 	menu.replay_request.connect(_replay)
 	menu.pf_status = func(): return world.tiles.pf_text()
 	menu.prefetch_request.connect(func():
@@ -66,6 +67,8 @@ func _args() -> bool:
 	for s in a:
 		if s.begins_with("--lesson="): _start("", "L:" + s.substr(9)); return true
 		if s == "--daily": _start("", "D:"); return true
+	for s in a:
+		if s.begins_with("--view="): _view.call_deferred(s.substr(7)); return true
 	if "--auto" in a:
 		var cs = Sim.g("game_contracts")
 		var to: String = sel.to
@@ -162,7 +165,20 @@ func _cabin() -> void:
 	cabin.closed.connect(func(): cabin = null; hud.visible = playing)
 	cabin.start(world, hud)
 
+var viewer := false
+func _view(id: String) -> void:
+	Sim.g("game_view_plane", JSON.stringify(id))
+	viewer = true
+	_start("", "none")
+	if not playing: viewer = false; Sim.g("game_view_end"); menu.open("hub"); return
+	board_left = 0.0; hud.viewer = true; hud.set_viewer(true); world.orbit = 35.0
+
+func _viewer_exit() -> void:
+	viewer = false; playing = false; hud.set_viewer(false); hud.visible = false; world.visible = false; world.cam_mode = 0
+	Sim.g("game_view_end"); menu.open("hub")
+
 func _to_menu():
+	if viewer: _viewer_exit(); return
 	if playing:
 		_end_flight()
 	else:
@@ -210,6 +226,7 @@ func _process(delta: float):
 	var dt := minf(delta, 0.1)
 	var w: float = 0.0
 	if hud.paused: pass
+	elif viewer: pass
 	elif board_left > 0.0: board_left -= delta
 	else: w = Sim.step(dt)
 	var s := Sim.state()

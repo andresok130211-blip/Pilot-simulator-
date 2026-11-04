@@ -2,6 +2,7 @@ extends CanvasLayer
 # Меню карьеры: главная, выбор рейса, ангар, тренажёр, рекорды, настройки, итоги рейса.
 signal start_flight(to: String, drill: String)
 signal walk_request
+signal view_plane(id: String)
 signal replay_request
 signal prefetch_request
 signal poi_request
@@ -136,6 +137,8 @@ func _hangar():
 		v.add_child(_lbl("%d мест · дальность ≈ %d км · полоса от %d м%s" % [int(p.seats), int(p.range), int(p.minRwy), ("  · износ %d%%" % int(p.wear)) if (p.own or p.leased) else ""], 19, Color(0.7, 0.8, 0.95)))
 		v.add_child(_lbl(str(p.desc), 18, Color(0.6, 0.7, 0.85)))
 		var r := _row(); v.add_child(r)
+		var pid_v: String = str(p.id)
+		r.add_child(_btn("👁 Осмотреть (снаружи и кабина)", func(): close(); view_plane.emit(pid_v), 20))
 		if p.own or p.leased:
 			if not p.cur: r.add_child(_btn("Выбрать", func(): Sim.g("game_set_plane", JSON.stringify(p.id)); Sim.persist(); _render(), 20))
 			if p.leased: r.add_child(_lbl("аренда: ещё %d рейс." % int(p.leaseLeft), 18))
