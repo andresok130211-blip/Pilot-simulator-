@@ -77,6 +77,7 @@ func _link_look():
 func set_viewer(on: bool) -> void:
 	viewer = on
 	pads.visible = not on
+	for ix in [8, 10, 11]: ckbar.get_child(ix).visible = not on
 	(ckbar.get_child(ckbar.get_child_count() - 1) as Button).text = "ВЫХОД" if on else "ПАУЗА"
 	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
 	if on:
