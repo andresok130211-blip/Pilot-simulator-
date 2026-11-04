@@ -299,6 +299,7 @@ func _process(dt: float) -> void:
 	var sk := _skel(crew.root)
 	if sk:
 		for l in [["Left", sw], ["Right", -sw]]: _g(sk, "mixamorig_" + l[0] + "UpLeg", Basis(Vector3(1, 0, 0), float(l[1])), false)
-	var on: bool = float(s.get("h", 9999.0)) < 2800.0
+	var ov: int = int(get_parent().get("belt_ov")) if get_parent() != null and get_parent().get("belt_ov") != null else -1
+	var on: bool = (float(s.get("h", 9999.0)) < 2800.0) if ov < 0 else ov == 1
 	if on != belts: belts = on; _ding()
 	sign_mat.albedo_color = Color(1.0, 0.25, 0.2) if belts else Color(0.2, 0.9, 0.3); sign_mat.emission = sign_mat.albedo_color

@@ -123,7 +123,7 @@ func _push(par: Node3D, p: Vector3, sz: Vector2, col: Color, act: String, label 
 	_sb(par.transform * _xf(p + Vector3(0, 0, -0.001)), Vector3(sz.x + 0.006, sz.y + 0.006, 0.004), Color(0.02, 0.02, 0.025))
 	var it := _item(mi, "push", act, Vector3(maxf(sz.x, 0.026) * 0.5, maxf(sz.y, 0.026) * 0.5, 0.012), Vector3.ZERO, m, lcol)
 	it["col"] = col; it["on"] = lit; it["kk"] = "push"
-	if label != "": _lab(par, label, p + Vector3(0, -(sz.y * 0.5 + 0.0075), 0), 0.0058)
+	if label != "" and act != "": _lab(par, label, p + Vector3(0, -(sz.y * 0.5 + 0.0075), 0), 0.0058)
 	return it
 
 # тумблер
@@ -136,7 +136,7 @@ func _tog(par: Node3D, p: Vector3, label: String, act := "", on := false, col :=
 	var lm := StandardMaterial3D.new(); lm.albedo_color = Color(0.05, 0.2, 0.08); lm.emission = Color(0.2, 1.0, 0.4); lm.emission_energy_multiplier = 1.8; lm.emission_enabled = on
 	var lp := MeshInstance3D.new(); var lb := BoxMesh.new(); lb.size = Vector3(0.007, 0.004, 0.003); lp.mesh = lb; lp.material_override = lm; lp.position = p + Vector3(0.0, 0.0125, 0.002); par.add_child(lp)
 	it["lamp"] = lm
-	if label != "": _lab(par, label, p + Vector3(0, (0.019 if lab_up else -0.019), 0), 0.0056)
+	if label != "" and act != "": _lab(par, label, p + Vector3(0, (0.019 if lab_up else -0.019), 0), 0.0056)
 	return it
 
 # поворотная ручка
@@ -147,9 +147,16 @@ func _knob(par: Node3D, p: Vector3, label: String, steps := 3, act := "", r := 0
 	var mk := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(0.003, r * 0.8, 0.002); mk.mesh = bm; mk.material_override = _mat(Color(0.95, 0.95, 0.95)); mk.position = Vector3(0, r * 0.45, 0.0165); pv.add_child(mk)
 	var it := _item(pv, "knob", act, Vector3(maxf(r, 0.014), maxf(r, 0.014), 0.012), Vector3(0, 0, 0.008)); it["steps"] = steps; it["step"] = start; it["kk"] = "knob"
 	pv.rotation.z = -(float(start) - float(steps - 1) * 0.5) * 0.7
-	if label != "": _lab(par, label, p + Vector3(0, -(r + 0.009), 0), 0.0056)
+	if label != "" and act != "": _lab(par, label, p + Vector3(0, -(r + 0.009), 0), 0.0056)
 	_static_ring(par, p, r)
 	return it
+
+# крупная подсказка над рабочим органом (всегда повёрнута к пилоту, видна поверх панели)
+func _hint(par: Node3D, txt: String, p: Vector3, col := Color(1.0, 0.93, 0.5)) -> void:
+	var l := Label3D.new(); l.text = txt; l.font_size = 56; l.pixel_size = 0.00058; l.modulate = col; l.outline_size = 14; l.outline_modulate = Color(0, 0, 0, 0.95)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = p; l.fixed_size = false
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS; l.render_priority = 5
+	par.add_child(l)
 
 func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 	_sc(par.transform * _xf(p + Vector3(0, 0, 0.0005), Vector3(90, 0, 0)), r + 0.004, 0.002, Color(0.55, 0.57, 0.6))
@@ -234,6 +241,8 @@ func _main_panel(pn: Node3D) -> void:
 		var mi := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(0.016, 0.016, 0.006); mi.mesh = bm; mi.material_override = lm; mi.position = Vector3(0.214 + i * 0.03, -0.205, 0.003); pn.add_child(mi)
 		(mcp as Dictionary).get_or_add("gl", []).append(lm)
 	_lab(pn, "GEAR", Vector3(0.245, -0.052, 0), 0.007)
+	_hint(pn, "ШАССИ", Vector3(0.245, 0.0, 0.07))
+	_hint(pn, "АВТОТОРМОЗ", Vector3(-0.245, -0.04, 0.07))
 	var ab := _knob(pn, Vector3(-0.245, -0.12, 0.0), "AUTO BRAKE", 6, "abrk", 0.018, 1)
 	ab["lab"] = true; mcp["abrk"] = ab
 	for i in range(6): _lab(pn, ["RTO", "OFF", "1", "2", "3", "MAX"][i], Vector3(-0.245 + (i - 2.5) * 0.017, -0.07, 0), 0.005, Color(0.7, 0.75, 0.8))
@@ -277,6 +286,7 @@ func _glareshield() -> void:
 		_sb(gs.transform * _xf(Vector3(float(v[1]), 0.036, 0.0)), Vector3(0.1, 0.026, 0.004), Color(0.0, 0.0, 0.0))
 		mcp[str(v[0])] = _lab(gs, "---", Vector3(float(v[1]) - 0.04, 0.036 + 0.0105, 0.0), 0.017, Color(1.0, 0.6, 0.15))
 		_lab(gs, str(v[0]), Vector3(float(v[1]) - 0.045, 0.057, 0), 0.0055, Color(0.8, 0.8, 0.85))
+	_hint(gs, "АВТОПИЛОТ", Vector3(0.42, 0.1, 0.05)); _hint(gs, "АВТОТЯГА", Vector3(-0.43, 0.1, 0.05)); _hint(gs, "ВЫСОТА ▲▼", Vector3(0.135, -0.075, 0.05)); _hint(gs, "ПОСАДКА", Vector3(-0.046, -0.06, 0.05)); _hint(gs, "НАВИГАЦИЯ", Vector3(0.328, -0.06, 0.05))
 	# ручки
 	_knob(gs, Vector3(-0.30, 0.0, 0), "", 8, "", 0.016); _knob(gs, Vector3(-0.1, 0.0, 0), "", 8, "", 0.016); _knob(gs, Vector3(0.12, 0.0, 0), "", 8, "", 0.016); _knob(gs, Vector3(0.31, 0.0, 0), "", 8, "", 0.016)
 	_push(gs, Vector3(0.12, -0.036, 0), Vector2(0.024, 0.014), Color(0.3, 0.32, 0.36), "altu", "▲")
@@ -387,6 +397,7 @@ func _pedestal() -> void:
 	flap_lever = _side_lever(top, Vector3(0.105, 0.0, 0.03), "FLAPS", Color(0.1, 0.1, 0.11), "fl")
 	# стояночный тормоз
 	park_lever = _side_lever(top, Vector3(0.105, 0.0, 0.22), "PARK BRAKE", Color(0.8, 0.12, 0.1), "brake")
+	_hint(top, "СТОЯНОЧНЫЙ ТОРМОЗ", Vector3(0.105, 0.12, 0.25)); _hint(top, "ЗАКРЫЛКИ", Vector3(0.105, 0.11, 0.0)); _hint(top, "ТЯГА", Vector3(0.0, 0.1, 0.3)); _hint(top, "РЕВЕРС", Vector3(0.0, 0.07, -0.02))
 	# колёса триммера
 	for sx in [-1.0, 1.0]:
 		var tw := Node3D.new(); tw.position = Vector3(sx * 0.19, 0.0, 0.02); top.add_child(tw)

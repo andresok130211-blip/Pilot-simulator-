@@ -15,6 +15,9 @@ var viewer := false
 var look_mv := {}
 var look_p0 := {}
 var ckbar: HBoxContainer
+var lightp: Control
+var lamp_btn := {}
+var lamp_on := {}
 var y_org := Vector2(1120, 470)
 var yoke_knob := Vector2.ZERO
 var stick := 0.0
@@ -74,10 +77,43 @@ func _link_look():
 	for st in ["normal", "hover", "pressed"]: b.add_theme_stylebox_override(st, sb)
 	b.modulate = Color.WHITE
 
+const LAMPS := [["Посадочные\nогни", "land"], ["Рулёжные\nогни", "taxi"], ["Стробы", "strobe"], ["Навигац.\nогни", "nav"], ["ЗАПУСК\nДВИГАТЕЛЕЙ", "!start"], ["Табло\nремни", "!belt"], ["Маяк", "beacon"], ["Логотип", "logo"], ["Плафон", "!dome"], ["Дворники", "!wipers"]]
+func _build_lightp() -> void:
+	lightp = Control.new(); lightp.visible = false; lightp.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(lightp)
+	var bg := Panel.new(); bg.position = Vector2(140, 150); bg.size = Vector2(1000, 330); bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.03, 0.04, 0.06, 0.82); sb.set_corner_radius_all(150); sb.border_color = Color(0.96, 0.94, 0.88, 0.95); sb.set_border_width_all(6); bg.add_theme_stylebox_override("panel", sb); lightp.add_child(bg)
+	var t := _lbl(24); t.text = "ПОТОЛОЧНАЯ ПАНЕЛЬ — нажимайте, чтобы включить/выключить"; t.position = Vector2(300, 175); lightp.add_child(t)
+	for i in range(LAMPS.size()):
+		var col := i % 5; var row := i / 5
+		var b := _button(str(LAMPS[i][0]), "lamp:" + str(LAMPS[i][1]), 150)
+		b.custom_minimum_size = Vector2(150, 108); b.size = Vector2(150, 108); b.position = Vector2(205 + col * 172, 225 + row * 118)
+		b.add_theme_font_size_override("font_size", 17)
+		var sbb := StyleBoxFlat.new(); sbb.bg_color = Color(0.08, 0.1, 0.16, 0.95); sbb.set_corner_radius_all(54); sbb.border_color = Color(0.96, 0.94, 0.88, 0.9); sbb.set_border_width_all(4)
+		for st in ["normal", "hover", "pressed", "disabled"]: b.add_theme_stylebox_override(st, sbb)
+		lightp.add_child(b); lamp_btn[str(LAMPS[i][1])] = b
+	for k in ["land", "strobe", "nav", "beacon"]: lamp_on[k] = true; _lamp_look(k, true)
+
+func _lamp_look(k: String, on: bool) -> void:
+	if not lamp_btn.has(k): return
+	var b: Button = lamp_btn[k]
+	var sbb := StyleBoxFlat.new(); sbb.bg_color = Color(0.1, 0.45, 0.2, 0.95) if on else Color(0.08, 0.1, 0.16, 0.95); sbb.set_corner_radius_all(54); sbb.border_color = Color(0.5, 1, 0.6) if on else Color(0.96, 0.94, 0.88, 0.9); sbb.set_border_width_all(4)
+	for st in ["normal", "hover", "pressed", "disabled"]: b.add_theme_stylebox_override(st, sbb)
+
+func _lamp(k: String) -> void:
+	var on: bool = not bool(lamp_on.get(k, false)); lamp_on[k] = on
+	_lamp_look(k, on)
+	var w: Node3D = get_parent().world
+	match k:
+		"!start": Sim.act("start")
+		"!belt": get_parent()._seatbelt_sign(on)
+		"!dome", "!wipers": pass
+		_: w.set_light(k, on)
+
 func set_viewer(on: bool) -> void:
 	viewer = on
 	pads.visible = not on
-	for ix in [8, 10, 11]: ckbar.get_child(ix).visible = not on
+	for k2 in ["c_warp", "c_altp"]: btn[k2].visible = not on
+	if lightp: lightp.visible = false
 	(ckbar.get_child(ckbar.get_child_count() - 1) as Button).text = "ВЫХОД" if on else "ПАУЗА"
 	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
 	if on:
@@ -133,7 +169,9 @@ func _on_act(a: String):
 		"altp": toggle_alts()
 		"link": linked = not linked; _link_look()
 		"radio": toggle_radio()
-		_: Sim.act(a)
+		_:
+			if a.begins_with("lamp:"): _lamp(a.substr(5))
+			else: Sim.act(a)
 
 func _ready():
 	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
@@ -153,11 +191,12 @@ func _ready():
 	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]
 	for d in defs1: var b := _button(d[0], d[1], 74); btn[d[1]] = b; r1.add_child(b)
 	for d in defs2: var b2 := _button(d[0], d[1], 74); btn[d[1]] = b2; r2.add_child(b2)
-	ckbar = HBoxContainer.new(); ckbar.add_theme_constant_override("separation", 4); ckbar.position = Vector2(284, 586); ckbar.visible = false; add_child(ckbar)
-	for d in [["◀", "ck:left"], ["▲", "ck:up"], ["▼", "ck:down"], ["▶", "ck:right"], ["ВПЕРЁД", "ck:fwd"], ["ДРУГОЙ\nПИЛОТ", "ck:other"], ["МЕСТО\nКАП/2П", "ck:seat"], ["ЗУМ", "ck:zoom"], ["АВТО\nРУЛ", "taxi"], ["ВИД", "view"], ["×1", "warp"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]:
-		var kb := _button(d[0], d[1], 62); kb.add_theme_font_size_override("font_size", 11)
-		if d[1] == "warp" or d[1] == "taxi": btn["c_" + d[1]] = kb
+	ckbar = HBoxContainer.new(); ckbar.add_theme_constant_override("separation", 4); ckbar.position = Vector2(300, 588); ckbar.visible = false; add_child(ckbar)
+	for d in [["СБРОС\nГОЛОВЫ", "ck:fwd"], ["ДРУГОЙ\nПИЛОТ", "ck:other"], ["МЕСТО\nКАП/2П", "ck:seat"], ["ЗУМ", "ck:zoom"], ["×1", "warp"], ["ЗАПАСН.", "altp"], ["ВИД", "view"], ["ПАУЗА", "pause"]]:
+		var kb := _button(d[0], d[1], 86); kb.add_theme_font_size_override("font_size", 13)
+		if d[1] == "warp" or d[1] == "altp": btn["c_" + d[1]] = kb
 		ckbar.add_child(kb)
+	_build_lightp()
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
@@ -296,6 +335,7 @@ func update_state(s: Dictionary):
 	if cockpit != _ck_prev: _ck_prev = cockpit; pads.queue_redraw()
 	instr.put(s, mode, cockpit)
 	info.visible = mode == 0 and not cockpit and not viewer
+	if lightp: lightp.visible = cockpit and not paused and get_parent().world.ckp.pitch > 0.42
 	if viewer:
 		for n in [hint, alert, log_l, evbox]: n.visible = false
 	log_l.position = Vector2(130, -540) if cockpit else Vector2(300, -300)
