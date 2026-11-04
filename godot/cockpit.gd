@@ -3,6 +3,7 @@ extends Node
 # по центру двигатели и системы, над головой потолочная панель, MCP на козырьке, пьедестал с CDU.
 # Рисуется отдельным прозрачным SubViewport поверх мира; камера мира повторяет поворот головы.
 const SEAT_X := 0.52
+const EYE_Y := 0.2   # высота глаз над точкой отсчёта: 1,22 м от пола кабины
 const ORIGIN := Vector3(0.0, 1.5, -14.0)   # точка между глазами пилотов в системе самолёта
 var world: Node3D
 var vp: SubViewport
@@ -158,11 +159,16 @@ func _build() -> void:
 			_sb(_xf(Vector3(sx * 1.16, 0.12, zz)), Vector3(0.07, 0.62, 0.05), dk)                       # стойки боковых окон
 		_sb(_xf(Vector3(sx * 1.16, 0.43, -0.2)), Vector3(0.07, 0.05, 1.3), dk)
 		_sb(_xf(Vector3(sx * 1.1, -0.2, -0.3)), Vector3(0.1, 0.06, 1.3), md)                            # подоконник
-	# лобовые: нижняя и верхняя балка, стойки
-	_sb(_xf(Vector3(0, -0.02, -1.22)), Vector3(2.4, 0.2, 0.06), dk)
-	_sb(_xf(Vector3(0, 0.69, -1.18)), Vector3(2.4, 0.26, 0.06), Color(0.3, 0.31, 0.34))
+	# лобовые: стёкла наклонены назад на 15°, нижняя кромка стекла — 1,1 м от пола кабины (пол y=-1.02, кромка y=0.08)
+	var rk := 15.0; var tk := tan(deg_to_rad(rk)); var yb := 0.08; var gh := 0.62
+	var zr := func(y: float) -> float: return -1.2 + (y - yb) * tk
+	_sb(_xf(Vector3(0, yb - 0.13, zr.call(yb - 0.13)), Vector3(rk, 0, 0)), Vector3(2.4, 0.26, 0.06), dk)                 # нижний подоконник
+	_sb(_xf(Vector3(0, yb + gh + 0.06, zr.call(yb + gh + 0.06)), Vector3(rk, 0, 0)), Vector3(2.4, 0.12, 0.06), Color(0.3, 0.31, 0.34))   # верхняя балка
 	for px in [-1.0, -0.43, 0.0, 0.43, 1.0]:
-		_sb(_xf(Vector3(px, 0.2, -1.2)), Vector3(0.05 if absf(px) < 0.9 else 0.1, 0.62, 0.06), dk)
+		_sb(_xf(Vector3(px, yb + gh * 0.5, zr.call(yb + gh * 0.5)), Vector3(rk, 0, 0)), Vector3(0.05 if absf(px) < 0.9 else 0.1, gh, 0.06), dk)
+	var gq := MeshInstance3D.new(); var gqm := QuadMesh.new(); gqm.size = Vector2(2.0, gh / cos(deg_to_rad(rk))); gq.mesh = gqm
+	var gmt := StandardMaterial3D.new(); gmt.albedo_color = Color(0.6, 0.8, 1.0, 0.06); gmt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gmt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gmt.cull_mode = BaseMaterial3D.CULL_DISABLED
+	gq.material_override = gmt; gq.transform = _xf(Vector3(0, yb + gh * 0.5, zr.call(yb + gh * 0.5) + 0.032), Vector3(rk, 0, 0)); root.add_child(gq)
 	# козырёк
 	_sb(_xf(Vector3(0, -0.035, -0.98), Vector3(-6, 0, 0)), Vector3(2.3, 0.035, 0.42), Color(0.05, 0.055, 0.06))
 	# основная приборная панель
@@ -541,7 +547,7 @@ func swap_seat() -> void:
 	seat = 1 - seat; tyaw = 0.0; tpitch = -0.24
 
 func eye_local() -> Vector3:
-	return ORIGIN + Vector3((SEAT_X if seat == 1 else -SEAT_X), 0.0, 0.0) + head_off()
+	return ORIGIN + Vector3((SEAT_X if seat == 1 else -SEAT_X), EYE_Y, 0.0) + head_off()
 
 # голова вращается вокруг шеи: глаза смещаются, появляется объём
 func head_off() -> Vector3:
@@ -562,7 +568,7 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	fov_now = lerpf(fov_now, 38.0 if zoom else 72.0, minf(1.0, dt * 8.0))
 	cam.fov = fov_now
 	var ex := -SEAT_X if seat == 0 else SEAT_X
-	cam.transform = Transform3D(Basis.from_euler(Vector3(pitch, yaw, 0.0), EULER_ORDER_YXZ), Vector3(ex, 0, 0) + head_off())
+	cam.transform = Transform3D(Basis.from_euler(Vector3(pitch, yaw, 0.0), EULER_ORDER_YXZ), Vector3(ex, EYE_Y, 0) + head_off())
 	pilots[0].visible = seat == 1; pilots[1].visible = seat == 0
 	# освещение по времени суток
 	var nk := clampf((world.light_k - 0.3) / 0.7, 0.0, 1.0)
