@@ -180,6 +180,10 @@ func _build_glb() -> void:
 	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
 	_glb_trim(m, m)
 	_glb_fix(m)
+	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
+	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
+	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
+	gl.material_override = gm; gl.position = Vector3(1.17, 0.085, 0.0); gl.scale = Vector3(0.21, 0.15, 0.215); m.add_child(gl)
 	# живые экраны поверх макетных
 	var fx := 1.1294 - 0.0004
 	for it in [[-0.0911, 0.0543, "pfd", Vector2i(256, 256)], [-0.0586, 0.0543, "nd", Vector2i(256, 256)], [-0.0011, 0.0573, "eng", Vector2i(256, 176)], [-0.0011, 0.0287, "sys", Vector2i(280, 340)], [0.0564, 0.0543, "nd", Vector2i(256, 256)], [0.0889, 0.0543, "pfd", Vector2i(256, 256)]]:
@@ -195,7 +199,10 @@ func _glb_trim(m: Node3D, top: Node3D) -> void:
 	for mi in _meshes(m):
 		var ab: AABB = (inv * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 		var cx := ab.position.x + ab.size.x * 0.5
-		if cx < 0.55: mi.queue_free()
+		var keep := false
+		var mm := (mi as MeshInstance3D).mesh
+		if mm != null and mm.get_surface_count() > 0 and mm.surface_get_material(0) != null and str(mm.surface_get_material(0).resource_name).contains("fuselarge"): keep = true
+		if cx < 0.55 and not keep: mi.queue_free()
 
 func _glb_fix(m: Node) -> void:
 	for mi in _meshes(m):
