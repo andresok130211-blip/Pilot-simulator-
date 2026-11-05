@@ -2,7 +2,10 @@ extends Node
 # Объёмная кабина (по фото 737): левое место капитана и правое — второго пилота, у каждого свои PFD/ND,
 # по центру двигатели и системы, над головой потолочная панель, MCP на козырьке, пьедестал с CDU.
 # Рисуется отдельным прозрачным SubViewport поверх мира; камера мира повторяет поворот головы.
-const SEAT_X := 0.52
+var SEAT_X := 0.52
+var glb := false
+const GLB_SCALE := 7.5
+const GLB_EYE := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
 const EYE_Y := 0.2   # высота глаз над точкой отсчёта: 1,22 м от пола кабины
 const ORIGIN := Vector3(0.0, 1.5, -14.0)   # точка между глазами пилотов в системе самолёта
 var world: Node3D
@@ -12,6 +15,8 @@ var root: Node3D
 var layer: CanvasLayer
 var rect: TextureRect
 var yaw := 0.0
+var def_pitch := -0.24
+var look_set := false
 var pitch := -0.24
 var tyaw := 0.0
 var tpitch := -0.24
@@ -62,6 +67,10 @@ func configure(pid: String) -> void:
 	var st := "airbus" if pid in AIRBUS else "boeing"
 	if st == style: return
 	style = st
+	glb = st == "airbus"
+	SEAT_X = 0.5625 if glb else 0.52
+	def_pitch = -0.42 if glb else -0.24
+	if not look_set: tpitch = def_pitch; pitch = def_pitch
 	for c in root.get_children(): c.queue_free()
 	items.clear(); thr_lev.clear(); yokes.clear(); mcp.clear(); pilots.clear(); _st.clear()
 	_build(); _flush()
@@ -161,8 +170,72 @@ func _hint(par: Node3D, txt: String, p: Vector3, col := Color(1.0, 0.93, 0.5)) -
 func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 	_sc(par.transform * _xf(p + Vector3(0, 0, 0.0005), Vector3(90, 0, 0)), r + 0.004, 0.002, Color(0.55, 0.57, 0.6))
 
+# ---------- кабина A320 из модели (TonyWony, CC BY 4.0) ----------
+func _build_glb() -> void:
+	var m: Node3D = (load("res://assets/planes/A320_cockpit.glb") as PackedScene).instantiate()
+	root.add_child(m)
+	m.rotation_degrees = Vector3(0, 90, 0); m.scale = Vector3.ONE * GLB_SCALE
+	# глаза капитана -> (-SEAT_X, EYE_Y, 0)
+	var e := Basis.from_euler(Vector3(0, deg_to_rad(90.0), 0)) * (GLB_EYE * GLB_SCALE)
+	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
+	_glb_trim(m, m)
+	_glb_fix(m)
+	# живые экраны поверх макетных
+	var fx := 1.1294 - 0.0004
+	for it in [[-0.0911, 0.0543, "pfd", Vector2i(256, 256)], [-0.0586, 0.0543, "nd", Vector2i(256, 256)], [-0.0011, 0.0573, "eng", Vector2i(256, 176)], [-0.0011, 0.0287, "sys", Vector2i(280, 340)], [0.0564, 0.0543, "nd", Vector2i(256, 256)], [0.0889, 0.0543, "pfd", Vector2i(256, 256)]]:
+		_gdisplay(m, Vector3(fx, float(it[1]), float(it[0])), 0.0235 if it[2] != "eng" else 0.0235, str(it[2]), it[3])
+	_lights_in()
+	_pilots_glb()
+	_hud_root_hint = true
+
+var _hud_root_hint := false
+func _glb_trim(m: Node3D, top: Node3D) -> void:
+	# оставляем только кабину (нос самолёта), салон и хвост убираем
+	var inv := top.global_transform.affine_inverse()
+	for mi in _meshes(m):
+		var ab: AABB = (inv * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
+		var cx := ab.position.x + ab.size.x * 0.5
+		if cx < 0.55: mi.queue_free()
+
+func _glb_fix(m: Node) -> void:
+	for mi in _meshes(m):
+		var me := (mi as MeshInstance3D).mesh
+		if me == null: continue
+		for i in range(me.get_surface_count()):
+			var mt := me.surface_get_material(i)
+			if mt is StandardMaterial3D and (str(mt.resource_name).contains("dash") or str(mt.resource_name).contains("standed_2") or str(mt.resource_name).contains("black_leather")):
+				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
+				nm.albedo_texture = null; nm.albedo_color = Color(0.1, 0.105, 0.115); (mi as MeshInstance3D).set_surface_override_material(i, nm)
+
+func _meshes(n: Node) -> Array:
+	var out := []
+	if n is MeshInstance3D: out.append(n)
+	for c in n.get_children(): out.append_array(_meshes(c))
+	return out
+
+func _gdisplay(par: Node3D, p: Vector3, sz: float, kind: String, px: Vector2i) -> void:
+	if not scr.has(kind):
+		var sv := SubViewport.new(); sv.size = px; sv.render_target_update_mode = SubViewport.UPDATE_DISABLED; sv.transparent_bg = false; add_child(sv)
+		var ins := Control.new(); ins.set_script(load("res://instr.gd")); ins.set("kind", kind); sv.add_child(ins)
+		scr[kind] = {"vp": sv, "ins": ins}
+	var qm := QuadMesh.new(); qm.size = Vector2(sz, sz * (0.69 if kind == "eng" else 1.0))
+	var mi := MeshInstance3D.new(); mi.mesh = qm; mi.position = p; mi.rotation_degrees = Vector3(0, -90, 0)
+	var mt := StandardMaterial3D.new(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.albedo_texture = (scr[kind].vp as SubViewport).get_texture(); mi.material_override = mt
+	par.add_child(mi)
+	if kind == "nd": _item(mi, "scr", "ndrange", Vector3(sz * 0.5, sz * 0.5, 0.01), Vector3.ZERO)
+
+func _pilots_glb() -> void:
+	for i in range(2):
+		var pm: Node3D = (load("res://assets/people/readyplayer.me.glb") as PackedScene).instantiate()
+		var sc := 0.95
+		pm.scale = Vector3(sc, sc, sc); pm.rotation.y = PI
+		pm.position = Vector3((-1.0 if i == 0 else 1.0) * SEAT_X, EYE_Y - 0.92 - 0.55, 0.12)
+		root.add_child(pm); _dress(pm, i); pilots.append(pm)
+
 # ---------- сборка ----------
 func _build() -> void:
+	if glb:
+		_build_glb(); return
 	var ab := style == "airbus"
 	var dk := Color(0.17, 0.19, 0.23) if ab else Color(0.13, 0.14, 0.16); var md := Color(0.3, 0.32, 0.36) if ab else Color(0.24, 0.25, 0.28); var wall := Color(0.55, 0.56, 0.6) if ab else Color(0.46, 0.47, 0.5); var ceil_c := Color(0.55, 0.56, 0.58)
 	var I := Transform3D.IDENTITY
@@ -569,7 +642,7 @@ func look_drag(d: Vector2) -> void:
 
 func look_to(name: String) -> void:
 	match name:
-		"fwd": tyaw = 0.0; tpitch = -0.24
+		"fwd": tyaw = 0.0; tpitch = def_pitch
 		"left": tyaw = 1.45 if seat == 0 else 0.5; tpitch = -0.1
 		"right": tyaw = -0.5 if seat == 0 else -1.45; tpitch = -0.1
 		"up": tyaw = 0.0; tpitch = 0.85
@@ -580,7 +653,7 @@ func look_to(name: String) -> void:
 func toggle_zoom() -> void: zoom = not zoom
 
 func swap_seat() -> void:
-	seat = 1 - seat; tyaw = 0.0; tpitch = -0.24
+	seat = 1 - seat; tyaw = 0.0; tpitch = def_pitch
 
 func eye_local() -> Vector3:
 	return ORIGIN + Vector3((SEAT_X if seat == 1 else -SEAT_X), EYE_Y, 0.0) + head_off()
@@ -613,6 +686,7 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	# экраны
 	for k in scr: (scr[k].ins as Control).call("put", s, 2, true)
 	var c: Dictionary = s.c
+	if glb: return
 	_mcp(s, c)
 	for i in range(2): (thr_lev[i] as Node3D).rotation.x = (float(thr[i]) * 0.9) - 0.0
 	for y in yokes:

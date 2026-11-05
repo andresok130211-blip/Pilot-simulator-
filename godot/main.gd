@@ -53,7 +53,7 @@ func _args() -> bool:
 		elif s.begins_with("--debug="): dbg = s.substr(8)
 		elif s.begins_with("--cam="): world.cam_mode = int(s.substr(6))
 		elif s.begins_with("--look="):
-			var lq := s.substr(7).split(","); world.ckp.tyaw = deg_to_rad(float(lq[0])); world.ckp.tpitch = deg_to_rad(float(lq[1])); world.ckp.yaw = world.ckp.tyaw; world.ckp.pitch = world.ckp.tpitch
+			var lq := s.substr(7).split(","); world.ckp.tyaw = deg_to_rad(float(lq[0])); world.ckp.tpitch = deg_to_rad(float(lq[1])); world.ckp.yaw = world.ckp.tyaw; world.ckp.pitch = world.ckp.tpitch; world.ckp.look_set = true
 		elif s.begins_with("--seat="): world.ckp.seat = int(s.substr(7))
 		elif s.begins_with("--zoom="): world.ckp.zoom = true
 		elif s.begins_with("--orbit="):

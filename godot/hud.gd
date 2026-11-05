@@ -15,6 +15,7 @@ var viewer := false
 var look_mv := {}
 var look_p0 := {}
 var ckbar: HBoxContainer
+var ctlbar: HBoxContainer
 var lightp: Control
 var lamp_btn := {}
 var lamp_on := {}
@@ -134,6 +135,7 @@ func boarding(left: float):
 		for n in [info, hint, log_l, get_node("link"), pads]: n.visible = false
 		instr.visible = cockpit
 	if ckbar: ckbar.visible = (cockpit or viewer) and not on
+	if ctlbar: ctlbar.visible = cockpit and not viewer and not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
@@ -197,6 +199,10 @@ func _ready():
 		if d[1] == "warp" or d[1] == "altp": btn["c_" + d[1]] = kb
 		ckbar.add_child(kb)
 	_build_lightp()
+	ctlbar = HBoxContainer.new(); ctlbar.add_theme_constant_override("separation", 4); ctlbar.position = Vector2(286, 530); ctlbar.visible = false; add_child(ctlbar)
+	for d in [["АВТО-\nПИЛОТ", "ap"], ["АВТО-\nТЯГА", "at"], ["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["СТОЯН.\nТОРМОЗ", "brake"], ["ВЫС ▲", "altu"], ["ВЫС ▼", "altd"], ["ПОСАДКА", "appr"], ["НАВ", "nav"]]:
+		var cb2 := _button(d[0], d[1], 74); cb2.add_theme_font_size_override("font_size", 13); cb2.custom_minimum_size = Vector2(74, 50)
+		btn["k_" + d[1]] = cb2; ctlbar.add_child(cb2)
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
@@ -369,10 +375,12 @@ func _labels(s: Dictionary, c: Dictionary):
 	var gr := float(s.gear)
 	btn["gear"].text = "ШАССИ\n" + ("▼" if gr > 0.98 else ("▲" if gr < 0.02 else "…"))
 	btn["fl-"].text = "ЗАКР −\n(%s)" % str(s.flapName)
+	btn["k_gear"].text = "ШАССИ\n" + ("▼" if gr > 0.98 else ("▲" if gr < 0.02 else "…")); btn["k_fl-"].text = "ЗАКР −\n(%s)" % str(s.flapName)
 	btn["warp"].text = "×%d" % int(c.warp); btn["c_warp"].text = "×%d" % int(c.warp)
 	btn["abrk"].text = "АВТОТОРМ\n" + ["—", "1", "2", "MAX"][clampi(int(c.get("abrk", 0)), 0, 3)]
 	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ"][get_parent().world.cam_mode]
 	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false))
 
 func _mark(k: String, on) -> void:
+	if btn.has("k_" + k): btn["k_" + k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
 	if btn.has(k): btn[k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
