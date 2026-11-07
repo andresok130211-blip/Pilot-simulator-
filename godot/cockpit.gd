@@ -4,8 +4,9 @@ extends Node
 # Рисуется отдельным прозрачным SubViewport поверх мира; камера мира повторяет поворот головы.
 var SEAT_X := 0.52
 var glb := false
-const GLB_SCALE := 7.5
-const GLB_EYE := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
+var gscale := 7.5
+var geye := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
+var is787 := false
 const EYE_Y := 0.2   # высота глаз над точкой отсчёта: 1,22 м от пола кабины
 const ORIGIN := Vector3(0.0, 1.5, -14.0)   # точка между глазами пилотов в системе самолёта
 var world: Node3D
@@ -67,9 +68,12 @@ func configure(pid: String) -> void:
 	var st := "airbus" if pid in AIRBUS else "boeing"
 	if st == style: return
 	style = st
-	glb = st == "airbus"
-	SEAT_X = 0.5625 if glb else 0.52
-	def_pitch = -0.42 if glb else -0.24
+	glb = true
+	is787 = st != "airbus"
+	SEAT_X = 0.55 if is787 else 0.5625
+	def_pitch = -0.4 if is787 else -0.42
+	gscale = 1.0 if is787 else 7.5
+	geye = Vector3(-0.55, 1.18, -1.05) if is787 else Vector3(1.05, 0.115, -0.075)
 	if not look_set: tpitch = def_pitch; pitch = def_pitch
 	for c in root.get_children(): c.queue_free()
 	items.clear(); thr_lev.clear(); yokes.clear(); mcp.clear(); pilots.clear(); _st.clear()
@@ -171,12 +175,43 @@ func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 	_sc(par.transform * _xf(p + Vector3(0, 0, 0.0005), Vector3(90, 0, 0)), r + 0.004, 0.002, Color(0.55, 0.57, 0.6))
 
 # ---------- кабина A320 из модели (TonyWony, CC BY 4.0) ----------
+func _build_787() -> void:
+	var m: Node3D = (load("res://assets/planes/B787_cockpit.glb") as PackedScene).instantiate()
+	root.add_child(m)
+	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - geye
+	# убираем лишние детали далеко от кабины
+	var inv := m.global_transform.affine_inverse()
+	for mi in _meshes(m):
+		var c: Vector3 = (inv * (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()).get_center()
+		if absf(c.x) > 1.7 or c.z < -3.2 or c.z > 0.3 or c.y > 2.3 or c.y < -0.2: mi.queue_free()
+	# стекло
+	for mi in _meshes(m):
+		var me := (mi as MeshInstance3D).mesh
+		if me == null: continue
+		for i in range(me.get_surface_count()):
+			var mt := me.surface_get_material(i)
+			if mt != null and str(mt.resource_name) == "787_Glass":
+				var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.12); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
+				(mi as MeshInstance3D).set_surface_override_material(i, gm)
+			elif mt is StandardMaterial3D:
+				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
+				nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a); nm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				(mi as MeshInstance3D).set_surface_override_material(i, nm)
+	# живые экраны: PFD / ND / ND / PFD
+	var xs := [-0.575, -0.225, 0.225, 0.575]; var ks := ["pfd", "nd", "nd", "pfd"]
+	for i in range(4):
+		_gdisplay(m, Vector3(float(xs[i]), 0.69, -2.036), 0.22, str(ks[i]), Vector2i(256, 256), 0.0, Vector2(0.31, 0.22))
+	_lights_in()
+	_pilots_glb()
+
 func _build_glb() -> void:
+	if is787:
+		_build_787(); return
 	var m: Node3D = (load("res://assets/planes/A320_cockpit.glb") as PackedScene).instantiate()
 	root.add_child(m)
-	m.rotation_degrees = Vector3(0, 90, 0); m.scale = Vector3.ONE * GLB_SCALE
+	m.rotation_degrees = Vector3(0, 90, 0); m.scale = Vector3.ONE * gscale
 	# глаза капитана -> (-SEAT_X, EYE_Y, 0)
-	var e := Basis.from_euler(Vector3(0, deg_to_rad(90.0), 0)) * (GLB_EYE * GLB_SCALE)
+	var e := Basis.from_euler(Vector3(0, deg_to_rad(90.0), 0)) * (geye * gscale)
 	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
 	_glb_trim(m, m)
 	_glb_fix(m)
@@ -220,13 +255,15 @@ func _meshes(n: Node) -> Array:
 	for c in n.get_children(): out.append_array(_meshes(c))
 	return out
 
-func _gdisplay(par: Node3D, p: Vector3, sz: float, kind: String, px: Vector2i) -> void:
+func _gdisplay(par: Node3D, p: Vector3, sz: float, kind: String, px: Vector2i, roty := -90.0, back := Vector2.ZERO) -> void:
 	if not scr.has(kind):
 		var sv := SubViewport.new(); sv.size = px; sv.render_target_update_mode = SubViewport.UPDATE_DISABLED; sv.transparent_bg = false; add_child(sv)
 		var ins := Control.new(); ins.set_script(load("res://instr.gd")); ins.set("kind", kind); sv.add_child(ins)
 		scr[kind] = {"vp": sv, "ins": ins}
 	var qm := QuadMesh.new(); qm.size = Vector2(sz, sz * (0.69 if kind == "eng" else 1.0))
-	var mi := MeshInstance3D.new(); mi.mesh = qm; mi.position = p; mi.rotation_degrees = Vector3(0, -90, 0)
+	var mi := MeshInstance3D.new(); mi.mesh = qm; mi.position = p; mi.rotation_degrees = Vector3(0, roty, 0)
+	if back != Vector2.ZERO:
+		var bq := QuadMesh.new(); bq.size = back; var bm := MeshInstance3D.new(); bm.mesh = bq; bm.position = p + Vector3(0, 0, -0.0015); bm.material_override = _mat(Color(0.02, 0.02, 0.03)); par.add_child(bm)
 	var mt := StandardMaterial3D.new(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.albedo_texture = (scr[kind].vp as SubViewport).get_texture(); mi.material_override = mt
 	par.add_child(mi)
 	if kind == "nd": _item(mi, "scr", "ndrange", Vector3(sz * 0.5, sz * 0.5, 0.01), Vector3.ZERO)
