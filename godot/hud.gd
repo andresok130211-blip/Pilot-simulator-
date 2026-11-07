@@ -4,6 +4,7 @@ signal exit_pressed
 signal cabin_pressed
 var info: Label
 var topbar: Label
+var svcbar: VBoxContainer
 var hint: Label
 var log_l: Label
 var evbox: Label
@@ -120,7 +121,13 @@ func set_viewer(on: bool) -> void:
 	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
 	if on:
 		var t := _lbl(24); t.name = "view_t"; t.position = Vector2(20, 12); t.text = "ОСМОТР САМОЛЁТА — ВИД: двигайте пальцем; кабина: нажимайте тумблеры"; add_child(t)
-	elif get_node_or_null("view_t"): get_node("view_t").queue_free()
+		svcbar = VBoxContainer.new(); svcbar.add_theme_constant_override("separation", 4); svcbar.position = Vector2(14, 64); add_child(svcbar)
+		var ht := _lbl(16); ht.text = "НАЗЕМНЫЕ СЛУЖБЫ"; svcbar.add_child(ht)
+		for it in [["jet", "Телетрап"], ["fuel", "Топливозаправщик"], ["cat", "Кейтеринг"], ["tug", "Буксировщик / пушбэк"], ["walk", "Обход самолёта"]]:
+			var sb := _button(str(it[1]), "svc:" + str(it[0]), 210); sb.custom_minimum_size = Vector2(210, 40); sb.add_theme_font_size_override("font_size", 16); sb.name = "svc_" + str(it[0]); svcbar.add_child(sb)
+	else:
+		if get_node_or_null("view_t"): get_node("view_t").queue_free()
+		if svcbar: svcbar.queue_free(); svcbar = null
 
 func boarding(left: float):
 	var on := left > 0.0
@@ -136,6 +143,7 @@ func boarding(left: float):
 		for n in [info, hint, log_l, get_node("link"), pads]: n.visible = false
 		instr.visible = cockpit
 	if ckbar: ckbar.visible = (cockpit or viewer) and not on
+	if svcbar: svcbar.visible = not cockpit and not on
 	if ctlbar: ctlbar.visible = cockpit and not viewer and not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
@@ -154,6 +162,15 @@ func _build_pause() -> void:
 	var b1 := _button("ПРОДОЛЖИТЬ", "resume", 320); b1.position = Vector2(480, 250); b1.custom_minimum_size = Vector2(320, 80); b1.add_theme_font_size_override("font_size", 28); pause_ui.add_child(b1)
 	var b2 := _button("ЗАВЕРШИТЬ РЕЙС", "exit", 320); b2.position = Vector2(480, 360); b2.custom_minimum_size = Vector2(320, 70); b2.add_theme_font_size_override("font_size", 24); pause_ui.add_child(b2)
 
+func _svc(k: String) -> void:
+	var w = get_parent().world
+	w.svc_toggle(k)
+	var on: bool = w.walk_on if k == "walk" else float(w.svc_goal[k]) > 0.5
+	var b := svcbar.get_node("svc_" + k) as Button
+	var sb := b.get_theme_stylebox("normal").duplicate() as StyleBoxFlat
+	sb.bg_color = Color(0.1, 0.45, 0.25, 0.92) if on else Color(0.09, 0.11, 0.2, 0.88)
+	for st in ["normal", "hover", "pressed", "disabled"]: b.add_theme_stylebox_override(st, sb)
+
 func _on_act(a: String):
 	match a:
 		"view":
@@ -161,6 +178,7 @@ func _on_act(a: String):
 			else: get_parent().world.cycle_cam()
 		"ck:fwd", "ck:left", "ck:right", "ck:up", "ck:down", "ck:other": get_parent().world.ckp.look_to(a.substr(3))
 		"ck:zoom": get_parent().world.ckp.toggle_zoom()
+		"svc:jet", "svc:fuel", "svc:cat", "svc:tug", "svc:walk": _svc(a.substr(4))
 		"ck:seat": get_parent().world.ckp.swap_seat()
 		"pause":
 			if viewer: exit_pressed.emit()
