@@ -75,7 +75,7 @@ func configure(pid: String) -> void:
 	if st == style: return
 	style = st
 	glb = true
-	thr787.clear()
+	thr787.clear(); mcpd.clear()
 	is787 = st != "airbus"
 	SEAT_X = 0.55 if is787 else 0.5625
 	def_pitch = -0.4 if is787 else -0.42
@@ -182,15 +182,34 @@ func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 	_sc(par.transform * _xf(p + Vector3(0, 0, 0.0005), Vector3(90, 0, 0)), r + 0.004, 0.002, Color(0.55, 0.57, 0.6))
 
 # ---------- кабина A320 из модели (TonyWony, CC BY 4.0) ----------
-func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55) -> void:
+var mcpd := {}
+func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := false) -> void:
 	var st := Node3D.new(); st.position = o; st.rotation_degrees = Vector3(rot_x, 0, 0); st.scale = Vector3.ONE * sc; par.add_child(st)
-	var defs := [["АП", "ap"], ["АТ", "at"], ["ПОСАДКА", "appr"], ["NAV", "nav"], ["ВЫС +", "altu"], ["ВЫС −", "altd"], ["ШАССИ", "gear"], ["СТОЯН.", "brake"]]
-	var n := defs.size()
-	for i in range(n):
-		var d: Array = defs[i]
-		var col := Color(0.2, 0.22, 0.27) if i < 6 else Color(0.34, 0.16, 0.14)
-		var gl := Color(0.3, 1.0, 0.45) if i < 6 else Color(1.0, 0.45, 0.2)
-		_push(st, Vector3((float(i) - float(n - 1) * 0.5) * 0.066, 0, 0), Vector2(0.056, 0.03), col, str(d[1]), str(d[0]), gl)
+	_sb(st.transform * _xf(Vector3(0, 0.0, -0.002)), Vector3(0.98, 0.135 if not extra else 0.19, 0.008), Color(0.05, 0.06, 0.08))
+	var dk := Color(0.2, 0.22, 0.27); var gl := Color(0.3, 1.0, 0.45)
+	# три окна значений
+	for g in [["СКОР", -0.27, "spd", "spd-", "spd+", "АВТО", "spda"], ["КУРС", 0.0, "hdg", "hdg-", "hdg+", "HDG", "hdgm"], ["ВЫС", 0.27, "alt", "altd", "altu", "", ""]]:
+		var gx: float = float(g[1])
+		_sb(st.transform * _xf(Vector3(gx, 0.03, 0.0)), Vector3(0.14, 0.04, 0.004), Color(0.0, 0.03, 0.02))
+		var lt := _lab(st, str(g[0]), Vector3(gx - 0.048, 0.054, 0.0), 0.0055, Color(0.7, 0.75, 0.8)); lt.position.x = gx - 0.0
+		var dl := _lab(st, "---", Vector3(gx, 0.03, 0.0035), 0.016, Color(0.4, 1.0, 0.55)); mcpd[str(g[2])] = dl
+		_push(st, Vector3(gx - 0.032, -0.012, 0.0), Vector2(0.056, 0.032), dk, str(g[3]), "−", gl)
+		_push(st, Vector3(gx + 0.032, -0.012, 0.0), Vector2(0.056, 0.032), dk, str(g[4]), "+", gl)
+		if str(g[6]) != "": _push(st, Vector3(gx, 0.065, 0.0), Vector2(0.06, 0.02), Color(0.16, 0.2, 0.28), str(g[6]), str(g[5]), Color(1.0, 0.8, 0.3))
+	# режимные кнопки слева и справа
+	_push(st, Vector3(-0.43, 0.025, 0.0), Vector2(0.075, 0.034), dk, "at", "АВТОТЯГА", gl)
+	_push(st, Vector3(-0.43, -0.018, 0.0), Vector2(0.075, 0.034), dk, "nav", "ПО МАРШРУТУ", gl)
+	_push(st, Vector3(0.43, 0.025, 0.0), Vector2(0.075, 0.034), dk, "ap", "АВТОПИЛОТ", gl)
+	_push(st, Vector3(0.43, -0.018, 0.0), Vector2(0.075, 0.034), dk, "appr", "ПОСАДКА", gl)
+	if extra:
+		_push(st, Vector3(-0.30, -0.07, 0.0), Vector2(0.09, 0.03), Color(0.34, 0.16, 0.14), "gear", "ШАССИ", Color(0.3, 1.0, 0.45))
+		_push(st, Vector3(-0.10, -0.07, 0.0), Vector2(0.09, 0.03), Color(0.34, 0.16, 0.14), "brake", "СТОЯН. ТОРМОЗ", Color(1.0, 0.45, 0.2))
+		_push(st, Vector3(0.10, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl-", "ЗАКРЫЛКИ −", gl)
+		_push(st, Vector3(0.30, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl+", "ЗАКРЫЛКИ +", gl)
+
+# горизонтальная площадка с кнопками (пьедестал): локальный +z смотрит вверх
+func _pad(par: Node3D, o: Vector3, rot_x: float) -> Node3D:
+	var n := Node3D.new(); n.position = o; n.rotation_degrees = Vector3(rot_x, 0, 0); par.add_child(n); return n
 
 func _build_787() -> void:
 	var m: Node3D = (load("res://assets/planes/B787_cockpit.glb") as PackedScene).instantiate()
@@ -229,7 +248,14 @@ func _build_787() -> void:
 			var mi := m.find_child("Object_" + str(nm), true, false)
 			if mi != null: mi.reparent(pv, true)
 		thr787.append(pv)
-	_ctl_strip(root, Vector3(0.02, -0.04, -0.94), -30.0)
+	_ctl_strip(root, Vector3(0.0, -0.055, -0.9), -50.0, 1.35)
+	# шасси — на центральной панели, тормоз и закрылки — на пьедестале
+	var gp := _pad(m, Vector3(0.0, 0.64, -2.03), 0.0)
+	_push(gp, Vector3(0, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "gear", "ШАССИ", Color(0.3, 1.0, 0.45))
+	var pd := _pad(m, Vector3(0.0, 0.575, -1.32), -75.0)
+	_push(pd, Vector3(-0.16, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "brake", "СТОЯН.", Color(1.0, 0.45, 0.2))
+	_push(pd, Vector3(0.0, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl-", "ЗАКР. −", Color(0.3, 1.0, 0.45))
+	_push(pd, Vector3(0.16, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl+", "ЗАКР. +", Color(0.3, 1.0, 0.45))
 	_lights_in()
 	_pilots_glb()
 
@@ -244,7 +270,7 @@ func _build_glb() -> void:
 	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
 	_glb_trim(m, m)
 	_glb_fix(m)
-	_ctl_strip(root, Vector3(-0.18, 0.02, -0.62), -35.0, 0.85)
+	_ctl_strip(root, Vector3(-0.1, 0.02, -0.62), -35.0, 0.85, true)
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
 	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
@@ -811,6 +837,8 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 			"nav": it["on"] = bool(c.get("nav", true))
 			"brake": it["on"] = bool(c.brake)
 			"rev": it["on"] = bool(c.rev)
+			"hdgm": it["on"] = bool(c.get("hdgM", false))
+			"spda": it["on"] = c.get("spdSel") != null
 		if it.has("hot") and not act in ["appr", "nav"]: pass
 		if it.has("flash"): it["on"] = warn and fmod(tt, 0.8) < 0.4
 		if kind == "push":
@@ -836,6 +864,10 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 			else:
 				var tz: float = -(float(it.step) - float(int(it.steps) - 1) * 0.5) * 0.7
 				n.rotation.z = lerpf(n.rotation.z, tz, minf(1.0, dt * 14.0))
+	if mcpd.has("hdg"):
+		(mcpd["hdg"] as Label3D).text = "%03d" % (int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg))))
+		(mcpd["spd"] as Label3D).text = ("%d" % int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "АВТО"
+		(mcpd["alt"] as Label3D).text = "%d" % int(c.apAlt)
 	# автоторможение — ручка показывает режим
 	if mcp.has("abrk"):
 		var ab: Dictionary = mcp["abrk"]
