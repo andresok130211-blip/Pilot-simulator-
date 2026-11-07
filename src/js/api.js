@@ -62,14 +62,18 @@ export function sim_act(a) {
     case 'fl-': f.setFlaps(c.flaps - 1); break;
     case 'fl+': f.setFlaps(c.flaps + 1); break;
     case 'brake': c.brake = !c.brake; break;
-    case 'ap': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } c.apOn = !c.apOn; if (c.apOn) { c.apAlt = Math.max(300, Math.round(f.h / 100) * 100); } else c.appr = false; break;
+    case 'ap': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } c.apOn = !c.apOn; if (c.apOn) { c.apAlt = Math.max(300, Math.round(f.h / 100) * 100); } else { c.appr = false; c.hdgM = false; } break;
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен'); break; } c.atOn = !c.atOn; break;
-    case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
+    case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (c.appr) { c.nav = true; c.hdgM = false; c.spdSel = null; } else f.apprCap = false; break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (!c.rev) { c.thr = c.t1 = c.t2 = 0; c.split = false; } } else f.msg('Реверс — только на пробеге'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
-    case 'nav': c.nav = !c.nav; break;
+    case 'nav': c.nav = !c.nav; if (c.nav) c.hdgM = false; break;
+    case 'hdgm': if (!c.apOn) { f.msg('Включите автопилот'); break; } if (c.hdgM) { c.hdgM = false; c.nav = true; } else { c.hdgM = true; c.nav = false; if (c.hdgSel == null) c.hdgSel = Math.round(f.heading / 5) * 5 % 360; } break;
+    case 'hdg+': case 'hdg-': if (!c.apOn) { f.msg('Включите автопилот'); break; } if (c.hdgSel == null) c.hdgSel = Math.round(f.heading / 5) * 5 % 360; c.hdgSel = (c.hdgSel + (a === 'hdg+' ? 5 : -5) + 360) % 360; c.hdgM = true; c.nav = false; break;
+    case 'spd+': case 'spd-': if (c.spdSel == null) c.spdSel = Math.round(f.ias / 5) * 5; c.spdSel = Math.max(60, Math.min(300, c.spdSel + (a === 'spd+' ? 5 : -5))); c.atOn = f.atLock > 0 ? c.atOn : true; break;
+    case 'spda': c.spdSel = c.spdSel == null ? Math.round(f.ias / 5) * 5 : null; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'start': if (f.cold) { if (f.gate.done) f.startReq = true; else f.msg('Дождитесь окончания обслуживания'); } break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; break; }

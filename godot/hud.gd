@@ -6,6 +6,8 @@ var info: Label
 var topbar: Label
 var svcbar: VBoxContainer
 var wipers: Control
+var appanel: PanelContainer
+var ap_lbl := {}
 var hint: Label
 var log_l: Label
 var evbox: Label
@@ -165,6 +167,33 @@ func _build_pause() -> void:
 	var b1 := _button("ПРОДОЛЖИТЬ", "resume", 320); b1.position = Vector2(480, 250); b1.custom_minimum_size = Vector2(320, 80); b1.add_theme_font_size_override("font_size", 28); pause_ui.add_child(b1)
 	var b2 := _button("ЗАВЕРШИТЬ РЕЙС", "exit", 320); b2.position = Vector2(480, 360); b2.custom_minimum_size = Vector2(320, 70); b2.add_theme_font_size_override("font_size", 24); pause_ui.add_child(b2)
 
+func _build_appanel() -> void:
+	appanel = PanelContainer.new(); appanel.visible = false
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.03, 0.06, 0.1, 0.8); sb.set_corner_radius_all(10); sb.content_margin_left = 8; sb.content_margin_right = 8; sb.content_margin_top = 4; sb.content_margin_bottom = 5
+	appanel.add_theme_stylebox_override("panel", sb); add_child(appanel)
+	var hb := HBoxContainer.new(); hb.add_theme_constant_override("separation", 12); appanel.add_child(hb)
+	for g in [["КУРС", "hdg", "hdgm", "РЕЖИМ"], ["СКОРОСТЬ", "spd", "spda", "АВТО"], ["ВЫСОТА", "alt", "", ""]]:
+		var col := VBoxContainer.new(); col.add_theme_constant_override("separation", 2); hb.add_child(col)
+		var t := _lbl(15); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; col.add_child(t); ap_lbl[str(g[1])] = t
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 3); col.add_child(row)
+		var kd: String = "altd" if g[1] == "alt" else str(g[1]) + "-"; var ku: String = "altu" if g[1] == "alt" else str(g[1]) + "+"
+		for it in [["−", kd], ["+", ku], [str(g[3]), str(g[2])]]:
+			if str(it[1]) == "" or str(it[1]) == "-" : continue
+			var b := _button(str(it[0]), str(it[1]), 44 if str(it[0]).length() < 2 else 66); b.custom_minimum_size = Vector2(44 if str(it[0]).length() < 2 else 66, 36); b.add_theme_font_size_override("font_size", 14); row.add_child(b); btn["ap_" + str(it[1])] = b
+
+func _ap_update(s: Dictionary, c: Dictionary) -> void:
+	if appanel == null: return
+	appanel.visible = not viewer and not paused and float(get_parent().board_left) <= 0.0
+	if not appanel.visible: return
+	appanel.position = Vector2(300, 408) if cockpit else Vector2(440, 112)
+	var hd := int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg)))
+	var mode := "HDG" if c.get("hdgM", false) else ("NAV" if c.get("nav", true) else "—")
+	ap_lbl["hdg"].text = "КУРС %03d°  [%s]" % [hd, mode]
+	ap_lbl["spd"].text = ("СКОР %d км/ч  [выбр.]" % int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "СКОРОСТЬ [авто]"
+	ap_lbl["alt"].text = "ВЫС %d м%s" % [int(c.apAlt), "" if c.apOn else "  (АП выкл.)"]
+	btn["ap_hdgm"].modulate = Color(0.55, 1, 0.65) if c.get("hdgM", false) else Color(1, 1, 1)
+	btn["ap_spda"].modulate = Color(1, 0.85, 0.45) if c.get("spdSel") != null else Color(0.55, 1, 0.65)
+
 func _svc(k: String) -> void:
 	var w = get_parent().world
 	w.svc_toggle(k)
@@ -229,6 +258,7 @@ func _ready():
 	for d in [["АВТО-\nПИЛОТ", "ap"], ["АВТО-\nТЯГА", "at"], ["ШАССИ", "gear"], ["ЗАКР −", "fl-"], ["ЗАКР +", "fl+"], ["СТОЯН.\nТОРМОЗ", "brake"], ["ВЫС ▲", "altu"], ["ВЫС ▼", "altd"], ["ПОСАДКА", "appr"], ["НАВ", "nav"]]:
 		var cb2 := _button(d[0], d[1], 74); cb2.add_theme_font_size_override("font_size", 13); cb2.custom_minimum_size = Vector2(74, 50)
 		btn["k_" + d[1]] = cb2; ctlbar.add_child(cb2)
+	_build_appanel()
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
 	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
 	# запасные
@@ -369,7 +399,7 @@ func _topbar(s: Dictionary) -> void:
 	var w: Dictionary = s.wx
 	topbar.text = "ВЕТЕР %03d°/%d   %02d:%02d   %03d° %s   %s %.0f км %03d°" % [
 		int(round(float(w.dir) / 10.0) * 10.0) % 360, int(round(float(w.spd))), tm / 60, tm % 60, int(hd), CARD[int(round(hd / 45.0)) % 8], str(s.rw1.id), float(s.dist) / 1000.0, int(fposmod(float(s.brg), 360.0))]
-	topbar.position.y = 6.0 if cockpit else 80.0
+	topbar.position.y = 46.0 if cockpit else 80.0
 
 func update_state(s: Dictionary):
 	if s.is_empty(): return
@@ -417,7 +447,7 @@ func _labels(s: Dictionary, c: Dictionary):
 	btn["warp"].text = "×%d" % int(c.warp); btn["c_warp"].text = "×%d" % int(c.warp)
 	btn["abrk"].text = "АВТОТОРМ\n" + ["—", "1", "2", "MAX"][clampi(int(c.get("abrk", 0)), 0, 3)]
 	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ"][get_parent().world.cam_mode]
-	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false))
+	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false)); _ap_update(s, c)
 
 func _mark(k: String, on) -> void:
 	if btn.has("k_" + k): btn["k_" + k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)

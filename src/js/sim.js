@@ -83,7 +83,7 @@ export class Flight {
     this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true, hdgM: false, hdgSel: null, spdSel: null };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = []; this.track = []; this.marks = []; this._rec = -9; this.radio = []; this.atcDone = {}; this.trf = []; this.hold = null; this.trfId = 0; this.clrTo = true; this.trfPlan = {};
@@ -425,7 +425,12 @@ export class Flight {
     let lim = p.flapLim[f] - 8;
     // на заходе скорость такая, чтобы следующая ступень закрылков уже разрешалась
     if (this.dist < 60000 && this.dist > 0) lim = f < 4 ? p.flapLim[f + 1] - 5 : lim;
-    return Math.max(Math.min(sched, lim), 1.2 * stallIAS(m, f, p.S));
+    const base = Math.max(Math.min(sched, lim), 1.2 * stallIAS(m, f, p.S));
+    if (c.spdSel != null && !this.emDescent) {
+      const hi = Math.min(p.flapLim[f] - 8, machIAS, c.gear && this.h < 3000 ? 140 : 1e9), lo = 1.2 * stallIAS(m, f, p.S);
+      return Math.max(lo, Math.min(c.spdSel, hi));
+    }
+    return base;
   }
 
   apVsCmd(dt) {
@@ -613,6 +618,9 @@ export class Flight {
         if (dist > 30000) psiC = Math.atan2(-(this.yPos - this.starTgt(dist)), aim) + ff;
         else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * (0.0015 + 0.004 * clamp(1 - dist / 8000, 0, 1)), -lim, lim) + ff; }
         phiT = this.hold ? 25 * DEG : clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
+      } else if (c.apOn && c.hdgM && c.hdgSel != null) {
+        const psiT = (c.hdgSel - this.brg) * DEG - this.tf.a;
+        phiT = clamp(2.2 * wrapPi(psiT - this.psi), -25 * DEG, 25 * DEG);
       }
       if (Math.abs(roll) <= 0.04) phiT += this.fx.rollBias * DEG * clamp(this.h / 100, 0, 1) * (c.apOn ? 0.25 : 1);
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);

@@ -75,6 +75,7 @@ func configure(pid: String) -> void:
 	if st == style: return
 	style = st
 	glb = true
+	thr787.clear()
 	is787 = st != "airbus"
 	SEAT_X = 0.55 if is787 else 0.5625
 	def_pitch = -0.4 if is787 else -0.42
@@ -764,7 +765,8 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	for k in scr: (scr[k].ins as Control).call("put", s, 2, true)
 	var c: Dictionary = s.c
 	if glb:
-		for i in range(mini(thr787.size(), 2)): (thr787[i] as Node3D).rotation.x = -float(thr[i]) * 0.5
+		for i in range(mini(thr787.size(), 2)):
+			if is_instance_valid(thr787[i]): (thr787[i] as Node3D).rotation.x = -float(thr[i]) * 0.5
 		_sync(s, c, dt); return
 	_mcp(s, c)
 	for i in range(2): (thr_lev[i] as Node3D).rotation.x = (float(thr[i]) * 0.9) - 0.0
