@@ -5,6 +5,7 @@ signal cabin_pressed
 var info: Label
 var topbar: Label
 var svcbar: VBoxContainer
+var wipers: Control
 var hint: Label
 var log_l: Label
 var evbox: Label
@@ -109,7 +110,9 @@ func _lamp(k: String) -> void:
 	match k:
 		"!start": Sim.act("start")
 		"!belt": get_parent()._seatbelt_sign(on)
-		"!dome", "!wipers": pass
+		"!dome": w.ckp.dome = on
+		"!wipers": wipers.visible = on
+		"taxi", "logo": w.set_light(k, on)
 		_: w.set_light(k, on)
 
 func set_viewer(on: bool) -> void:
@@ -197,6 +200,7 @@ func _on_act(a: String):
 func _ready():
 	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
 	info = _lbl(22); info.position = Vector2(18, 10); add_child(info)
+	wipers = WiperDraw.new(); wipers.visible = false; wipers.mouse_filter = Control.MOUSE_FILTER_IGNORE; wipers.size = Vector2(1280, 238); wipers.clip_contents = true; add_child(wipers); move_child(wipers, 0)
 	topbar = _lbl(19); topbar.set_anchors_preset(Control.PRESET_CENTER_TOP); topbar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; topbar.size = Vector2(900, 30); topbar.position = Vector2(-450, 6)
 	var tsb := StyleBoxFlat.new(); tsb.bg_color = Color(0.04, 0.07, 0.12, 0.72); tsb.set_corner_radius_all(14); tsb.content_margin_left = 16; tsb.content_margin_right = 16; tsb.content_margin_top = 3; tsb.content_margin_bottom = 3
 	topbar.add_theme_stylebox_override("normal", tsb); topbar.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(topbar)
@@ -418,3 +422,18 @@ func _labels(s: Dictionary, c: Dictionary):
 func _mark(k: String, on) -> void:
 	if btn.has("k_" + k): btn["k_" + k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
 	if btn.has(k): btn[k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
+
+
+class WiperDraw extends Control:
+	var t := 0.0
+	func _process(d: float) -> void:
+		t += d; queue_redraw()
+	func _draw() -> void:
+		if not get_parent().get("cockpit"): return
+		var a := 0.45 + 0.55 * (0.5 + 0.5 * sin(t * 3.2))
+		for px in [420.0, 760.0]:
+			var piv := Vector2(px, 236.0)
+			var ang := deg_to_rad(-10.0 - 62.0 * a)
+			var tip := piv + Vector2(cos(ang), sin(ang)) * 250.0
+			draw_line(piv, tip, Color(0.04, 0.04, 0.05, 0.9), 7.0)
+			draw_line(piv.lerp(tip, 0.18), tip, Color(0.12, 0.12, 0.14, 0.95), 4.0)

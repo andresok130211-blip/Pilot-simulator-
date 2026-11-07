@@ -174,7 +174,10 @@ func toggle_lights() -> void:
 	if lights_on: for k in lg: lg[k] = true
 	_apply_lights()
 # отдельные группы огней: nav, strobe, beacon, land (переключатели на потолочной панели)
-var lg := {"nav": true, "strobe": true, "beacon": true, "land": true}
+var lg := {"nav": true, "strobe": true, "beacon": true, "land": true, "taxi": false, "logo": false}
+var ltaxi: SpotLight3D
+var llogo: OmniLight3D
+var logo_m: MeshInstance3D
 func set_light(kind: String, on: bool) -> void:
 	lg[kind] = on
 	if on: lights_on = true
@@ -224,6 +227,12 @@ func _build_lights(L: float) -> void:
 	_blink_light(Vector3(0, -1.9, -L * 0.34), Color(1, 1, 0.9), 0.14, false, "land")    # фара
 	lland = SpotLight3D.new(); lland.position = Vector3(0, -1.8, -L * 0.34); lland.rotation_degrees = Vector3(-6, 0, 0)
 	lland.spot_range = 700.0; lland.spot_angle = 16.0; lland.light_energy = 6.0; lland.light_color = Color(1, 1, 0.92); plane.add_child(lland)
+	ltaxi = SpotLight3D.new(); ltaxi.position = Vector3(0, -1.9, -L * 0.36); ltaxi.rotation_degrees = Vector3(-17, 0, 0)
+	ltaxi.spot_range = 160.0; ltaxi.spot_angle = 42.0; ltaxi.light_energy = 3.0; ltaxi.light_color = Color(1, 0.97, 0.88); plane.add_child(ltaxi)
+	# подсветка логотипа на киле
+	llogo = OmniLight3D.new(); llogo.position = Vector3(0, 5.2, L * 0.4); llogo.omni_range = 9.0; llogo.light_energy = 1.4; plane.add_child(llogo)
+	logo_m = _box(plane, Vector3(0.05, 1.6, 2.4), Color(0.6, 0.8, 1.0), Vector3(0, 5.6, L * 0.43)); (logo_m.material_override as StandardMaterial3D).emission_enabled = true; (logo_m.material_override as StandardMaterial3D).emission = Color(0.5, 0.75, 1.0)
+	llogo.visible = false; logo_m.visible = false
 
 func _lights_ready() -> void:
 	toggle_lights()
@@ -601,6 +610,8 @@ func update_state(s: Dictionary, delta: float):
 	var gp: float = clampf(float(s.get("gear", 1.0)), 0.0, 1.0)
 	if gear: gear.visible = gp > 0.03; gear.scale = Vector3(1, gp, 1)
 	if lland: lland.visible = gp > 0.5 and light_k > 0.5 and lights_on and bool(lg["land"])
+	if ltaxi: ltaxi.visible = gp > 0.5 and light_k > 0.5 and bool(lg["taxi"])
+	if llogo: llogo.visible = bool(lg["logo"]) and light_k > 0.2; logo_m.visible = llogo.visible
 	_blink_tick()
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []

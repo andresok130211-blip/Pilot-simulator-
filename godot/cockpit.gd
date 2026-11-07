@@ -7,6 +7,7 @@ var glb := false
 var gscale := 7.5
 var geye := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
 var is787 := false
+var dome := false
 var thr787: Array = []
 const T787 := {"Interior_White": Color(0.74, 0.69, 0.58), "Console_Glay": Color(0.36, 0.42, 0.52), "Pedestal_White": Color(0.55, 0.62, 0.74), "Overhed_Panel": Color(0.22, 0.28, 0.38),
 	"pedestal_lightglay": Color(0.52, 0.56, 0.62), "Cockpit_Alminium": Color(0.68, 0.7, 0.75), "Display_Flame": Color(0.14, 0.17, 0.22), "pedestal_main": Color(0.4, 0.44, 0.5),
@@ -757,7 +758,8 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	# освещение по времени суток
 	var nk := clampf((world.light_k - 0.3) / 0.7, 0.0, 1.0)
 	env.ambient_light_energy = lerpf(0.95, 0.32, nk); light.light_energy = lerpf(0.7, 0.05, nk)
-	for o in amb_lamps: (o as OmniLight3D).light_energy = lerpf(0.12, 0.55, nk)
+	for o in amb_lamps: (o as OmniLight3D).light_energy = lerpf(0.12, 0.55, nk) * (3.0 if dome else 1.0)
+	if dome: env.ambient_light_energy = maxf(env.ambient_light_energy, 0.85)
 	# экраны
 	for k in scr: (scr[k].ins as Control).call("put", s, 2, true)
 	var c: Dictionary = s.c
