@@ -86,6 +86,7 @@ func _render():
 		"pre": _pre()
 		"records": _records()
 		"settings": _settings()
+		"credits": _credits()
 		_: _hub()
 
 # ---------- главная ----------
@@ -99,7 +100,7 @@ func _hub():
 	var dl := _btn("Испытание дня  ·  %s" % ("лучшая посадка %.2f м/с" % float(di.best) if di.best != null else "ещё не пройдено"), func(): close(); start_flight.emit("", "D:"), 24)
 	b.add_child(dl)
 	var r := _row(); b.add_child(r)
-	for it in [["Ангар", "hangar"], ["Школа", "school"], ["Тренажёр ЧП", "drill"], ["Рекорды", "records"], ["Настройки", "settings"]]:
+	for it in [["Ангар", "hangar"], ["Школа", "school"], ["Тренажёр ЧП", "drill"], ["Рекорды", "records"], ["Настройки", "settings"], ["Авторы", "credits"]]:
 		var bb := _btn(it[0], func(): scr = it[1]; _render()); bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r.add_child(bb)
 	if int(h.fatigue) >= 25:
 		b.add_child(_btn("Отдых (−усталость) — 40 000 ₽", func(): Sim.g("game_rest"); Sim.persist(); _render()))
@@ -230,6 +231,16 @@ func _records():
 		b.add_child(_lbl("%s → %s · %s · %s%s · %d км · %d мин · %s" % [j.a, j.b, j.pl, str(j.t), sk, int(j.km), int(j.min), str(j.net)], 18, Color(0.75, 0.85, 1)))
 
 # ---------- настройки ----------
+func _credits():
+	var b := _frame("Авторы и благодарности", "hub")
+	for t in ["Кабина Airbus A320 — «A320-200 with cockpit» by TonyWony (CC BY 4.0)",
+			"Кабина Boeing 787 — «Boeing 787 Dreamliner Cockpit» by ElijahPD7000 (CC BY 4.0)",
+			"Модели самолётов — amvlab/aircraft-models (CC BY 4.0)",
+			"Снимки Земли — Sentinel-2 cloudless 2020 by EOX (CC BY-NC 4.0), содержит изменённые данные Copernicus Sentinel",
+			"Рельеф, здания и водоёмы — данные OpenStreetMap contributors (ODbL)",
+			"Лицензия CC BY 4.0: https://creativecommons.org/licenses/by/4.0/"]:
+		var l := _lbl(t, 20, Color(0.85, 0.92, 1)); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; b.add_child(l)
+
 func _settings():
 	var h = Sim.g("game_hub")
 	var b := _frame("Настройки", "hub")

@@ -201,7 +201,7 @@ func _ready():
 	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
 	info = _lbl(22); info.position = Vector2(18, 10); add_child(info)
 	wipers = WiperDraw.new(); wipers.visible = false; wipers.mouse_filter = Control.MOUSE_FILTER_IGNORE; wipers.size = Vector2(1280, 238); wipers.clip_contents = true; add_child(wipers); move_child(wipers, 0)
-	topbar = _lbl(19); topbar.set_anchors_preset(Control.PRESET_CENTER_TOP); topbar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; topbar.size = Vector2(900, 30); topbar.position = Vector2(-450, 6)
+	topbar = _lbl(17); topbar.set_anchors_preset(Control.PRESET_CENTER_TOP); topbar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; topbar.size = Vector2(560, 30); topbar.position = Vector2(-280, 6)
 	var tsb := StyleBoxFlat.new(); tsb.bg_color = Color(0.04, 0.07, 0.12, 0.72); tsb.set_corner_radius_all(14); tsb.content_margin_left = 16; tsb.content_margin_right = 16; tsb.content_margin_top = 3; tsb.content_margin_bottom = 3
 	topbar.add_theme_stylebox_override("normal", tsb); topbar.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(topbar)
 	hint = _lbl(24); hint.position = Vector2(18, 66); hint.add_theme_color_override("font_color", Color(0.6, 1, 0.75)); add_child(hint)
@@ -367,9 +367,9 @@ func _topbar(s: Dictionary) -> void:
 	var hd := fposmod(float(s.hdg), 360.0)
 	var tm := int(float(s.t))
 	var w: Dictionary = s.wx
-	topbar.text = "ВЕТЕР %03d°/%d м/с     В ПОЛЁТЕ %02d:%02d     КОМПАС %03d° %s     СЛЕД. ТОЧКА %s  %.0f км  %03d°" % [
+	topbar.text = "ВЕТЕР %03d°/%d   %02d:%02d   %03d° %s   %s %.0f км %03d°" % [
 		int(round(float(w.dir) / 10.0) * 10.0) % 360, int(round(float(w.spd))), tm / 60, tm % 60, int(hd), CARD[int(round(hd / 45.0)) % 8], str(s.rw1.id), float(s.dist) / 1000.0, int(fposmod(float(s.brg), 360.0))]
-	topbar.position.y = 6.0 if cockpit else 46.0
+	topbar.position.y = 6.0 if cockpit else 80.0
 
 func update_state(s: Dictionary):
 	if s.is_empty(): return
