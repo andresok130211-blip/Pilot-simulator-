@@ -1752,7 +1752,7 @@ class Flight {
     this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
-    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true };
+    this.c = { stick: 0, thr: 0, gear: true, flaps: 2, brake: true, rev: false, abrk: 0, split: false, t1: 0, t2: 0, apOn: false, apAlt: 1500, appr: false, atOn: false, warp: 1, roll: 0, nav: true, hdgM: false, hdgSel: null, spdSel: null };
     this.apprCap = false; this.vsCmdS = 0; this.gHold = null;
     this.td = null; this.done = false; this.result = null;
     this.warnings = new Set(); this.incidents = []; this.msgs = []; this.track = []; this.marks = []; this._rec = -9; this.radio = []; this.atcDone = {}; this.trf = []; this.hold = null; this.trfId = 0; this.clrTo = true; this.trfPlan = {};
@@ -2094,7 +2094,12 @@ class Flight {
     let lim = p.flapLim[f] - 8;
     // на заходе скорость такая, чтобы следующая ступень закрылков уже разрешалась
     if (this.dist < 60000 && this.dist > 0) lim = f < 4 ? p.flapLim[f + 1] - 5 : lim;
-    return Math.max(Math.min(sched, lim), 1.2 * stallIAS(m, f, p.S));
+    const base = Math.max(Math.min(sched, lim), 1.2 * stallIAS(m, f, p.S));
+    if (c.spdSel != null && !this.emDescent) {
+      const hi = Math.min(p.flapLim[f] - 8, machIAS, c.gear && this.h < 3000 ? 140 : 1e9), lo = 1.2 * stallIAS(m, f, p.S);
+      return Math.max(lo, Math.min(c.spdSel, hi));
+    }
+    return base;
   }
 
   apVsCmd(dt) {
@@ -2282,6 +2287,9 @@ class Flight {
         if (dist > 30000) psiC = Math.atan2(-(this.yPos - this.starTgt(dist)), aim) + ff;
         else { const lim = (20 + 17 * clamp((Math.abs(this.yPos) - 1500) / 2500, 0, 1)) * DEG; psiC = clamp(-this.yPos * (0.0015 + 0.004 * clamp(1 - dist / 8000, 0, 1)), -lim, lim) + ff; }
         phiT = this.hold ? 25 * DEG : clamp(2.5 * wrapPi(psiC - this.psi), -25 * DEG, 25 * DEG);
+      } else if (c.apOn && c.hdgM && c.hdgSel != null) {
+        const psiT = (c.hdgSel - this.brg) * DEG - this.tf.a;
+        phiT = clamp(2.2 * wrapPi(psiT - this.psi), -25 * DEG, 25 * DEG);
       }
       if (Math.abs(roll) <= 0.04) phiT += this.fx.rollBias * DEG * clamp(this.h / 100, 0, 1) * (c.apOn ? 0.25 : 1);
       this.phi += clamp(phiT - this.phi, -5 * DEG * dt, 5 * DEG * dt);
@@ -2962,14 +2970,18 @@ function sim_act(a) {
     case 'fl-': f.setFlaps(c.flaps - 1); break;
     case 'fl+': f.setFlaps(c.flaps + 1); break;
     case 'brake': c.brake = !c.brake; break;
-    case 'ap': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } c.apOn = !c.apOn; if (c.apOn) { c.apAlt = Math.max(300, Math.round(f.h / 100) * 100); } else c.appr = false; break;
+    case 'ap': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } c.apOn = !c.apOn; if (c.apOn) { c.apAlt = Math.max(300, Math.round(f.h / 100) * 100); } else { c.appr = false; c.hdgM = false; } break;
     case 'at': if (f.atLock > 0) { f.msg('Автомат тяги неисправен'); break; } c.atOn = !c.atOn; break;
-    case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (!c.appr) f.apprCap = false; break;
+    case 'appr': if (f.apLock > 0) { f.msg('Автопилот неисправен'); break; } if (!c.apOn && !f.onGround) { c.apOn = true; c.atOn = true; } c.appr = !c.appr; if (c.appr) { c.nav = true; c.hdgM = false; c.spdSel = null; } else f.apprCap = false; break;
     case 'altu': c.apAlt = Math.min(f.p.ceiling - 600, c.apAlt + (c.apAlt >= 3000 ? 600 : 300)); break;
     case 'altd': c.apAlt = Math.max(300, c.apAlt - (c.apAlt > 3000 ? 600 : 300)); break;
     case 'rev': if (f.onGround && f.v > 15) { c.rev = !c.rev; if (!c.rev) { c.thr = c.t1 = c.t2 = 0; c.split = false; } } else f.msg('Реверс — только на пробеге'); break;
     case 'abrk': c.abrk = ((c.abrk || 0) + 1) % 4; f.msg('Автоторможение: ' + (c.abrk ? 'режим ' + c.abrk : 'выкл')); break;
-    case 'nav': c.nav = !c.nav; break;
+    case 'nav': c.nav = !c.nav; if (c.nav) c.hdgM = false; break;
+    case 'hdgm': if (!c.apOn) { f.msg('Включите автопилот'); break; } if (c.hdgM) { c.hdgM = false; c.nav = true; } else { c.hdgM = true; c.nav = false; if (c.hdgSel == null) c.hdgSel = Math.round(f.heading / 5) * 5 % 360; } break;
+    case 'hdg+': case 'hdg-': if (!c.apOn) { f.msg('Включите автопилот'); break; } if (c.hdgSel == null) c.hdgSel = Math.round(f.heading / 5) * 5 % 360; c.hdgSel = (c.hdgSel + (a === 'hdg+' ? 5 : -5) + 360) % 360; c.hdgM = true; c.nav = false; break;
+    case 'spd+': case 'spd-': if (c.spdSel == null) c.spdSel = Math.round(f.ias / 5) * 5; c.spdSel = Math.max(60, Math.min(300, c.spdSel + (a === 'spd+' ? 5 : -5))); c.atOn = f.atLock > 0 ? c.atOn : true; break;
+    case 'spda': c.spdSel = c.spdSel == null ? Math.round(f.ias / 5) * 5 : null; break;
     case 'taxi': if (f.onGround && f.taxiOps) c.taxiAuto = !c.taxiAuto; break;
     case 'start': if (f.cold) { if (f.gate.done) f.startReq = true; else f.msg('Дождитесь окончания обслуживания'); } break;
     case 'warp': { const w = [1, 2, 4, 8, 16, 32]; const i = w.indexOf(c.warp); c.warp = w[(i + 1) % w.length]; if (c.warp > f.allowedWarp()) c.warp = 1; break; }

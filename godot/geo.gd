@@ -161,7 +161,7 @@ func _to_m(pts: Array, o_lat: float, o_lon: float) -> PackedVector2Array:
 
 func _build(k: String, data: Dictionary) -> void:
 	var b := _bounds(k); var o_lat: float = b[0]; var o_lon: float = b[1]
-	if cells.get(k) is Node3D: (cells[k] as Node3D).queue_free()
+	if cells.has(k) and is_instance_valid(cells[k]): (cells[k] as Node3D).queue_free()
 	var root := Node3D.new(); add_child(root); cells[k] = root
 	_water(root, data, o_lat, o_lon)
 	# дороги

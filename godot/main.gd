@@ -177,6 +177,8 @@ func _view(id: String) -> void:
 	board_left = 0.0; hud.viewer = true; hud.set_viewer(true); world.orbit = 35.0
 	world.svc_reset(); world.svc_manual = true; world.board_tick(true, 0.0)
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--oview="):
+			var q := a.substr(8).split(","); world.orbit = float(q[0]); world.orbit_up = float(q[1]); world.orbit_d = float(q[2])
 		if a.begins_with("--lamps="):
 			for k in a.substr(8).split(","): hud._lamp(k)
 		if a.begins_with("--svc="): for k in a.substr(6).split(","): hud._svc(k); if k != "walk": world.svc[k] = 1.0
