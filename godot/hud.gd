@@ -3,6 +3,7 @@ extends CanvasLayer
 signal exit_pressed
 signal cabin_pressed
 var info: Label
+var topbar: Label
 var hint: Label
 var log_l: Label
 var evbox: Label
@@ -178,6 +179,9 @@ func _on_act(a: String):
 func _ready():
 	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
 	info = _lbl(22); info.position = Vector2(18, 10); add_child(info)
+	topbar = _lbl(19); topbar.set_anchors_preset(Control.PRESET_CENTER_TOP); topbar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; topbar.size = Vector2(900, 30); topbar.position = Vector2(-450, 6)
+	var tsb := StyleBoxFlat.new(); tsb.bg_color = Color(0.04, 0.07, 0.12, 0.72); tsb.set_corner_radius_all(14); tsb.content_margin_left = 16; tsb.content_margin_right = 16; tsb.content_margin_top = 3; tsb.content_margin_bottom = 3
+	topbar.add_theme_stylebox_override("normal", tsb); topbar.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(topbar)
 	hint = _lbl(24); hint.position = Vector2(18, 66); hint.add_theme_color_override("font_color", Color(0.6, 1, 0.75)); add_child(hint)
 	alert = _lbl(34); alert.add_theme_color_override("font_color", Color(1, 0.35, 0.3)); alert.set_anchors_preset(Control.PRESET_CENTER_TOP); alert.position = Vector2(-220, 100); add_child(alert)
 	log_l = _lbl(18); log_l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT); log_l.position = Vector2(230, -330); add_child(log_l)
@@ -334,6 +338,17 @@ func refresh_alts():
 		altp_v.add_child(b)
 	var x := Button.new(); x.mouse_filter = Control.MOUSE_FILTER_IGNORE; x.text = "Закрыть"; x.pressed.connect(func(): altp.visible = false); altp_v.add_child(x)
 
+const CARD := ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+func _topbar(s: Dictionary) -> void:
+	topbar.visible = not viewer and not paused
+	if not topbar.visible: return
+	var hd := fposmod(float(s.hdg), 360.0)
+	var tm := int(float(s.t))
+	var w: Dictionary = s.wx
+	topbar.text = "ВЕТЕР %03d°/%d м/с     В ПОЛЁТЕ %02d:%02d     КОМПАС %03d° %s     СЛЕД. ТОЧКА %s  %.0f км  %03d°" % [
+		int(round(float(w.dir) / 10.0) * 10.0) % 360, int(round(float(w.spd))), tm / 60, tm % 60, int(hd), CARD[int(round(hd / 45.0)) % 8], str(s.rw1.id), float(s.dist) / 1000.0, int(fposmod(float(s.brg), 360.0))]
+	topbar.position.y = 6.0 if cockpit else 46.0
+
 func update_state(s: Dictionary):
 	if s.is_empty(): return
 	var c: Dictionary = s.c
@@ -341,6 +356,7 @@ func update_state(s: Dictionary):
 	if cockpit != _ck_prev: _ck_prev = cockpit; pads.queue_redraw()
 	instr.put(s, mode, cockpit)
 	info.visible = mode == 0 and not cockpit and not viewer
+	_topbar(s)
 	if lightp: lightp.visible = cockpit and not paused and get_parent().world.ckp.pitch > 0.42
 	if viewer:
 		for n in [hint, alert, log_l, evbox]: n.visible = false
