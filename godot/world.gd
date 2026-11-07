@@ -149,6 +149,17 @@ func build_plane(pid: String, color: Color):
 	var k: float = L / float(MODEL_LEN[m])
 	inst.scale = Vector3.ONE * k; inst.rotation_degrees = Vector3(0, MODEL_YAW, 0)
 	plane.add_child(inst)
+	# уровень земли: низ самой нижней детали модели (двигатели) минус дорожный просвет
+	var lowest := 0.0
+	var stk: Array = [inst]
+	while not stk.is_empty():
+		var nd: Node = stk.pop_back()
+		for c in nd.get_children(): stk.append(c)
+		if nd is MeshInstance3D:
+			var ab: AABB = (nd as MeshInstance3D).get_aabb()
+			var bt := (inst.global_transform.affine_inverse() * (nd as MeshInstance3D).global_transform * ab).position.y
+			lowest = minf(lowest, bt)
+	gnd = lowest * k * 1.0 - 0.7 * (L / 39.0) if lowest < 0.0 else -2.3
 	_build_gear(L)
 	_build_lights(L)
 	_lights_ready()
@@ -162,6 +173,7 @@ func cockpit_tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: floa
 
 # ---------- шасси и огни (в моделях их нет) ----------
 var gear: Node3D
+var gnd := -2.3
 var nav_blink: Array = []
 var lights_on := true
 var ck_sw: Array = []
@@ -200,7 +212,7 @@ func _leg(parent: Node3D, x: float, z: float, top: float, bot: float, twin: floa
 
 func _build_gear(L: float) -> void:
 	gear = Node3D.new(); gear.position = Vector3(0, -1.1, 0); plane.add_child(gear)
-	var top := -1.1; var bot := -2.3
+	var top := minf(-1.1, gnd * 0.5); var bot := gnd
 	var gx := L * 0.068
 	_leg(gear, 0.0, -L * 0.36, top, bot, 0.2, 0.42)
 	for sx in [-1.0, 1.0]:
@@ -287,7 +299,7 @@ func _build_boarding(L: float):
 	board_L = L
 	bd.clear()
 	board = Node3D.new(); plane.add_child(board)
-	var gs := -2.3            # уровень площадки относительно центра самолёта
+	var gs := gnd            # уровень площадки относительно центра самолёта
 	var zd := -L * 0.30       # передняя левая дверь
 	var fl := -0.05           # пол телетрапа
 	var padm: MeshInstance3D = _box(board, Vector3(80, 0.12, L * 2.4), Color(1, 1, 1), Vector3(-6, gs - 0.06, 0))
@@ -373,7 +385,7 @@ func svc_tick(dt: float) -> void:
 	board.visible = cam_mode != 1
 	for k in svc: svc[k] = move_toward(float(svc[k]), float(svc_goal[k]), dt / 3.0)
 	if walk_on: orbit += dt * 16.0
-	var L := board_L; var gs := -2.3; var zd := -L * 0.30; var fl := -0.05
+	var L := board_L; var gs := gnd; var zd := -L * 0.30; var fl := -0.05
 	var door_x := -2.55; var base_x := -20.9
 	for p in bd.pax: p.root.visible = false
 	for bg in bd.bags: bg.visible = false
@@ -396,7 +408,7 @@ func board_tick(on: bool, bt: float):
 	board.visible = on
 	if not on: return
 	var t := bt
-	var L := board_L; var gs := -2.3; var zd := -L * 0.30; var fl := -0.05
+	var L := board_L; var gs := gnd; var zd := -L * 0.30; var fl := -0.05
 	var door_x := -2.55; var base_x := -20.9
 	# телетрап: тоннель между терминалом и дверью, отъезжает после посадки
 	var ex := door_x - clampf((t - 9.0) / 1.2, 0.0, 1.0) * 5.0
@@ -602,7 +614,7 @@ func update_state(s: Dictionary, delta: float):
 	bld.update(lon, lat, float(s.h), mat, float(mat.get_shader_parameter("night")))
 	geo.update(lon, lat, float(s.h), mat, float(mat.get_shader_parameter("night")))
 	var alt: float = s.alt
-	plane.position = Vector3(0, alt + 3.0, 0)
+	plane.position = Vector3(0, alt - gnd + 0.33, 0)
 	var hdg: float = s.hdg
 	plane.rotation_order = EULER_ORDER_YXZ
 	plane.rotation = Vector3(float(s.theta), -deg_to_rad(hdg), -float(s.phi))
@@ -667,13 +679,13 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 	if cam_mode != 1: cam.fov = 62.0
 	var back := Vector3(0, 0, 1).rotated(Vector3.UP, -deg_to_rad(hdg))
 	var pp := plane.position
-	if cam_mode == 0 and boarding_on:
+	if cam_mode == 0 and boarding_on and not svc_manual:
 		var sw := sin(Time.get_ticks_msec() * 0.0004)
 		cam.position = plane.to_global(Vector3(-10.0 + sw * 7.0, 6.5, -board_L * 0.5 - 20.0 - sw * 3.0))
 		cam.look_at(plane.to_global(Vector3(-4.0, 0.5, -board_L * 0.3 + 3.0)), Vector3.UP)
 	elif cam_mode == 0:
 		var span := 38.0
-		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit - (_bo() if boarding_on else 0.0))) * (span * orbit_d * (0.85 if boarding_on else 1.0)) + Vector3(0, span * orbit_up + 2.0, 0)
+		cam.position = pp + back.rotated(Vector3.UP, deg_to_rad(orbit - (_bo() if (boarding_on and not svc_manual) else 0.0))) * (span * orbit_d * (0.85 if (boarding_on and not svc_manual) else 1.0)) + Vector3(0, span * orbit_up + 2.0, 0)
 		cam.look_at(pp + Vector3(0, 1.0, 0), Vector3.UP)
 	elif cam_mode == 1:
 		ckp.apply(cam, plane)
