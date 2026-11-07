@@ -48,3 +48,6 @@ https://creativecommons.org/licenses/by/4.0/legalcode
 A320-200 cockpit (A320_cockpit.glb): "A320-200 with cockpit (ver VIII)" by TonyWony
 https://sketchfab.com/3d-models/a320-200-with-cockpit-ver-viii-8006237df31a4b1c8fd5f692194328e9
 Licensed under CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: only the cockpit part is used, some materials recoloured, live screens added.
+
+B787_cockpit.glb
+This work is based on "Boeing 787 Dreamliner Cockpit" (https://sketchfab.com/3d-models/boeing-787-dreamliner-cockpit-db3c5818beb341cfa84013395f6c7cfb) by ElijahPD7000 (https://sketchfab.com/Eli-jah.Prince.Davies) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
