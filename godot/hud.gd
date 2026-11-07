@@ -3,6 +3,9 @@ extends CanvasLayer
 signal exit_pressed
 signal cabin_pressed
 var info: Label
+var topbar: Label
+var svcbar: VBoxContainer
+var wipers: Control
 var hint: Label
 var log_l: Label
 var evbox: Label
@@ -107,7 +110,9 @@ func _lamp(k: String) -> void:
 	match k:
 		"!start": Sim.act("start")
 		"!belt": get_parent()._seatbelt_sign(on)
-		"!dome", "!wipers": pass
+		"!dome": w.ckp.dome = on
+		"!wipers": wipers.visible = on
+		"taxi", "logo": w.set_light(k, on)
 		_: w.set_light(k, on)
 
 func set_viewer(on: bool) -> void:
@@ -119,7 +124,13 @@ func set_viewer(on: bool) -> void:
 	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
 	if on:
 		var t := _lbl(24); t.name = "view_t"; t.position = Vector2(20, 12); t.text = "ОСМОТР САМОЛЁТА — ВИД: двигайте пальцем; кабина: нажимайте тумблеры"; add_child(t)
-	elif get_node_or_null("view_t"): get_node("view_t").queue_free()
+		svcbar = VBoxContainer.new(); svcbar.add_theme_constant_override("separation", 4); svcbar.position = Vector2(14, 64); add_child(svcbar)
+		var ht := _lbl(16); ht.text = "НАЗЕМНЫЕ СЛУЖБЫ"; svcbar.add_child(ht)
+		for it in [["jet", "Телетрап"], ["fuel", "Топливозаправщик"], ["cat", "Кейтеринг"], ["tug", "Буксировщик / пушбэк"], ["walk", "Обход самолёта"]]:
+			var sb := _button(str(it[1]), "svc:" + str(it[0]), 210); sb.custom_minimum_size = Vector2(210, 40); sb.add_theme_font_size_override("font_size", 16); sb.name = "svc_" + str(it[0]); svcbar.add_child(sb)
+	else:
+		if get_node_or_null("view_t"): get_node("view_t").queue_free()
+		if svcbar: svcbar.queue_free(); svcbar = null
 
 func boarding(left: float):
 	var on := left > 0.0
@@ -135,6 +146,7 @@ func boarding(left: float):
 		for n in [info, hint, log_l, get_node("link"), pads]: n.visible = false
 		instr.visible = cockpit
 	if ckbar: ckbar.visible = (cockpit or viewer) and not on
+	if svcbar: svcbar.visible = not cockpit and not on
 	if ctlbar: ctlbar.visible = cockpit and not viewer and not on
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
@@ -153,6 +165,15 @@ func _build_pause() -> void:
 	var b1 := _button("ПРОДОЛЖИТЬ", "resume", 320); b1.position = Vector2(480, 250); b1.custom_minimum_size = Vector2(320, 80); b1.add_theme_font_size_override("font_size", 28); pause_ui.add_child(b1)
 	var b2 := _button("ЗАВЕРШИТЬ РЕЙС", "exit", 320); b2.position = Vector2(480, 360); b2.custom_minimum_size = Vector2(320, 70); b2.add_theme_font_size_override("font_size", 24); pause_ui.add_child(b2)
 
+func _svc(k: String) -> void:
+	var w = get_parent().world
+	w.svc_toggle(k)
+	var on: bool = w.walk_on if k == "walk" else float(w.svc_goal[k]) > 0.5
+	var b := svcbar.get_node("svc_" + k) as Button
+	var sb := b.get_theme_stylebox("normal").duplicate() as StyleBoxFlat
+	sb.bg_color = Color(0.1, 0.45, 0.25, 0.92) if on else Color(0.09, 0.11, 0.2, 0.88)
+	for st in ["normal", "hover", "pressed", "disabled"]: b.add_theme_stylebox_override(st, sb)
+
 func _on_act(a: String):
 	match a:
 		"view":
@@ -160,6 +181,7 @@ func _on_act(a: String):
 			else: get_parent().world.cycle_cam()
 		"ck:fwd", "ck:left", "ck:right", "ck:up", "ck:down", "ck:other": get_parent().world.ckp.look_to(a.substr(3))
 		"ck:zoom": get_parent().world.ckp.toggle_zoom()
+		"svc:jet", "svc:fuel", "svc:cat", "svc:tug", "svc:walk": _svc(a.substr(4))
 		"ck:seat": get_parent().world.ckp.swap_seat()
 		"pause":
 			if viewer: exit_pressed.emit()
@@ -178,6 +200,10 @@ func _on_act(a: String):
 func _ready():
 	instr = Control.new(); instr.set_script(load("res://instr.gd")); add_child(instr)
 	info = _lbl(22); info.position = Vector2(18, 10); add_child(info)
+	wipers = WiperDraw.new(); wipers.visible = false; wipers.mouse_filter = Control.MOUSE_FILTER_IGNORE; wipers.size = Vector2(1280, 238); wipers.clip_contents = true; add_child(wipers); move_child(wipers, 0)
+	topbar = _lbl(17); topbar.set_anchors_preset(Control.PRESET_CENTER_TOP); topbar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; topbar.size = Vector2(560, 30); topbar.position = Vector2(-280, 6)
+	var tsb := StyleBoxFlat.new(); tsb.bg_color = Color(0.04, 0.07, 0.12, 0.72); tsb.set_corner_radius_all(14); tsb.content_margin_left = 16; tsb.content_margin_right = 16; tsb.content_margin_top = 3; tsb.content_margin_bottom = 3
+	topbar.add_theme_stylebox_override("normal", tsb); topbar.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(topbar)
 	hint = _lbl(24); hint.position = Vector2(18, 66); hint.add_theme_color_override("font_color", Color(0.6, 1, 0.75)); add_child(hint)
 	alert = _lbl(34); alert.add_theme_color_override("font_color", Color(1, 0.35, 0.3)); alert.set_anchors_preset(Control.PRESET_CENTER_TOP); alert.position = Vector2(-220, 100); add_child(alert)
 	log_l = _lbl(18); log_l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT); log_l.position = Vector2(230, -330); add_child(log_l)
@@ -334,6 +360,17 @@ func refresh_alts():
 		altp_v.add_child(b)
 	var x := Button.new(); x.mouse_filter = Control.MOUSE_FILTER_IGNORE; x.text = "Закрыть"; x.pressed.connect(func(): altp.visible = false); altp_v.add_child(x)
 
+const CARD := ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+func _topbar(s: Dictionary) -> void:
+	topbar.visible = not viewer and not paused
+	if not topbar.visible: return
+	var hd := fposmod(float(s.hdg), 360.0)
+	var tm := int(float(s.t))
+	var w: Dictionary = s.wx
+	topbar.text = "ВЕТЕР %03d°/%d   %02d:%02d   %03d° %s   %s %.0f км %03d°" % [
+		int(round(float(w.dir) / 10.0) * 10.0) % 360, int(round(float(w.spd))), tm / 60, tm % 60, int(hd), CARD[int(round(hd / 45.0)) % 8], str(s.rw1.id), float(s.dist) / 1000.0, int(fposmod(float(s.brg), 360.0))]
+	topbar.position.y = 6.0 if cockpit else 80.0
+
 func update_state(s: Dictionary):
 	if s.is_empty(): return
 	var c: Dictionary = s.c
@@ -341,6 +378,7 @@ func update_state(s: Dictionary):
 	if cockpit != _ck_prev: _ck_prev = cockpit; pads.queue_redraw()
 	instr.put(s, mode, cockpit)
 	info.visible = mode == 0 and not cockpit and not viewer
+	_topbar(s)
 	if lightp: lightp.visible = cockpit and not paused and get_parent().world.ckp.pitch > 0.42
 	if viewer:
 		for n in [hint, alert, log_l, evbox]: n.visible = false
@@ -384,3 +422,18 @@ func _labels(s: Dictionary, c: Dictionary):
 func _mark(k: String, on) -> void:
 	if btn.has("k_" + k): btn["k_" + k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
 	if btn.has(k): btn[k].modulate = Color(0.55, 1, 0.65) if on else Color(1, 1, 1)
+
+
+class WiperDraw extends Control:
+	var t := 0.0
+	func _process(d: float) -> void:
+		t += d; queue_redraw()
+	func _draw() -> void:
+		if not get_parent().get("cockpit"): return
+		var a := 0.45 + 0.55 * (0.5 + 0.5 * sin(t * 3.2))
+		for px in [420.0, 760.0]:
+			var piv := Vector2(px, 236.0)
+			var ang := deg_to_rad(-10.0 - 62.0 * a)
+			var tip := piv + Vector2(cos(ang), sin(ang)) * 250.0
+			draw_line(piv, tip, Color(0.04, 0.04, 0.05, 0.9), 7.0)
+			draw_line(piv.lerp(tip, 0.18), tip, Color(0.12, 0.12, 0.14, 0.95), 4.0)

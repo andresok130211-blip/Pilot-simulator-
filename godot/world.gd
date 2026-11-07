@@ -174,7 +174,10 @@ func toggle_lights() -> void:
 	if lights_on: for k in lg: lg[k] = true
 	_apply_lights()
 # отдельные группы огней: nav, strobe, beacon, land (переключатели на потолочной панели)
-var lg := {"nav": true, "strobe": true, "beacon": true, "land": true}
+var lg := {"nav": true, "strobe": true, "beacon": true, "land": true, "taxi": false, "logo": false}
+var ltaxi: SpotLight3D
+var llogo: OmniLight3D
+var logo_m: MeshInstance3D
 func set_light(kind: String, on: bool) -> void:
 	lg[kind] = on
 	if on: lights_on = true
@@ -224,6 +227,12 @@ func _build_lights(L: float) -> void:
 	_blink_light(Vector3(0, -1.9, -L * 0.34), Color(1, 1, 0.9), 0.14, false, "land")    # фара
 	lland = SpotLight3D.new(); lland.position = Vector3(0, -1.8, -L * 0.34); lland.rotation_degrees = Vector3(-6, 0, 0)
 	lland.spot_range = 700.0; lland.spot_angle = 16.0; lland.light_energy = 6.0; lland.light_color = Color(1, 1, 0.92); plane.add_child(lland)
+	ltaxi = SpotLight3D.new(); ltaxi.position = Vector3(0, -1.9, -L * 0.36); ltaxi.rotation_degrees = Vector3(-17, 0, 0)
+	ltaxi.spot_range = 160.0; ltaxi.spot_angle = 42.0; ltaxi.light_energy = 3.0; ltaxi.light_color = Color(1, 0.97, 0.88); plane.add_child(ltaxi)
+	# подсветка логотипа на киле
+	llogo = OmniLight3D.new(); llogo.position = Vector3(0, 5.2, L * 0.4); llogo.omni_range = 9.0; llogo.light_energy = 1.4; plane.add_child(llogo)
+	logo_m = _box(plane, Vector3(0.05, 1.6, 2.4), Color(0.6, 0.8, 1.0), Vector3(0, 5.6, L * 0.43)); (logo_m.material_override as StandardMaterial3D).emission_enabled = true; (logo_m.material_override as StandardMaterial3D).emission = Color(0.5, 0.75, 1.0)
+	llogo.visible = false; logo_m.visible = false
 
 func _lights_ready() -> void:
 	toggle_lights()
@@ -308,9 +317,10 @@ func _build_boarding(L: float):
 	# наземный персонал: регулировщик у носа, заправщик, багаж
 	var mar := _person(Color(1.0, 0.5, 0.1), false); board.add_child(mar.root); mar.root.position = Vector3(-3.5, gs, -L * 0.5 - 7); mar.root.rotation.y = PI; bd["mar"] = mar
 	var rmp := _person(Color(1.0, 0.5, 0.1), false); board.add_child(rmp.root); rmp.root.position = Vector3(9.5, gs, -L * 0.06); rmp.root.rotation.y = PI * 0.5; bd["rmp"] = rmp
-	_box(board, Vector3(2.6, 2.2, 6.5), Color(0.9, 0.7, 0.1), Vector3(17, gs + 1.1, -L * 0.03))
-	_cyl(board, 1.15, 5.0, Color(0.85, 0.85, 0.88), Vector3(17, gs + 3.1, L * 0.0), Vector3(90, 0, 0))
-	_cyl(board, 0.07, 9.5, Color(0.1, 0.1, 0.1), Vector3(12.0, gs + 1.9, -L * 0.03), Vector3(0, 0, 70))
+	var fuel := Node3D.new(); board.add_child(fuel); bd["fuel"] = fuel
+	_box(fuel, Vector3(2.6, 2.2, 6.5), Color(0.9, 0.7, 0.1), Vector3(17, gs + 1.1, -L * 0.03))
+	_cyl(fuel, 1.15, 5.0, Color(0.85, 0.85, 0.88), Vector3(17, gs + 3.1, L * 0.0), Vector3(90, 0, 0))
+	_cyl(fuel, 0.07, 9.5, Color(0.1, 0.1, 0.1), Vector3(12.0, gs + 1.9, -L * 0.03), Vector3(0, 0, 70))
 	# багажный погрузчик: наклонная лента и чемоданы
 	var belt := _box(board, Vector3(0.9, 0.16, 6.4), Color(0.2, 0.2, 0.22), Vector3(5.2, gs + 1.35, L * 0.12)); belt.rotation_degrees = Vector3(0, 0, 0)
 	belt.rotation_degrees = Vector3(0, 90, 0); belt.rotation_degrees.z = 0
@@ -321,8 +331,9 @@ func _build_boarding(L: float):
 		var bg := _box(board, Vector3(0.7, 0.4, 0.5), Color.from_hsv(randf(), 0.5, 0.6), Vector3(0, 0, 0)); bags.append(bg)
 	bd["bags"] = bags
 	# кейтеринг на задней левой двери
-	var ct := _box(board, Vector3(5.0, 2.6, 2.4), Color(0.9, 0.9, 0.95), Vector3(-9.5, gs + 1.7, L * 0.30))
-	var plat := _box(board, Vector3(2.4, 0.2, 2.2), Color(0.7, 0.72, 0.78), Vector3(-5.0, gs + 1.4, L * 0.30)); bd["plat"] = plat
+	var cat := Node3D.new(); board.add_child(cat); bd["cat"] = cat
+	var ct := _box(cat, Vector3(5.0, 2.6, 2.4), Color(0.9, 0.9, 0.95), Vector3(-9.5, gs + 1.7, L * 0.30))
+	var plat := _box(cat, Vector3(2.4, 0.2, 2.2), Color(0.7, 0.72, 0.78), Vector3(-5.0, gs + 1.4, L * 0.30)); bd["plat"] = plat
 	# буксировщик заходит к носу
 	var tug := Node3D.new(); board.add_child(tug); bd["tug"] = tug
 	_box(tug, Vector3(2.4, 1.0, 3.6), Color(0.7, 0.15, 0.12), Vector3(0, gs + 0.5, 0)); _box(tug, Vector3(1.8, 0.8, 1.4), Color(0.8, 0.8, 0.85), Vector3(0, gs + 1.3, 0.6))
@@ -345,6 +356,39 @@ func board_phase(t: float) -> String:
 	if t < 9.0: return "Посадка пассажиров, погрузка багажа и заправка"
 	if t < 10.5: return "Двери закрываются, телетрап отъезжает"
 	return "Подключён буксировщик — готовность к запуску"
+
+# ---------- ручное меню наземных служб (режим осмотра самолёта) ----------
+var svc_manual := false
+var svc := {"jet": 0.0, "fuel": 0.0, "cat": 0.0, "tug": 0.0}
+var svc_goal := {"jet": 0.0, "fuel": 0.0, "cat": 0.0, "tug": 0.0}
+var walk_on := false
+func svc_reset() -> void:
+	for k in svc: svc[k] = 0.0; svc_goal[k] = 0.0
+	walk_on = false
+func svc_toggle(k: String) -> void:
+	if k == "walk": walk_on = not walk_on; return
+	svc_goal[k] = 1.0 - float(svc_goal[k])
+func svc_tick(dt: float) -> void:
+	if board == null or not svc_manual: return
+	board.visible = cam_mode != 1
+	for k in svc: svc[k] = move_toward(float(svc[k]), float(svc_goal[k]), dt / 3.0)
+	if walk_on: orbit += dt * 16.0
+	var L := board_L; var gs := -2.3; var zd := -L * 0.30; var fl := -0.05
+	var door_x := -2.55; var base_x := -20.9
+	for p in bd.pax: p.root.visible = false
+	for bg in bd.bags: bg.visible = false
+	var e := ease(float(svc.jet), 0.7)
+	var ex := lerpf(base_x + 1.5, door_x, e)
+	var br: Node3D = bd.bridge; br.position = Vector3((base_x + ex) * 0.5, 0, zd)
+	for ch in br.get_children():
+		if ch is MeshInstance3D and ch.mesh is BoxMesh: (ch.mesh as BoxMesh).size.x = ex - base_x
+	(bd.fuel as Node3D).position.x = lerpf(34.0, 0.0, ease(float(svc.fuel), 0.7)); (bd.fuel as Node3D).visible = float(svc.fuel) > 0.01
+	(bd.cat as Node3D).position.x = lerpf(-20.0, 0.0, ease(float(svc.cat), 0.7)); (bd.cat as Node3D).visible = float(svc.cat) > 0.01
+	(bd.plat as MeshInstance3D).position.y = gs + lerpf(1.4, 3.1, clampf((float(svc.cat) - 0.6) / 0.4, 0.0, 1.0))
+	var tug: Node3D = bd.tug; var k := ease(float(svc.tug), 0.7)
+	tug.visible = float(svc.tug) > 0.01
+	tug.position = Vector3(lerpf(-16.0, 0.0, minf(k * 1.3, 1.0)), 0, -L * 0.5 - lerpf(16.0, 5.2, k)); tug.rotation.y = lerpf(0.5, 0.0, minf(k * 1.3, 1.0))
+	(bd.beacon as MeshInstance3D).visible = float(svc.tug) > 0.5 and fmod(Time.get_ticks_msec() / 333.0, 1.0) < 0.5
 
 func board_tick(on: bool, bt: float):
 	if board == null: return
@@ -566,6 +610,8 @@ func update_state(s: Dictionary, delta: float):
 	var gp: float = clampf(float(s.get("gear", 1.0)), 0.0, 1.0)
 	if gear: gear.visible = gp > 0.03; gear.scale = Vector3(1, gp, 1)
 	if lland: lland.visible = gp > 0.5 and light_k > 0.5 and lights_on and bool(lg["land"])
+	if ltaxi: ltaxi.visible = gp > 0.5 and light_k > 0.5 and bool(lg["taxi"])
+	if llogo: llogo.visible = bool(lg["logo"]) and light_k > 0.2; logo_m.visible = llogo.visible
 	_blink_tick()
 	# аэродромы: ближайшие 8 -> шейдер, узлы -> позиции
 	var near := []

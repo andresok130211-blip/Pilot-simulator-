@@ -175,9 +175,14 @@ func _view(id: String) -> void:
 	_start("", "none")
 	if not playing: viewer = false; Sim.g("game_view_end"); menu.open("hub"); return
 	board_left = 0.0; hud.viewer = true; hud.set_viewer(true); world.orbit = 35.0
+	world.svc_reset(); world.svc_manual = true; world.board_tick(true, 0.0)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--lamps="):
+			for k in a.substr(8).split(","): hud._lamp(k)
+		if a.begins_with("--svc="): for k in a.substr(6).split(","): hud._svc(k); if k != "walk": world.svc[k] = 1.0
 
 func _viewer_exit() -> void:
-	viewer = false; playing = false; hud.set_viewer(false); hud.visible = false; world.visible = false; world.cam_mode = 0
+	viewer = false; world.svc_manual = false; playing = false; hud.set_viewer(false); hud.visible = false; world.visible = false; world.cam_mode = 0
 	Sim.g("game_view_end"); menu.open("hub")
 
 func _to_menu():
@@ -250,7 +255,8 @@ func _process(delta: float):
 			if rec.size() > 6000: rec = rec.slice(1000)
 		if prof_t >= 5.0: prof_t = 0.0; prof.append(float(s.get("alt", 0.0)))
 	if s.get("done", false) and world.cam_mode == 0: world.orbit += delta * 16.0
-	world.board_tick(board_left > 0.0 and world.cam_mode != 1, world.BOARD_T - board_left)
+	if world.svc_manual: world.svc_tick(delta)
+	else: world.board_tick(board_left > 0.0 and world.cam_mode != 1, world.BOARD_T - board_left)
 	hud.boarding(board_left)
 	if s.get("done", false):
 		end_t += delta

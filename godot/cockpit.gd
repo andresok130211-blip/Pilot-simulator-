@@ -7,6 +7,12 @@ var glb := false
 var gscale := 7.5
 var geye := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
 var is787 := false
+var dome := false
+var thr787: Array = []
+const T787 := {"Interior_White": Color(0.74, 0.69, 0.58), "Console_Glay": Color(0.36, 0.42, 0.52), "Pedestal_White": Color(0.55, 0.62, 0.74), "Overhed_Panel": Color(0.22, 0.28, 0.38),
+	"pedestal_lightglay": Color(0.52, 0.56, 0.62), "Cockpit_Alminium": Color(0.68, 0.7, 0.75), "Display_Flame": Color(0.14, 0.17, 0.22), "pedestal_main": Color(0.4, 0.44, 0.5),
+	"pedestal_01": Color(0.42, 0.46, 0.52), "ModeControl_Panel1": Color(0.3, 0.34, 0.4), "SidePanel": Color(0.38, 0.42, 0.5), "Interior_Black": Color(0.17, 0.15, 0.14),
+	"Pedestal_Black": Color(0.15, 0.16, 0.19), "Stick_Black": Color(0.12, 0.12, 0.13), "DreamLiner_LOGO1": Color(0.15, 0.35, 0.65), "material_21": Color(0.5, 0.36, 0.26)}
 const EYE_Y := 0.2   # высота глаз над точкой отсчёта: 1,22 м от пола кабины
 const ORIGIN := Vector3(0.0, 1.5, -14.0)   # точка между глазами пилотов в системе самолёта
 var world: Node3D
@@ -175,6 +181,16 @@ func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 	_sc(par.transform * _xf(p + Vector3(0, 0, 0.0005), Vector3(90, 0, 0)), r + 0.004, 0.002, Color(0.55, 0.57, 0.6))
 
 # ---------- кабина A320 из модели (TonyWony, CC BY 4.0) ----------
+func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55) -> void:
+	var st := Node3D.new(); st.position = o; st.rotation_degrees = Vector3(rot_x, 0, 0); st.scale = Vector3.ONE * sc; par.add_child(st)
+	var defs := [["АП", "ap"], ["АТ", "at"], ["ПОСАДКА", "appr"], ["NAV", "nav"], ["ВЫС +", "altu"], ["ВЫС −", "altd"], ["ШАССИ", "gear"], ["СТОЯН.", "brake"]]
+	var n := defs.size()
+	for i in range(n):
+		var d: Array = defs[i]
+		var col := Color(0.2, 0.22, 0.27) if i < 6 else Color(0.34, 0.16, 0.14)
+		var gl := Color(0.3, 1.0, 0.45) if i < 6 else Color(1.0, 0.45, 0.2)
+		_push(st, Vector3((float(i) - float(n - 1) * 0.5) * 0.066, 0, 0), Vector2(0.056, 0.03), col, str(d[1]), str(d[0]), gl)
+
 func _build_787() -> void:
 	var m: Node3D = (load("res://assets/planes/B787_cockpit.glb") as PackedScene).instantiate()
 	root.add_child(m)
@@ -195,12 +211,24 @@ func _build_787() -> void:
 				(mi as MeshInstance3D).set_surface_override_material(i, gm)
 			elif mt is StandardMaterial3D:
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
-				nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a); nm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				var rn := str(mt.resource_name)
+				if T787.has(rn): nm.albedo_color = T787[rn]
+				else: nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a)
+				nm.cull_mode = BaseMaterial3D.CULL_DISABLED
 				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 	# живые экраны: PFD / ND / ND / PFD
 	var xs := [-0.575, -0.225, 0.225, 0.575]; var ks := ["pfd", "nd", "nd", "pfd"]
 	for i in range(4):
 		_gdisplay(m, Vector3(float(xs[i]), 0.69, -2.036), 0.22, str(ks[i]), Vector2i(256, 256), 0.0, Vector2(0.31, 0.22))
+	# рычаги тяги двигаются вместе с тягой
+	thr787.clear()
+	for grp in [["1347", "1349", "1351", "1367"], ["1378", "1380", "1382", "1362"]]:
+		var pv := Node3D.new(); m.add_child(pv); pv.position = Vector3(-0.03 if thr787.size() == 0 else 0.03, 0.36, -1.58)
+		for nm in grp:
+			var mi := m.find_child("Object_" + str(nm), true, false)
+			if mi != null: mi.reparent(pv, true)
+		thr787.append(pv)
+	_ctl_strip(root, Vector3(0.02, -0.04, -0.94), -30.0)
 	_lights_in()
 	_pilots_glb()
 
@@ -215,6 +243,7 @@ func _build_glb() -> void:
 	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
 	_glb_trim(m, m)
 	_glb_fix(m)
+	_ctl_strip(root, Vector3(-0.18, 0.02, -0.62), -35.0, 0.85)
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
 	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
@@ -247,7 +276,10 @@ func _glb_fix(m: Node) -> void:
 			var mt := me.surface_get_material(i)
 			if mt is StandardMaterial3D and (str(mt.resource_name).contains("dash") or str(mt.resource_name).contains("standed_2") or str(mt.resource_name).contains("black_leather")):
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
-				nm.albedo_texture = null; nm.albedo_color = Color(0.1, 0.105, 0.115); (mi as MeshInstance3D).set_surface_override_material(i, nm)
+				nm.albedo_texture = null
+				var rn := str(mt.resource_name)
+				nm.albedo_color = Color(0.13, 0.19, 0.31) if rn.contains("dash") else (Color(0.3, 0.34, 0.42) if rn.contains("standed_2") else Color(0.2, 0.22, 0.28))
+				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 
 func _meshes(n: Node) -> Array:
 	var out := []
@@ -726,11 +758,14 @@ func tick(s: Dictionary, thr: Array, roll: float, stick: float, dt: float) -> vo
 	# освещение по времени суток
 	var nk := clampf((world.light_k - 0.3) / 0.7, 0.0, 1.0)
 	env.ambient_light_energy = lerpf(0.95, 0.32, nk); light.light_energy = lerpf(0.7, 0.05, nk)
-	for o in amb_lamps: (o as OmniLight3D).light_energy = lerpf(0.12, 0.55, nk)
+	for o in amb_lamps: (o as OmniLight3D).light_energy = lerpf(0.12, 0.55, nk) * (3.0 if dome else 1.0)
+	if dome: env.ambient_light_energy = maxf(env.ambient_light_energy, 0.85)
 	# экраны
 	for k in scr: (scr[k].ins as Control).call("put", s, 2, true)
 	var c: Dictionary = s.c
-	if glb: return
+	if glb:
+		for i in range(mini(thr787.size(), 2)): (thr787[i] as Node3D).rotation.x = -float(thr[i]) * 0.5
+		_sync(s, c, dt); return
 	_mcp(s, c)
 	for i in range(2): (thr_lev[i] as Node3D).rotation.x = (float(thr[i]) * 0.9) - 0.0
 	for y in yokes:
@@ -800,8 +835,9 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 				var tz: float = -(float(it.step) - float(int(it.steps) - 1) * 0.5) * 0.7
 				n.rotation.z = lerpf(n.rotation.z, tz, minf(1.0, dt * 14.0))
 	# автоторможение — ручка показывает режим
-	var ab: Dictionary = mcp["abrk"]
-	ab["step"] = clampi(int(c.get("abrk", 0)) + 1, 0, 5)
+	if mcp.has("abrk"):
+		var ab: Dictionary = mcp["abrk"]
+		ab["step"] = clampi(int(c.get("abrk", 0)) + 1, 0, 5)
 
 # ---------- касания ----------
 func pick(pos: Vector2) -> void:

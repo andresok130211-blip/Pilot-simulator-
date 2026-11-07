@@ -69,7 +69,10 @@ func _want(x: int, y: int, k: String) -> void:
 	if FileAccess.file_exists(path):
 		var f := FileAccess.open(path, FileAccess.READ)
 		var data = JSON.parse_string(f.get_as_text())
-		if data is Dictionary: build_q.append([k, data]); return
+		if data is Dictionary:
+			build_q.append([k, data])
+			if not data.has("v") and online: net_q.append(k)     # старый кеш без воды — обновим
+			return
 	if online: net_q.append(k)
 
 func prefetch(lon: float, lat: float) -> void:
@@ -97,28 +100,57 @@ func _fetch(k: String) -> void:
 	net_busy = true
 	var b := _bounds(k)
 	var bb := "(%f,%f,%f,%f)" % [b[0], b[1], b[2], b[3]]
-	var q := "[out:json][timeout:25];(way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified)$\"]%s;way[\"natural\"=\"wood\"]%s;way[\"landuse\"=\"forest\"]%s;);out tags geom;" % [bb, bb, bb]
+	var q := "[out:json][timeout:25];(way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified)$\"]%s;way[\"natural\"=\"wood\"]%s;way[\"landuse\"=\"forest\"]%s;way[\"natural\"=\"water\"]%s;way[\"waterway\"~\"^(river|canal)$\"]%s;);out tags geom;" % [bb, bb, bb, bb, bb]
 	var rq := HTTPRequest.new(); rq.timeout = 30.0; rq.body_size_limit = 24 * 1024 * 1024; add_child(rq)
 	rq.request_completed.connect(func(res: int, code: int, _h: PackedStringArray, body: PackedByteArray):
 		rq.queue_free(); net_busy = false
 		if res != 0 or code != 200: return
 		var js = JSON.parse_string(body.get_string_from_utf8())
 		if not (js is Dictionary) or not js.has("elements"): return
-		var roads := []; var forests := []
+		var roads := []; var forests := []; var lakes := []; var rivers := []
 		for el in js.elements:
 			if el.get("type", "") != "way" or not el.has("geometry"): continue
 			var tg: Dictionary = el.get("tags", {})
 			var pts := []
 			for g in el.geometry: pts.append(snappedf(float(g.lat), 0.000001)); pts.append(snappedf(float(g.lon), 0.000001))
 			if tg.has("highway"): roads.append([str(tg.highway), pts])
+			elif tg.has("waterway"): rivers.append([str(tg.waterway), pts])
+			elif str(tg.get("natural", "")) == "water": lakes.append(pts)
 			else: forests.append(pts)
-		var data := {"r": roads, "f": forests}
+		var data := {"r": roads, "f": forests, "w": lakes, "rv": rivers, "v": 2}
 		var p := k.split("_")
 		var f := FileAccess.open("user://geo/%d_%d.json" % [int(p[0]), int(p[1])], FileAccess.WRITE)
 		if f: f.store_string(JSON.stringify(data))
 		if cells.has(k): build_q.append([k, data]))
 	if rq.request("https://overpass-api.de/api/interpreter?data=" + q.uri_encode()) != OK:
 		rq.queue_free(); net_busy = false
+
+func _water(root: Node3D, data: Dictionary, o_lat: float, o_lon: float) -> void:
+	var v := PackedVector3Array(); var n := PackedVector3Array(); var c := PackedColorArray(); var idx := PackedInt32Array()
+	var wc := Color(0.16, 0.38, 0.58)
+	for l in data.get("w", []):
+		var poly := _to_m(l, o_lat, o_lon)
+		if poly.size() > 1 and poly[0].distance_to(poly[poly.size() - 1]) < 0.5: poly.remove_at(poly.size() - 1)
+		if poly.size() < 3: continue
+		var tri := Geometry2D.triangulate_polygon(poly)
+		if tri.is_empty(): continue
+		var base := v.size()
+		for q in poly: v.append(Vector3(q.x, 0.55, q.y)); n.append(Vector3.UP); c.append(wc)
+		for t in tri: idx.append(base + t)
+	for r in data.get("rv", []):
+		var poly2 := _to_m(r[1], o_lat, o_lon); var w: float = (14.0 if str(r[0]) == "river" else 7.0) * 0.5
+		for i in range(poly2.size() - 1):
+			var d := poly2[i + 1] - poly2[i]; var ln := d.length()
+			if ln < 0.5: continue
+			var nm := Vector2(-d.y, d.x) / ln * w; var base2 := v.size()
+			for q in [poly2[i] + nm, poly2[i] - nm, poly2[i + 1] - nm, poly2[i + 1] + nm]:
+				v.append(Vector3(q.x, 0.55, q.y)); n.append(Vector3.UP); c.append(wc)
+			idx.append_array(PackedInt32Array([base2, base2 + 1, base2 + 2, base2, base2 + 2, base2 + 3]))
+	if v.is_empty(): return
+	var arr := []; arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v; arr[Mesh.ARRAY_NORMAL] = n; arr[Mesh.ARRAY_COLOR] = c; arr[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new(); m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new(); mi.mesh = m; mi.material_override = mat; mi.extra_cull_margin = 400.0; mi.custom_aabb = AABB(Vector3(-100, -200, -100), Vector3(3000, 600, 3000)); root.add_child(mi)
 
 const W := {"motorway": 14.0, "trunk": 12.0, "primary": 10.0, "secondary": 8.0, "tertiary": 7.0, "residential": 5.0, "unclassified": 5.0}
 
@@ -129,7 +161,9 @@ func _to_m(pts: Array, o_lat: float, o_lon: float) -> PackedVector2Array:
 
 func _build(k: String, data: Dictionary) -> void:
 	var b := _bounds(k); var o_lat: float = b[0]; var o_lon: float = b[1]
+	if cells.get(k) is Node3D: (cells[k] as Node3D).queue_free()
 	var root := Node3D.new(); add_child(root); cells[k] = root
+	_water(root, data, o_lat, o_lon)
 	# дороги
 	var v := PackedVector3Array(); var n := PackedVector3Array(); var c := PackedColorArray(); var idx := PackedInt32Array()
 	for r in data.get("r", []):
