@@ -7,6 +7,10 @@ var glb := false
 var gscale := 7.5
 var geye := Vector3(1.05, 0.115, -0.075)   # глаза капитана в координатах модели
 var is787 := false
+const T787 := {"Interior_White": Color(0.74, 0.69, 0.58), "Console_Glay": Color(0.36, 0.42, 0.52), "Pedestal_White": Color(0.55, 0.62, 0.74), "Overhed_Panel": Color(0.22, 0.28, 0.38),
+	"pedestal_lightglay": Color(0.52, 0.56, 0.62), "Cockpit_Alminium": Color(0.68, 0.7, 0.75), "Display_Flame": Color(0.14, 0.17, 0.22), "pedestal_main": Color(0.4, 0.44, 0.5),
+	"pedestal_01": Color(0.42, 0.46, 0.52), "ModeControl_Panel1": Color(0.3, 0.34, 0.4), "SidePanel": Color(0.38, 0.42, 0.5), "Interior_Black": Color(0.17, 0.15, 0.14),
+	"Pedestal_Black": Color(0.15, 0.16, 0.19), "Stick_Black": Color(0.12, 0.12, 0.13), "DreamLiner_LOGO1": Color(0.15, 0.35, 0.65), "material_21": Color(0.5, 0.36, 0.26)}
 const EYE_Y := 0.2   # высота глаз над точкой отсчёта: 1,22 м от пола кабины
 const ORIGIN := Vector3(0.0, 1.5, -14.0)   # точка между глазами пилотов в системе самолёта
 var world: Node3D
@@ -195,7 +199,10 @@ func _build_787() -> void:
 				(mi as MeshInstance3D).set_surface_override_material(i, gm)
 			elif mt is StandardMaterial3D:
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
-				nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a); nm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				var rn := str(mt.resource_name)
+				if T787.has(rn): nm.albedo_color = T787[rn]
+				else: nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a)
+				nm.cull_mode = BaseMaterial3D.CULL_DISABLED
 				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 	# живые экраны: PFD / ND / ND / PFD
 	var xs := [-0.575, -0.225, 0.225, 0.575]; var ks := ["pfd", "nd", "nd", "pfd"]
@@ -247,7 +254,10 @@ func _glb_fix(m: Node) -> void:
 			var mt := me.surface_get_material(i)
 			if mt is StandardMaterial3D and (str(mt.resource_name).contains("dash") or str(mt.resource_name).contains("standed_2") or str(mt.resource_name).contains("black_leather")):
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
-				nm.albedo_texture = null; nm.albedo_color = Color(0.1, 0.105, 0.115); (mi as MeshInstance3D).set_surface_override_material(i, nm)
+				nm.albedo_texture = null
+				var rn := str(mt.resource_name)
+				nm.albedo_color = Color(0.13, 0.19, 0.31) if rn.contains("dash") else (Color(0.3, 0.34, 0.42) if rn.contains("standed_2") else Color(0.2, 0.22, 0.28))
+				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 
 func _meshes(n: Node) -> Array:
 	var out := []
