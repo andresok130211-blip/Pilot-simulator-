@@ -128,7 +128,7 @@ export function sim_debug(o) {
 // ======================= карьера (то же, что в main.js, без DOM) =======================
 const RANKS = [['Курсант', 0], ['Второй пилот', 500], ['Пилот', 1500], ['Командир', 3500], ['Капитан-инструктор', 7000], ['Легенда авиации', 15000]];
 function rankOf(xp) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (xp >= RANKS[k][1]) i = k; const nx = RANKS[i + 1]; return { name: RANKS[i][0], i, next: nx ? nx[0] : null, from: RANKS[i][1], to: nx ? nx[1] : RANKS[i][1], pct: nx ? (xp - RANKS[i][1]) / (nx[1] - RANKS[i][1]) : 1 }; }
-const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: false, cam: 0, hints: true, sat: true, mode: 0, tod: 'rnd', sound: true, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, daily: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
+const save = { money: 0, owned: ['ssj'], plane: 'ssj', loc: 'SVO', flights: 0, landings: 0, bestSink: null, pax: 0, assistAuto: true, assistCfg: true, assistTaxi: true, taxiOps: true, cam: 0, hints: true, sat: true, mode: 0, tod: 'rnd', sound: true, emerg: 2, wxLvl: 1, season: 0, xp: 0, evOk: 0, evLate: 0, evFail: 0, wear: {}, fatigue: 0, fuelMul: 1, crews: 0, school: {}, daily: {}, top: [], stat: { maxKm: 0, streak: 0, best: 0, min: 0 }, rep: 50, lease: {}, copilot: false };
 let contractCur = null, lastResult = null, applied = false;
 const wearOf = id => Math.round(save.wear[id] || 0);
 const fleetIds = () => [...save.owned, ...Object.keys(save.lease).filter(k => save.lease[k] > 0 && !save.owned.includes(k))];
@@ -236,7 +236,7 @@ export function game_begin(to, drill, kind, id, pf) {
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
   F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from: from2, to: to2, bearing: brg, distM: rf ? rf.distM : c.km * 1000, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
-    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : !!save.taxiOps, drill: !!drill, force: drill ? [drill] : undefined,
+    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : true, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
