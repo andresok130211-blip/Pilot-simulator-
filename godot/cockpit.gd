@@ -50,6 +50,11 @@ var snd: Node
 var hud: Node
 var _lbl_cache := {}
 var style := ""
+var cur_pid := ""
+var tint := Color(1, 1, 1)
+var adash := Color(0.13, 0.19, 0.31)
+const TINT := {"b738": Color(1.0, 0.92, 0.80), "b763": Color(0.88, 0.92, 0.76), "b77w": Color(0.84, 0.92, 1.08), "crj2": Color(0.78, 0.8, 0.78), "e190": Color(1.0, 0.84, 0.84), "e175": Color(0.86, 1.0, 0.9), "t204": Color(1.0, 0.78, 0.58)}
+const ADASH := {"a321": Color(0.2, 0.2, 0.23), "a223": Color(0.1, 0.25, 0.23), "a333": Color(0.22, 0.15, 0.1), "a359": Color(0.08, 0.1, 0.2), "ssj": Color(0.25, 0.17, 0.2), "mc21": Color(0.14, 0.24, 0.14)}
 const AIRBUS := ["ssj", "mc21", "a320", "a321", "a223", "a333", "a359"]
 
 func setup(w: Node3D, h: Node, sn: Node) -> void:
@@ -72,7 +77,9 @@ func setup(w: Node3D, h: Node, sn: Node) -> void:
 # перестраивает кабину под самолёт: Airbus-подобные — боковая ручка и светлая панель, остальные — штурвал
 func configure(pid: String) -> void:
 	var st := "airbus" if pid in AIRBUS else "boeing"
-	if st == style: return
+	if st == style and pid == cur_pid: return
+	cur_pid = pid
+	tint = TINT.get(pid, Color(1, 1, 1)); adash = ADASH.get(pid, Color(0.13, 0.19, 0.31))
 	style = st
 	glb = true
 	thr787.clear(); mcpd.clear()
@@ -143,7 +150,11 @@ func _push(par: Node3D, p: Vector3, sz: Vector2, col: Color, act: String, label 
 	_sb(par.transform * _xf(p + Vector3(0, 0, -0.001)), Vector3(sz.x + 0.006, sz.y + 0.006, 0.004), Color(0.02, 0.02, 0.025))
 	var it := _item(mi, "push", act, Vector3(maxf(sz.x, 0.026) * 0.5, maxf(sz.y, 0.026) * 0.5, 0.012), Vector3.ZERO, m, lcol)
 	it["col"] = col; it["on"] = lit; it["kk"] = "push"
-	if label != "" and act != "": _lab(par, label, p + Vector3(0, -(sz.y * 0.5 + 0.0075), 0), 0.0058)
+	if label != "" and act != "":
+		if _lab_on:
+			var tl := _lab(par, label, p + Vector3(0, 0, 0.0115), minf(0.011, sz.x * 1.5 / maxf(float(label.length()), 4.0)), Color(1, 1, 1))
+			tl.outline_size = 6; tl.outline_modulate = Color(0, 0, 0, 0.9)
+		else: _lab(par, label, p + Vector3(0, -(sz.y * 0.5 + 0.0075), 0), 0.0058)
 	return it
 
 # тумблер
@@ -183,10 +194,33 @@ func _static_ring(par: Node3D, p: Vector3, r: float) -> void:
 
 # ---------- кабина A320 из модели (TonyWony, CC BY 4.0) ----------
 var mcpd := {}
+var _lab_on := false
+# задняя переборка с дверью в салон (когда смотришь назад из кабины)
+func _rear(z: float, w: float, ybot: float, ytop: float, zfront: float) -> void:
+	var wall := Color(0.62, 0.64, 0.68) * tint; var dr := Color(0.3, 0.33, 0.42) * tint
+	var dark := Color(0.08, 0.08, 0.1)
+	var yc := (ybot + ytop) * 0.5; var hh := ytop - ybot
+	_sb(_xf(Vector3(0, yc, z)), Vector3(w * 2.0, hh, 0.06), wall)                       # переборка
+	_sb(_xf(Vector3(0, ybot - 0.01, (z + zfront) * 0.5)), Vector3(w * 2.0, 0.04, z - zfront), Color(0.28, 0.3, 0.34))   # пол
+	_sb(_xf(Vector3(0, ytop, (z + zfront) * 0.5)), Vector3(w * 2.0, 0.04, z - zfront), wall)                            # потолок
+	for sx in [-1.0, 1.0]:
+		_sb(_xf(Vector3(sx * w, yc, (z + zfront) * 0.5)), Vector3(0.04, hh, z - zfront), wall)                         # борта
+	var dz := z - 0.04
+	_sb(_xf(Vector3(0, ybot + 0.98, dz - 0.0)), Vector3(0.9, 1.96, 0.03), dark)           # проём
+	_sb(_xf(Vector3(0, ybot + 0.98, dz - 0.03)), Vector3(0.82, 1.9, 0.03), dr)            # дверь
+	_sb(_xf(Vector3(0, ybot + 1.45, dz - 0.05)), Vector3(0.18, 0.28, 0.02), Color(0.12, 0.2, 0.28))   # иллюминатор
+	_sb(_xf(Vector3(0.3, ybot + 0.95, dz - 0.06)), Vector3(0.05, 0.14, 0.03), Color(0.75, 0.76, 0.8))  # ручка
+	_sb(_xf(Vector3(0.38, ybot + 1.1, dz - 0.05)), Vector3(0.1, 0.14, 0.02), Color(0.1, 0.1, 0.12))   # замок/клавиатура
+	var tl := _lab(root, "ВХОД В КАБИНУ", Vector3(0, ybot + 1.93, dz - 0.07), 0.05, Color(0.9, 0.92, 0.95)); tl.rotation_degrees.y = 180.0
+
+func self_rear_par() -> Node3D:
+	return root
+
 func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := false) -> void:
 	var st := Node3D.new(); st.position = o; st.rotation_degrees = Vector3(rot_x, 0, 0); st.scale = Vector3.ONE * sc; par.add_child(st)
 	_sb(st.transform * _xf(Vector3(0, 0.0, -0.002)), Vector3(0.98, 0.135 if not extra else 0.19, 0.008), Color(0.05, 0.06, 0.08))
 	var dk := Color(0.2, 0.22, 0.27); var gl := Color(0.3, 1.0, 0.45)
+	_lab_on = true
 	# три окна значений
 	for g in [["СКОР", -0.27, "spd", "spd-", "spd+", "АВТО", "spda"], ["КУРС", 0.0, "hdg", "hdg-", "hdg+", "HDG", "hdgm"], ["ВЫС", 0.27, "alt", "altd", "altu", "", ""]]:
 		var gx: float = float(g[1])
@@ -198,7 +232,7 @@ func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := fals
 		if str(g[6]) != "": _push(st, Vector3(gx, 0.065, 0.0), Vector2(0.06, 0.02), Color(0.16, 0.2, 0.28), str(g[6]), str(g[5]), Color(1.0, 0.8, 0.3))
 	# режимные кнопки слева и справа
 	_push(st, Vector3(-0.43, 0.025, 0.0), Vector2(0.075, 0.034), dk, "at", "АВТОТЯГА", gl)
-	_push(st, Vector3(-0.43, -0.018, 0.0), Vector2(0.075, 0.034), dk, "nav", "ПО МАРШРУТУ", gl)
+	_push(st, Vector3(-0.43, -0.018, 0.0), Vector2(0.075, 0.034), dk, "nav", "МАРШРУТ", gl)
 	_push(st, Vector3(0.43, 0.025, 0.0), Vector2(0.075, 0.034), dk, "ap", "АВТОПИЛОТ", gl)
 	_push(st, Vector3(0.43, -0.018, 0.0), Vector2(0.075, 0.034), dk, "appr", "ПОСАДКА", gl)
 	if extra:
@@ -207,6 +241,7 @@ func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := fals
 		_push(st, Vector3(0.10, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl-", "ЗАКРЫЛКИ −", gl)
 		_push(st, Vector3(0.30, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl+", "ЗАКРЫЛКИ +", gl)
 
+# (метки кнопок вне пульта снова под кнопкой)
 # горизонтальная площадка с кнопками (пьедестал): локальный +z смотрит вверх
 func _pad(par: Node3D, o: Vector3, rot_x: float) -> Node3D:
 	var n := Node3D.new(); n.position = o; n.rotation_degrees = Vector3(rot_x, 0, 0); par.add_child(n); return n
@@ -232,8 +267,8 @@ func _build_787() -> void:
 			elif mt is StandardMaterial3D:
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
 				var rn := str(mt.resource_name)
-				if T787.has(rn): nm.albedo_color = T787[rn]
-				else: nm.albedo_color = Color(nm.albedo_color.r * 0.62, nm.albedo_color.g * 0.64, nm.albedo_color.b * 0.68, nm.albedo_color.a)
+				if T787.has(rn): nm.albedo_color = T787[rn] * tint
+				else: nm.albedo_color = Color(nm.albedo_color.r * 0.62 * tint.r, nm.albedo_color.g * 0.64 * tint.g, nm.albedo_color.b * 0.68 * tint.b, nm.albedo_color.a)
 				nm.cull_mode = BaseMaterial3D.CULL_DISABLED
 				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 	# живые экраны: PFD / ND / ND / PFD
@@ -256,8 +291,10 @@ func _build_787() -> void:
 	_push(pd, Vector3(-0.16, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "brake", "СТОЯН.", Color(1.0, 0.45, 0.2))
 	_push(pd, Vector3(0.0, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl-", "ЗАКР. −", Color(0.3, 1.0, 0.45))
 	_push(pd, Vector3(0.16, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl+", "ЗАКР. +", Color(0.3, 1.0, 0.45))
+	_lab_on = false
 	_lights_in()
 	_pilots_glb()
+	_rear(1.9, 1.3, -1.0, 0.95, 0.4)
 
 func _build_glb() -> void:
 	if is787:
@@ -270,7 +307,13 @@ func _build_glb() -> void:
 	m.position = Vector3(-SEAT_X, EYE_Y, 0.0) - e
 	_glb_trim(m, m)
 	_glb_fix(m)
-	_ctl_strip(root, Vector3(-0.1, 0.02, -0.62), -35.0, 0.85, true)
+	# всё, что оказалось позади пилотов (обрывки обшивки), убираем — там будет задняя переборка
+	var inv0 := root.global_transform.affine_inverse()
+	for mi in _meshes(m):
+		var cb: AABB = (inv0 * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
+		if cb.get_center().z > 0.3 and cb.position.z > 0.0: mi.queue_free()
+	_ctl_strip(root, Vector3(-0.1, 0.11, -0.5), -30.0, 0.7, true)
+	_lab_on = false
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
 	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
@@ -281,6 +324,7 @@ func _build_glb() -> void:
 		_gdisplay(m, Vector3(fx, float(it[1]), float(it[0])), 0.0235 if it[2] != "eng" else 0.0235, str(it[2]), it[3])
 	_lights_in()
 	_pilots_glb()
+	_rear(1.9, 1.3, -1.0, 0.95, 0.4)
 	_hud_root_hint = true
 
 var _hud_root_hint := false
@@ -293,6 +337,7 @@ func _glb_trim(m: Node3D, top: Node3D) -> void:
 		var keep := false
 		var mm := (mi as MeshInstance3D).mesh
 		if mm != null and mm.get_surface_count() > 0 and mm.surface_get_material(0) != null and str(mm.surface_get_material(0).resource_name).contains("fuselarge"): keep = true
+		if keep and (mi as MeshInstance3D).name.begins_with("Cylinder_007"): mi.queue_free()
 		if cx < 0.55 and not keep: mi.queue_free()
 
 func _glb_fix(m: Node) -> void:
@@ -305,7 +350,7 @@ func _glb_fix(m: Node) -> void:
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
 				nm.albedo_texture = null
 				var rn := str(mt.resource_name)
-				nm.albedo_color = Color(0.13, 0.19, 0.31) if rn.contains("dash") else (Color(0.3, 0.34, 0.42) if rn.contains("standed_2") else Color(0.2, 0.22, 0.28))
+				nm.albedo_color = adash if rn.contains("dash") else ((Color(0.3, 0.34, 0.42) * (adash * 3.2 + Color(0.2, 0.2, 0.2)).lerp(Color.WHITE, 0.5)) if rn.contains("standed_2") else adash.lerp(Color(0.2, 0.22, 0.28), 0.5))
 				(mi as MeshInstance3D).set_surface_override_material(i, nm)
 
 func _meshes(n: Node) -> Array:
