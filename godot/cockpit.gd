@@ -305,6 +305,33 @@ func _mcp_real(m: Node3D) -> void:
 	_bind(m, 0.155, 0.883, "push", "ap", "АП")
 	_bind(m, 0.155, 0.862, "push", "appr", "ПОС")
 
+# рычаг из деталей модели по номерам Object_N: поворачивается вокруг оси X
+func _bind_lever(m: Node3D, ids: Array, act: String, label: String, base := 0.25) -> Dictionary:
+	var sel: Array = []; var bb := AABB(); var first := true
+	for id in ids:
+		var mi := m.find_child("Object_" + str(id), true, false) as MeshInstance3D
+		if mi == null or mi.is_queued_for_deletion(): continue
+		var b: AABB = _lt(mi, m) * mi.get_aabb()
+		bb = b if first else bb.merge(b); first = false; sel.append(mi)
+	if sel.is_empty(): return {}
+	var cen := bb.get_center(); cen.y = bb.position.y + bb.size.y * base
+	var pv := Node3D.new(); m.add_child(pv); pv.position = cen
+	for mi in sel: (mi as Node).reparent(pv, true)
+	var hs := Vector3(maxf(bb.size.x * 0.5 + 0.012, 0.03), maxf(bb.size.y * 0.5 + 0.012, 0.03), maxf(bb.size.z * 0.5 + 0.012, 0.03))
+	var it := _item(pv, "mlever", act, hs, bb.get_center() - cen)
+	it["b0"] = pv.transform.basis; it["ang"] = 0.0
+	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.0005; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = bb.get_center() + Vector3(0, bb.size.y * 0.5 + 0.02, 0.01); l.render_priority = 5
+	m.add_child(l)
+	return it
+
+func _levers_real(m: Node3D) -> bool:
+	var ok := true
+	ok = not _bind_lever(m, [2724, 2723], "gear", "ШАССИ", 0.5).is_empty() and ok
+	ok = not _bind_lever(m, [1320, 1319], "fl", "ЗАКРЫЛКИ").is_empty() and ok
+	ok = not _bind_lever(m, [1186, 1185], "brake", "СТОЯН.ТОРМ").is_empty() and ok
+	return ok
+
 func _build_787() -> void:
 	var m: Node3D = (load("res://assets/planes/B787_cockpit.glb") as PackedScene).instantiate()
 	root.add_child(m)
@@ -343,17 +370,38 @@ func _build_787() -> void:
 			if mi != null: mi.reparent(pv, true)
 		thr787.append(pv)
 	_mcp_real(m)
-	# шасси — на центральной панели, тормоз и закрылки — на пьедестале
-	var gp := _pad(m, Vector3(0.0, 0.64, -2.03), 0.0)
-	_push(gp, Vector3(0, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "gear", "ШАССИ", Color(0.3, 1.0, 0.45))
-	var pd := _pad(m, Vector3(0.0, 0.575, -1.32), -75.0)
-	_push(pd, Vector3(-0.16, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "brake", "СТОЯН.", Color(1.0, 0.45, 0.2))
-	_push(pd, Vector3(0.0, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl-", "ЗАКР. −", Color(0.3, 1.0, 0.45))
-	_push(pd, Vector3(0.16, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl+", "ЗАКР. +", Color(0.3, 1.0, 0.45))
+	# шасси, закрылки и стояночный тормоз — настоящие рычаги модели
+	if not _levers_real(m):
+		var gp := _pad(m, Vector3(0.0, 0.64, -2.03), 0.0)
+		_push(gp, Vector3(0, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "gear", "ШАССИ", Color(0.3, 1.0, 0.45))
+		var pd := _pad(m, Vector3(0.0, 0.575, -1.32), -75.0)
+		_push(pd, Vector3(-0.16, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "brake", "СТОЯН.", Color(1.0, 0.45, 0.2))
+		_push(pd, Vector3(0.0, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl-", "ЗАКР. −", Color(0.3, 1.0, 0.45))
+		_push(pd, Vector3(0.16, 0, 0), Vector2(0.085, 0.045), Color(0.2, 0.22, 0.27), "fl+", "ЗАКР. +", Color(0.3, 1.0, 0.45))
 	_lab_on = false
 	_lights_in()
 	_pilots_glb()
 	_rear(1.9, 1.3, -1.0, 0.95, 0.4)
+
+# A320: детали панели FCU по именам узлов модели
+func _bind_node(m: Node3D, pat: String, kind: String, act: String, acts := [], travel := 0.0008) -> Dictionary:
+	var mi := m.find_child(pat, true, false) as MeshInstance3D
+	if mi == null or mi.is_queued_for_deletion() or mi.has_meta("bound"): return {}
+	var b: AABB = _lt(mi, m) * mi.get_aabb()
+	var pv := Node3D.new(); m.add_child(pv)
+	pv.transform = Transform3D(Basis(Vector3(0, 0, 1), Vector3(0, 1, 0), Vector3(-1, 0, 0)), b.get_center())
+	mi.set_meta("bound", true); mi.reparent(pv, true)
+	var hs := clampf(maxf(b.size.y, b.size.z) * 0.5 + 0.003, 0.014, 0.017)
+	var it := _item(pv, "m" + kind, act, Vector3(hs, hs, 0.03), Vector3(0, 0, -0.01))
+	it["acts"] = acts; it["b0"] = pv.transform.basis; it["tgt"] = 0.0; it["ang"] = 0.0; it["fm"] = null; it["trv"] = travel
+	return it
+
+func _fcu_real(m: Node3D) -> void:
+	_bind_node(m, "Cube_033_main*", "knob", "spd", ["spd-", "spd+"])
+	_bind_node(m, "Cube_024_main*", "knob", "hdg", ["hdg-", "hdg+"])
+	_bind_node(m, "Cube_032_main*", "knob", "alt", ["altd", "altu"])
+	_bind_node(m, "Cube_023_main*", "push", "hdgm")
+	_bind_node(m, "Cube_022_main*", "push", "spda")
 
 func _build_glb() -> void:
 	if is787:
@@ -371,6 +419,7 @@ func _build_glb() -> void:
 	for mi in _meshes(m):
 		var cb: AABB = (inv0 * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 		if cb.get_center().z > 0.3 and cb.position.z > 0.0: mi.queue_free()
+	_fcu_real(m)
 	_ctl_strip(root, Vector3(-0.1, 0.11, -0.5), -30.0, 0.7, true)
 	_lab_on = false
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
@@ -964,7 +1013,15 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 				f.albedo_color = (it.fcol as Color).lerp(Color(0.3, 1.0, 0.45), 0.5) if on else it.fcol
 			if it.t > 0.0:
 				it["t"] = maxf(0.0, float(it.t) - dt * 5.0)
-				n.position = (it.rest as Vector3) + n.transform.basis.z * (-0.0025 * sin(clampf(float(it.t), 0.0, 1.0) * PI))
+				n.position = (it.rest as Vector3) + n.transform.basis.z * (-float(it.get("trv", 0.0025)) * sin(clampf(float(it.t), 0.0, 1.0) * PI))
+		elif kind == "mlever":
+			var tg := 0.0
+			match act:
+				"gear": tg = 0.0 if c.gear else 0.7
+				"brake": tg = -0.6 if c.brake else 0.0
+				"fl": tg = float(c.flaps) * -0.12
+			it["ang"] = lerpf(float(it.ang), tg, minf(1.0, dt * 8.0))
+			n.transform.basis = (it.b0 as Basis) * Basis(Vector3.RIGHT, float(it.ang))
 		elif kind == "mknob":
 			it["ang"] = lerpf(float(it.ang), float(it.tgt), minf(1.0, dt * 12.0))
 			n.transform.basis = (it.b0 as Basis) * Basis(Vector3(0, 0, 1), float(it.ang))
@@ -1021,6 +1078,9 @@ func pick(pos: Vector2) -> void:
 func _activate(it: Dictionary, pos: Vector2) -> void:
 	var act: String = it.act
 	var kind: String = it.kind
+	if kind == "mlever" and act == "fl":
+		var ly := ((it.n as Node3D).global_transform.affine_inverse() * _ray_pt(pos, it)).y
+		act = "fl-" if ly > 0.0 else "fl+"
 	if kind == "mknob":
 		var lx := ((it.n as Node3D).global_transform.affine_inverse() * _ray_pt(pos, it)).x
 		var dir := 1 if lx > 0.0 else -1
