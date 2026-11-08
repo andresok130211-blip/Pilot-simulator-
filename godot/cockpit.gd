@@ -246,6 +246,65 @@ func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := fals
 func _pad(par: Node3D, o: Vector3, rot_x: float) -> Node3D:
 	var n := Node3D.new(); n.position = o; n.rotation_degrees = Vector3(rot_x, 0, 0); par.add_child(n); return n
 
+# ---------- настоящие детали модели: кнопки нажимаются, ручки вращаются ----------
+const MCP_TILT := -0.31
+func _lt(n: Node, top: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY; var c: Node = n
+	while c != null and c != top:
+		if c is Node3D: t = (c as Node3D).transform * t
+		c = c.get_parent()
+	return t
+
+func _bind(m: Node3D, x: float, y: float, kind: String, act: String, label := "", acts := [], tol := 0.006) -> Dictionary:
+	var sel: Array = []; var cen := Vector3.ZERO; var maxz := -1e9; var big := 0.0
+	for mi in _meshes(m):
+		if (mi as Node).is_queued_for_deletion() or (mi as Node).has_meta("bound"): continue
+		var b: AABB = _lt(mi, m) * (mi as MeshInstance3D).get_aabb()
+		var c := b.get_center()
+		if absf(c.x - x) < tol and absf(c.y - y) < tol and c.z < -1.99 and c.z > -2.05 and maxf(b.size.x, maxf(b.size.y, b.size.z)) < 0.03:
+			sel.append(mi); cen += c; maxz = maxf(maxz, b.end.z); big = maxf(big, maxf(b.size.x, b.size.y))
+	if sel.is_empty(): return {}
+	cen /= float(sel.size())
+	var pv := Node3D.new(); m.add_child(pv)
+	pv.transform = Transform3D(Basis(Vector3.RIGHT, MCP_TILT), cen)
+	var face: StandardMaterial3D = null
+	for mi in sel:
+		(mi as Node).set_meta("bound", true); (mi as Node).reparent(pv, true)
+		var me := (mi as MeshInstance3D).mesh
+		for i in range(me.get_surface_count()):
+			var mt := me.surface_get_material(i)
+			if mt != null and str(mt.resource_name) == "ModeControl_Panel1" and (mi as MeshInstance3D).get_surface_override_material(i) is StandardMaterial3D:
+				face = (mi as MeshInstance3D).get_surface_override_material(i) as StandardMaterial3D
+	var zf := maxz - cen.z + 0.0006
+	var hs := maxf(big * 0.5 + 0.002, 0.0095 if kind == "push" else 0.013)
+	var it := _item(pv, "m" + kind, act, Vector3(hs, hs, 0.02), Vector3(0, 0, zf * 0.5))
+	it["acts"] = acts; it["b0"] = pv.transform.basis; it["tgt"] = 0.0; it["ang"] = 0.0; it["fm"] = face; it["fcol"] = face.albedo_color if face != null else Color.BLACK
+	if kind == "push" and label != "":
+		var tl := _lab(pv, label, Vector3(0, 0, zf), 0.0042, Color(1, 1, 1)); tl.outline_size = 5; tl.outline_modulate = Color(0, 0, 0, 0.95)
+	return it
+
+func _mcp_window(m: Node3D, id: String, key: String, cap: String) -> void:
+	var mi := m.find_child("Object_" + id, true, false) as MeshInstance3D
+	if mi == null: return
+	var c: Vector3 = (_lt(mi, m) * mi.get_aabb()).get_center()
+	var nrm := Vector3(0, sin(-MCP_TILT), cos(MCP_TILT))
+	var wp := Node3D.new(); m.add_child(wp); wp.transform = Transform3D(Basis(Vector3.RIGHT, MCP_TILT), c + nrm * 0.0042)
+	_lab(wp, cap, Vector3(0, 0.0065, 0), 0.0034, Color(0.7, 0.75, 0.8))
+	mcpd[key] = _lab(wp, "---", Vector3(0, -0.0015, 0), 0.0085, Color(0.4, 1.0, 0.55))
+
+func _mcp_real(m: Node3D) -> void:
+	_mcp_window(m, "1743", "spd", "СКОРОСТЬ"); _mcp_window(m, "1746", "hdg", "КУРС")
+	_mcp_window(m, "1749", "vs", "ВЕРТ.СК."); _mcp_window(m, "1752", "alt", "ВЫСОТА")
+	_bind(m, -0.119, 0.875, "knob", "spd", "", ["spd-", "spd+"])
+	_bind(m, -0.01, 0.887, "knob", "hdg", "", ["hdg-", "hdg+"])
+	_bind(m, 0.111, 0.888, "knob", "alt", "", ["altd", "altu"])
+	_bind(m, -0.157, 0.882, "push", "at", "А/Т")
+	_bind(m, -0.157, 0.86, "push", "spda", "АВТО")
+	_bind(m, -0.083, 0.882, "push", "nav", "МАРШ")
+	_bind(m, -0.083, 0.86, "push", "hdgm", "КУРС")
+	_bind(m, 0.155, 0.883, "push", "ap", "АП")
+	_bind(m, 0.155, 0.862, "push", "appr", "ПОС")
+
 func _build_787() -> void:
 	var m: Node3D = (load("res://assets/planes/B787_cockpit.glb") as PackedScene).instantiate()
 	root.add_child(m)
@@ -283,7 +342,7 @@ func _build_787() -> void:
 			var mi := m.find_child("Object_" + str(nm), true, false)
 			if mi != null: mi.reparent(pv, true)
 		thr787.append(pv)
-	_ctl_strip(root, Vector3(0.0, -0.055, -0.9), -50.0, 1.35)
+	_mcp_real(m)
 	# шасси — на центральной панели, тормоз и закрылки — на пьедестале
 	var gp := _pad(m, Vector3(0.0, 0.64, -2.03), 0.0)
 	_push(gp, Vector3(0, 0, 0), Vector2(0.085, 0.045), Color(0.34, 0.16, 0.14), "gear", "ШАССИ", Color(0.3, 1.0, 0.45))
@@ -897,6 +956,18 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 			if it.t > 0.0:
 				it["t"] = maxf(0.0, float(it.t) - dt * 5.0)
 				n.position = (it.rest as Vector3) + Vector3(0, 0, -0.005 * sin(clampf(float(it.t), 0.0, 1.0) * PI))
+		elif kind == "mpush":
+			var fm = it.get("fm")
+			if fm != null:
+				var on: bool = it["on"]; var f := fm as StandardMaterial3D
+				f.emission_enabled = on; f.emission = Color(0.3, 1.0, 0.45); f.emission_energy_multiplier = 1.4
+				f.albedo_color = (it.fcol as Color).lerp(Color(0.3, 1.0, 0.45), 0.5) if on else it.fcol
+			if it.t > 0.0:
+				it["t"] = maxf(0.0, float(it.t) - dt * 5.0)
+				n.position = (it.rest as Vector3) + n.transform.basis.z * (-0.0025 * sin(clampf(float(it.t), 0.0, 1.0) * PI))
+		elif kind == "mknob":
+			it["ang"] = lerpf(float(it.ang), float(it.tgt), minf(1.0, dt * 12.0))
+			n.transform.basis = (it.b0 as Basis) * Basis(Vector3(0, 0, 1), float(it.ang))
 		elif kind == "tog":
 			if it.has("lamp"): (it.lamp as StandardMaterial3D).emission_enabled = bool(it.on)
 			var target: float = 0.5 if it.on else -0.5
@@ -913,6 +984,7 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 		(mcpd["hdg"] as Label3D).text = "%03d" % (int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg))))
 		(mcpd["spd"] as Label3D).text = ("%d" % int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "АВТО"
 		(mcpd["alt"] as Label3D).text = "%d" % int(c.apAlt)
+		if mcpd.has("vs"): (mcpd["vs"] as Label3D).text = "%+d" % int(float(s.vs) * 196.85)
 	# автоторможение — ручка показывает режим
 	if mcp.has("abrk"):
 		var ab: Dictionary = mcp["abrk"]
@@ -949,6 +1021,11 @@ func pick(pos: Vector2) -> void:
 func _activate(it: Dictionary, pos: Vector2) -> void:
 	var act: String = it.act
 	var kind: String = it.kind
+	if kind == "mknob":
+		var lx := ((it.n as Node3D).global_transform.affine_inverse() * _ray_pt(pos, it)).x
+		var dir := 1 if lx > 0.0 else -1
+		it["tgt"] = float(it.tgt) + 0.55 * float(dir)
+		act = str((it.acts as Array)[1 if dir > 0 else 0])
 	it["t"] = 1.0
 	if snd: snd.call("click", 1500.0 if kind == "push" else (2400.0 if kind == "tog" else 900.0))
 	if kind == "tog": it["on"] = not bool(it["on"])
