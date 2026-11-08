@@ -403,6 +403,34 @@ func _fcu_real(m: Node3D) -> void:
 	_bind_node(m, "Cube_023_main*", "push", "hdgm")
 	_bind_node(m, "Cube_022_main*", "push", "spda")
 
+# A320: в модели нет отдельных рычагов шасси/закрылков/тормоза — делаем объёмные рычаги, которые двигаются
+func _lever3d(m: Node3D, p: Vector3, act: String, label: String, col: Color) -> void:
+	var pv := Node3D.new(); m.add_child(pv); pv.position = p
+	var sm := BoxMesh.new(); sm.size = Vector3(0.0035, 0.018, 0.0035)
+	var st := MeshInstance3D.new(); st.mesh = sm; st.material_override = _mat(Color(0.55, 0.57, 0.6)); st.position = Vector3(0, 0.009, 0); pv.add_child(st)
+	var kb := SphereMesh.new(); kb.radius = 0.0038; kb.height = 0.0076; kb.radial_segments = 10; kb.rings = 6
+	var kn := MeshInstance3D.new(); kn.mesh = kb; kn.material_override = _mat(col); kn.position = Vector3(0, 0.0195, 0); pv.add_child(kn)
+	var bm := BoxMesh.new(); bm.size = Vector3(0.012, 0.003, 0.012)
+	var bs := MeshInstance3D.new(); bs.mesh = bm; bs.material_override = _mat(Color(0.05, 0.05, 0.06)); pv.add_child(bs)
+	var it := _item(pv, "mlever", act, Vector3(0.013, 0.02, 0.013), Vector3(0, 0.012, 0))
+	it["b0"] = pv.transform.basis; it["ang"] = 0.0; it["axis"] = Vector3(0, 0, 1)
+	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.00007; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = p + Vector3(0, 0.036, 0); l.render_priority = 5
+	m.add_child(l)
+
+func _bind_lever_node(m: Node3D, pat: String, act: String, label: String, axis: Vector3) -> void:
+	var mi := m.find_child(pat, true, false) as MeshInstance3D
+	if mi == null or mi.is_queued_for_deletion() or mi.has_meta("bound"): return
+	var b: AABB = _lt(mi, m) * mi.get_aabb()
+	var pv := Node3D.new(); m.add_child(pv); pv.position = b.get_center()
+	mi.set_meta("bound", true); mi.reparent(pv, true)
+	var hs := clampf(maxf(b.size.x, maxf(b.size.y, b.size.z)) * 0.5 + 0.006, 0.012, 0.03)
+	var it := _item(pv, "mlever", act, Vector3(hs, hs, hs), Vector3.ZERO)
+	it["b0"] = pv.transform.basis; it["ang"] = 0.0; it["axis"] = axis
+	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.00007; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = b.get_center() + Vector3(0, 0.03, 0); l.render_priority = 5
+	m.add_child(l)
+
 func _build_glb() -> void:
 	if is787:
 		_build_787(); return
@@ -420,7 +448,10 @@ func _build_glb() -> void:
 		var cb: AABB = (inv0 * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 		if cb.get_center().z > 0.3 and cb.position.z > 0.0: mi.queue_free()
 	_fcu_real(m)
-	_ctl_strip(root, Vector3(-0.1, 0.11, -0.5), -30.0, 0.7, true)
+	_lever3d(m, Vector3(1.0, 0.003, 0.02), "gear", "ШАССИ", Color(0.9, 0.15, 0.12))
+	_bind_lever_node(m, "a random_060_cockpit*", "fl", "ЗАКРЫЛКИ", Vector3(0, 0, 1))
+	_bind_lever_node(m, "Cube_030__0", "brake", "СТОЯН.ТОРМ", Vector3(1, 0, 0))
+	_ctl_strip(root, Vector3(-0.1, 0.11, -0.5), -30.0, 0.7, false)
 	_lab_on = false
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
@@ -1021,7 +1052,7 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 				"brake": tg = -0.6 if c.brake else 0.0
 				"fl": tg = float(c.flaps) * -0.12
 			it["ang"] = lerpf(float(it.ang), tg, minf(1.0, dt * 8.0))
-			n.transform.basis = (it.b0 as Basis) * Basis(Vector3.RIGHT, float(it.ang))
+			n.transform.basis = (it.b0 as Basis) * Basis(it.get("axis", Vector3.RIGHT) as Vector3, float(it.ang))
 		elif kind == "mknob":
 			it["ang"] = lerpf(float(it.ang), float(it.tgt), minf(1.0, dt * 12.0))
 			n.transform.basis = (it.b0 as Basis) * Basis(Vector3(0, 0, 1), float(it.ang))
