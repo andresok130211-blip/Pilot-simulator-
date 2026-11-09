@@ -464,11 +464,30 @@ func _airport_mesh(len: float) -> ArrayMesh:
 		if k == 0: continue
 		_quad(st, 10, 55, k * 4.0 - 1.0, k * 4.0 + 1.0, 0.40, white); _quad(st, len - 55, len - 10, k * 4.0 - 1.0, k * 4.0 + 1.0, 0.40, white)
 	var tz := 106.0; var gz := 205.0
-	_quad(st, -40, len + 40, tz - 11, tz + 11, 0.30, asph.lightened(0.04))   # рулёжная
-	for f in [0.06, 0.5, 0.93]:
-		_quad(st, len * f - 0.0, len * f + 24, 22, tz, 0.30, asph.lightened(0.04))
-	_quad(st, len * 0.28, len * 0.62, tz + 11, 235, 0.30, asph.lightened(0.10))  # перрон
-	_quad(st, len * 0.45 - 4, len * 0.45 + 4, tz + 11, gz, 0.36, Color(0.9, 0.8, 0.2))
+	var tw := asph.lightened(0.04)
+	if len >= 3600.0:
+		# большой аэропорт: Альфа, Браво, связки, 5 съездов, большой перрон
+		var tz2 := 196.0; var gzb := 305.0
+		_quad(st, -40, len + 40, tz - 11, tz + 11, 0.30, tw)
+		for f in [0.05, 0.2, 0.5, 0.8, 0.94]:
+			_quad(st, len * f, len * f + 24, 22, tz, 0.30, tw)
+		_quad(st, len * 0.2 - 11, len * 0.7 + 11, tz2 - 11, tz2 + 11, 0.30, tw)
+		for f in [0.2, 0.45, 0.7]:
+			_quad(st, len * f - 11, len * f + 11, tz, tz2, 0.30, tw)
+		_quad(st, len * 0.2, len * 0.7, tz2 + 11, 345, 0.30, asph.lightened(0.10))
+		# стоянки: жёлтые осевые к гейтам
+		var gk := 0
+		var gxp := len * 0.2 + 40.0
+		while gxp < len * 0.7 - 20.0:
+			_quad(st, gxp - 0.4, gxp + 0.4, tz2 + 11, gzb, 0.36, Color(0.9, 0.8, 0.2)); gxp += 60.0; gk += 1
+		_quad(st, len * 0.45 - 4, len * 0.45 + 4, tz2 + 11, gzb, 0.37, Color(0.95, 0.85, 0.25))
+		_quad(st, len * 0.2, len * 0.7, tz2 - 0.4, tz2 + 0.4, 0.36, Color(0.9, 0.8, 0.2))
+	else:
+		_quad(st, -40, len + 40, tz - 11, tz + 11, 0.30, tw)   # рулёжная
+		for f in [0.06, 0.5, 0.93]:
+			_quad(st, len * f - 0.0, len * f + 24, 22, tz, 0.30, tw)
+		_quad(st, len * 0.28, len * 0.62, tz + 11, 235, 0.30, asph.lightened(0.10))  # перрон
+		_quad(st, len * 0.45 - 4, len * 0.45 + 4, tz + 11, gz, 0.36, Color(0.9, 0.8, 0.2))
 	var m := st.commit()
 	var mt := StandardMaterial3D.new(); mt.vertex_color_use_as_albedo = true; mt.roughness = 1.0; mt.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.surface_set_material(0, mt)
@@ -498,7 +517,12 @@ func _light_node(len: float) -> Node3D:
 	var tx := -40.0
 	while tx < len + 40.0:
 		pts.append([Vector3(tx, 0.6, 106.0 - 11.0), B]); pts.append([Vector3(tx, 0.6, 106.0 + 11.0), B]); tx += 45.0
-	for k in range(8): pts.append([Vector3(len * 0.28 + k * len * 0.045, 12.0, 235.0), W])
+	if len >= 3600.0:
+		for k in range(10): pts.append([Vector3(len * 0.2 + k * len * 0.05, 12.0, 345.0), W])
+		var bx := len * 0.2
+		while bx <= len * 0.7: pts.append([Vector3(bx, 0.6, 196.0 - 11.0), B]); pts.append([Vector3(bx, 0.6, 196.0 + 11.0), B]); bx += 45.0
+	else:
+		for k in range(8): pts.append([Vector3(len * 0.28 + k * len * 0.045, 12.0, 235.0), W])
 	var qm := QuadMesh.new(); qm.size = Vector2(0.013, 0.013)
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true
 	mm.mesh = qm; mm.instance_count = pts.size()

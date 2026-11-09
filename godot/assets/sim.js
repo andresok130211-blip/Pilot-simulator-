@@ -1691,7 +1691,13 @@ const FLARE_H = 14;
 // Схема аэродрома в системе «ось X вдоль полосы, Z вправо от оси»: рулёжная дорожка z=106,
 // три съезда, перрон и стоянка (гейт) перед терминалом.
 const TAXI_Z = 106, GATE_Z = 205;
-const frameOf = (x0, len) => ({ x0, len, gx: x0 + len * 0.45, gz: GATE_Z, tz: TAXI_Z, conn: [0.06, 0.5, 0.93].map(f => x0 + len * f + 12) });
+// большие аэропорты (длинная полоса): 5 съездов, вторая рулёжка «Браво», связки и большой перрон с дальним гейтом
+const BIG_LEN = 3600, TAXI_Z2 = 196, GATE_Z_BIG = 305;
+const frameOf = (x0, len) => {
+  const big = len >= BIG_LEN;
+  return { x0, len, big, gx: x0 + len * 0.45, gz: big ? GATE_Z_BIG : GATE_Z, tz: TAXI_Z, tz2: big ? TAXI_Z2 : null,
+    conn: (big ? [0.05, 0.2, 0.5, 0.8, 0.94] : [0.06, 0.5, 0.93]).map(f => x0 + len * f + 12), links: big ? [0.2, 0.45, 0.7].map(f => x0 + len * f) : null };
+};
 const seg = (ax, az, bx, bz) => { const d = Math.hypot(bx - ax, bz - az) || 1; return [(bx - ax) / d, (bz - az) / d, d]; };
 // ломаная -> путевые точки со срезанными углами
 function chamfer(poly, R) {
@@ -1748,7 +1754,7 @@ class Flight {
     this.taxiOps = o.taxi !== false; // полный цикл: гейт → рулёжка → ВПП → ... → гейт
     this.fr0 = frameOf(0, o.from.rwy); this.fr1 = frameOf(this.D, o.to.rwy);
     this.x = 40; this.h = 0; this.v = 0; this.gamma = 0; this.theta = 0;
-    if (this.taxiOps) { this.x = this.fr0.gx; this.yPos = GATE_Z; this.psi = -Math.PI / 2; } // стоим на гейте носом к рулёжке
+    if (this.taxiOps) { this.x = this.fr0.gx; this.yPos = this.fr0.gz; this.psi = -Math.PI / 2; } // стоим на гейте носом к рулёжке
     this.thrAct = 0; this.thrA = [0, 0]; this.Ti = [0, 0]; this.gearPos = 1; this.flapAct = 2;
     this.onGround = true; this.airborneOnce = false;
     this.time = 0; this.simTime = 0; this.acc = 0;
@@ -1797,6 +1803,7 @@ class Flight {
   setRoute(poly) { this.routePoly = poly; this.route = chamfer(poly, 16); this.ri = 0; }
   buildOutRoute() {
     const f = this.fr0, cx = f.conn[0];
+    if (f.big) { const xl = f.links[0]; return [{ x: this.x, z: this.yPos }, { x: f.gx, z: f.tz2, label: 'Рулёжная Браво' }, { x: xl, z: f.tz2, label: 'Рулёжная Браво' }, { x: xl, z: f.tz, label: 'Рулёжная Альфа' }, { x: cx, z: f.tz, label: 'Поворот к полосе' }, { x: cx, z: 0, label: 'Выезд на ВПП' }, { x: cx + 110, z: 0, label: 'Взлётная позиция' }]; }
     return [{ x: this.x, z: this.yPos }, { x: f.gx, z: f.tz, label: 'Рулёжная дорожка' }, { x: cx, z: f.tz, label: 'Поворот к полосе' }, { x: cx, z: 0, label: 'Выезд на ВПП' }, { x: cx + 110, z: 0, label: 'Взлётная позиция' }];
   }
   buildInRoute() {
@@ -1808,6 +1815,10 @@ class Flight {
       if (Xc === undefined) Xc = cs[cs.length - 1];
       this.inXc = Xc;
     }
+    if (f.big) {
+      const xl = f.links.reduce((b, l) => Math.abs(l - Xc) < Math.abs(b - Xc) ? l : b, f.links[0]);
+      return [{ x: this.x, z: this.yPos }, { x: Xc, z: 0, label: 'Съезд с полосы' }, { x: Xc, z: f.tz, label: 'Рулёжная Альфа' }, { x: xl, z: f.tz, label: 'Поворот на Браво' }, { x: xl, z: f.tz2, label: 'Рулёжная Браво' }, { x: f.gx, z: f.tz2, label: 'Поворот к гейту' }, { x: f.gx, z: f.gz, label: 'ГЕЙТ' }];
+    }
     return [{ x: this.x, z: this.yPos }, { x: Xc, z: 0, label: 'Съезд с полосы' }, { x: Xc, z: f.tz, label: 'Рулёжная дорожка' }, { x: f.gx, z: f.tz, label: 'Поворот к гейту' }, { x: f.gx, z: f.gz, label: 'ГЕЙТ' }];
   }
   onPaved(x = this.x, y = this.yPos) {
@@ -1816,6 +1827,12 @@ class Flight {
       if (ax >= -60 && ax <= f.len + 60 && Math.abs(y) <= 40) return true;
       if (ax >= -40 && ax <= f.len + 40 && y >= 90 && y <= 122) return true;
       if (y >= 30 && y <= 100) for (const c of f.conn) if (Math.abs(x - c) <= 22) return true;
+      if (f.big) {
+        if (ax >= f.len * 0.2 - 11 && ax <= f.len * 0.7 + 11 && y >= f.tz2 - 11 && y <= f.tz2 + 11) return true;
+        for (const l of f.links) if (Math.abs(x - l) <= 11 && y >= f.tz && y <= f.tz2) return true;
+        if (ax >= f.len * 0.2 && ax <= f.len * 0.7 && y >= f.tz2 && y <= 345) return true;
+        continue;
+      }
       if (ax >= f.len * 0.28 && ax <= f.len * 0.62 && y >= 116 && y <= 235) return true;
     }
     return false;
@@ -1831,7 +1848,7 @@ class Flight {
       // пока на полосе — подбираем ближайший съезд
       this._routeT -= dt;
       if (this._routeT <= 0 && this.ri === 0 && this.onRunway(this.x, this.yPos) && this.v < 30) { this._routeT = 0.5; const ri = this.ri, old = this.inXc; this.setRoute(this.buildInRoute()); if (old === this.inXc) this.ri = ri; }
-      if (!this.parked && Math.abs(this.x - this.fr1.gx) < 12 && Math.abs(this.yPos - GATE_Z) < 12 && this.v < 0.4 && Math.abs(wrapPi(this.psi - Math.PI / 2)) < 0.45) {
+      if (!this.parked && Math.abs(this.x - this.fr1.gx) < 12 && Math.abs(this.yPos - this.fr1.gz) < 12 && this.v < 0.4 && Math.abs(wrapPi(this.psi - Math.PI / 2)) < 0.45) {
         this.parked = true; this.msg('Самолёт на гейте'); this.finish('ok', ''); return;
       }
     }
@@ -2418,7 +2435,7 @@ class Flight {
       if (paved && !onRwy && this.v > 20) this.incident('taxispeed', 'Превышение скорости руления', 2, 30);
       for (const f of [this.fr0, this.fr1]) {
         const ax = this.x - f.x0;
-        if (this.yPos > 238 && ax > f.len * 0.28 && ax < f.len * 0.65 && this.v > 1) { this.finish('crash', 'Столкновение с терминалом.'); return; }
+        if (this.yPos > (f.big ? 348 : 238) && ax > f.len * (f.big ? 0.2 : 0.28) && ax < f.len * (f.big ? 0.7 : 0.65) && this.v > 1) { this.finish('crash', 'Столкновение с терминалом.'); return; }
       }
     }
     // отрыв
@@ -2903,7 +2920,7 @@ function settle(f, contract, career) {
   return out;
 }
 
-return {DEG,G,FLAP_DCL,FLAP_CD,FLAP_AS,FLAP_NAMES,GS_DEG,GS_TAN,APPR_ALT,AIM_OFFSET,TAXI_Z,frameOf,atmos,clmaxCfg,stallIAS,glideH,Flight,loadInfo,settle};
+return {DEG,G,FLAP_DCL,FLAP_CD,FLAP_AS,FLAP_NAMES,GS_DEG,GS_TAN,APPR_ALT,AIM_OFFSET,TAXI_Z,BIG_LEN,frameOf,atmos,clmaxCfg,stallIAS,glideH,Flight,loadInfo,settle};
 })();
 __m.api = (function(){
 // Программный интерфейс для Godot: вся логика (sim.js, events.js, data.js) остаётся прежней,
