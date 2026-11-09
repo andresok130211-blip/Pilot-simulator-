@@ -724,6 +724,7 @@ export class Flight {
     const taxiMode = this.taxiOps && this.v < 24 && c.thr < 0.35;
     if (taxiMode) {
       let vt = c.taxiAuto && !(this.td && !this.td.onDest) ? this.autoV : c.thr / 0.35 * 15;
+      if (this.cold) vt = 0;
       if (!paved) vt = Math.min(vt, 6);
       let a = c.brake ? -2.6 : clamp((vt - this.v) * 0.7, -1.8, 1.0);
       if (this.gearPos < 0.9) a = Math.min(a, -1);
@@ -1130,7 +1131,7 @@ export class Flight {
     const c = this.c, dist = this.dist, kmh = x => Math.round(x * 3.6);
     if (this.done) return '';
     if (!this.onGround && this.airborneOnce && !c.apOn && dist > 15000 && Math.abs(this.yPos) > 700 && this.h > 600 && !this.ev) return 'Ветер снёс вас ' + (this.yPos > 0 ? 'вправо — доверните влево' : 'влево — доверните вправо') + ' к трассе (мини-карта) или включите А/П + НАВ';
-    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : this.gate.done ? 'Нажмите ЗАПУСК ДВИГАТЕЛЕЙ' : 'Обслуживание: пассажиры ' + Math.round(this.gate.board * 100) + '%, топливо ' + Math.round(this.gate.fuel * 100) + '%, багаж ' + Math.round(this.gate.bags * 100) + '%';
+    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : this.gate.done ? 'Запустите двигатели (кнопка ЗАПУСК у рычагов тяги)' : 'Обслуживание: пассажиры ' + Math.round(this.gate.board * 100) + '%, топливо ' + Math.round(this.gate.fuel * 100) + '%, багаж ' + Math.round(this.gate.bags * 100) + '%';
     const eh = this.evHint(); if (eh) return eh;
     if (this.hold) return 'Ожидание: правый круг, крен ≈25° — осталось ' + Math.max(0, Math.round((2 * Math.PI - 0.35 - this.hold.turned) / DEG)) + '°';
     if (this.onGround && this.taxiOps && !this.clrTo && !this.airborneOnce) return 'Ждите перед полосой — садится борт, затем разрешат взлёт';

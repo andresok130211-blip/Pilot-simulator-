@@ -184,7 +184,7 @@ func _view(id: String) -> void:
 		if a.begins_with("--svc="): for k in a.substr(6).split(","): hud._svc(k); if k != "walk": world.svc[k] = 1.0
 
 func _viewer_exit() -> void:
-	viewer = false; world.svc_manual = false; playing = false; hud.set_viewer(false); hud.visible = false; world.visible = false; world.cam_mode = 0
+	viewer = false; world.svc_manual = false; playing = false; hud.set_viewer(false); hud.visible = false; world.visible = false; world.cam_mode = 1
 	Sim.g("game_view_end"); menu.open("hub")
 
 func _to_menu():

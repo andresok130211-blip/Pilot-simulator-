@@ -2393,6 +2393,7 @@ class Flight {
     const taxiMode = this.taxiOps && this.v < 24 && c.thr < 0.35;
     if (taxiMode) {
       let vt = c.taxiAuto && !(this.td && !this.td.onDest) ? this.autoV : c.thr / 0.35 * 15;
+      if (this.cold) vt = 0;
       if (!paved) vt = Math.min(vt, 6);
       let a = c.brake ? -2.6 : clamp((vt - this.v) * 0.7, -1.8, 1.0);
       if (this.gearPos < 0.9) a = Math.min(a, -1);
@@ -2799,7 +2800,7 @@ class Flight {
     const c = this.c, dist = this.dist, kmh = x => Math.round(x * 3.6);
     if (this.done) return '';
     if (!this.onGround && this.airborneOnce && !c.apOn && dist > 15000 && Math.abs(this.yPos) > 700 && this.h > 600 && !this.ev) return 'Ветер снёс вас ' + (this.yPos > 0 ? 'вправо — доверните влево' : 'влево — доверните вправо') + ' к трассе (мини-карта) или включите А/П + НАВ';
-    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : this.gate.done ? 'Нажмите ЗАПУСК ДВИГАТЕЛЕЙ' : 'Обслуживание: пассажиры ' + Math.round(this.gate.board * 100) + '%, топливо ' + Math.round(this.gate.fuel * 100) + '%, багаж ' + Math.round(this.gate.bags * 100) + '%';
+    if (this.cold) return this.startReq ? 'Идёт запуск двигателей…' : this.gate.done ? 'Запустите двигатели (кнопка ЗАПУСК у рычагов тяги)' : 'Обслуживание: пассажиры ' + Math.round(this.gate.board * 100) + '%, топливо ' + Math.round(this.gate.fuel * 100) + '%, багаж ' + Math.round(this.gate.bags * 100) + '%';
     const eh = this.evHint(); if (eh) return eh;
     if (this.hold) return 'Ожидание: правый круг, крен ≈25° — осталось ' + Math.max(0, Math.round((2 * Math.PI - 0.35 - this.hold.turned) / DEG)) + '°';
     if (this.onGround && this.taxiOps && !this.clrTo && !this.airborneOnce) return 'Ждите перед полосой — садится борт, затем разрешат взлёт';
@@ -3159,8 +3160,9 @@ function game_begin(to, drill, kind, id, pf) {
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
   F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from: from2, to: to2, bearing: brg, distM: rf ? rf.distM : c.km * 1000, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
-    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : true, drill: !!drill, force: drill ? [drill] : undefined,
+    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: !drill && !lessonCur && !o.air, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : true, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+  if (F.cold) { F.gate.done = true; F.gate.board = F.gate.fuel = F.gate.bags = 1; }
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
   F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;

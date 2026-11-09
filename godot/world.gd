@@ -10,7 +10,7 @@ var env: Environment
 var sky_mat: ProceduralSkyMaterial
 var airports := []   # {node, lat, lon, elev, len, id}
 var brg := 0.0
-var cam_mode := 0    # 0 снаружи, 1 кабина, 2 башня
+var cam_mode := 1    # 0 снаружи, 1 кабина, 2 башня, 3 крыло, 4 хвост, 5 нос/шасси, 6 вид сверху-сзади, 7 вид спереди
 var tower_ll := Vector2.ZERO
 var tower_alt := 0.0
 var tower_set := false
@@ -754,6 +754,17 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 		cam.look_at(pp + Vector3(0, 1.0, 0), Vector3.UP)
 	elif cam_mode == 1:
 		ckp.apply(cam, plane)
+	elif cam_mode >= 3:
+		var ln: float = board_L
+		var loc := Vector3.ZERO; var tg := Vector3.ZERO
+		match cam_mode:
+			3: loc = Vector3(-ln * 0.2 - 3.0, 3.2, -ln * 0.1); tg = Vector3(-ln * 0.2 - 40.0, -2.0, -ln * 0.2)
+			4: loc = Vector3(0, ln * 0.12, ln * 0.55); tg = Vector3(0, ln * 0.1, ln * 0.55 + 100.0)
+			5: loc = Vector3(0, -1.0, -ln * 0.4); tg = Vector3(0, -1.2, -ln * 0.4 - 100.0)
+			6: loc = Vector3(0, ln * 0.32, ln * 0.75); tg = Vector3(0, 2.0, -ln * 0.2)
+			7: loc = Vector3(-ln * 0.55, 2.5, -ln * 0.75); tg = Vector3(0, 1.0, 0)
+		cam.position = plane.to_global(loc)
+		cam.look_at(plane.to_global(tg), Vector3.UP)
 	else:
 		var tl := _local(tower_ll.y, tower_ll.x, cur_ll.y, cur_ll.x)
 		if not tower_set or tl.length() > 4500.0 or tl.length() < 150.0:
@@ -768,5 +779,5 @@ func _camera(s: Dictionary, hdg: float, alt: float):
 		cam.look_at(pp, Vector3.UP)
 
 func cycle_cam():
-	cam_mode = (cam_mode + 1) % 3
+	cam_mode = (cam_mode + 1) % 8
 	tower_set = false
