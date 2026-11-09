@@ -12,6 +12,8 @@ var hint: Label
 var log_l: Label
 var evbox: Label
 var alert: Label
+var knob_it := {}
+var knob_acc := {}
 var pads: Control
 var thr := [0.0, 0.0]
 var linked := true
@@ -142,6 +144,8 @@ func boarding(left: float):
 		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
 	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
+	if cockpit and not viewer and not on:
+		pads.visible = false; get_node("link").visible = false; info.visible = false
 	if (cockpit or viewer) and not on:
 		rows.visible = false; get_node("cabin").visible = false
 	if viewer:
@@ -341,12 +345,16 @@ func _input(e: InputEvent):
 				if _lv_rect(i).grow(18).has_point(e.position): fingers[idx] = "t%d" % i; _set_thr(i, e.position); return
 			if cockpit:
 				if yoke_home().distance_to(e.position) < 92.0: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
-				else: fingers[idx] = "look"; look_mv[idx] = 0.0; look_p0[idx] = e.position
+				else:
+					var kn: Dictionary = get_parent().world.ckp.knob_at(e.position)
+					if not kn.is_empty(): fingers[idx] = "knob"; knob_it[idx] = kn; look_mv[idx] = 0.0; look_p0[idx] = e.position; knob_acc[idx] = 0.0
+					else: fingers[idx] = "look"; look_mv[idx] = 0.0; look_p0[idx] = e.position
 				return
 			if (e.position.x < 580 if lefty else e.position.x > 700) and e.position.y > 230: fingers[idx] = "yoke"; y_org = e.position; _set_yoke(Vector2.ZERO)
 		else:
 			if fingers.get(idx, "") == "yoke": _set_yoke(Vector2.ZERO)
 			if fingers.get(idx, "") == "look" and float(look_mv.get(idx, 99.0)) < 14.0: get_parent().world.ckp.pick(look_p0[idx])
+			if fingers.get(idx, "") == "knob" and float(look_mv.get(idx, 99.0)) < 14.0: get_parent().world.ckp.pick(look_p0[idx])
 			fingers.erase(idx)
 	elif e is InputEventScreenDrag:
 		var f: String = fingers.get(e.index, "")
@@ -356,6 +364,14 @@ func _input(e: InputEvent):
 		elif f == "look":
 			look_mv[e.index] = float(look_mv.get(e.index, 0.0)) + e.relative.length()
 			if float(look_mv[e.index]) >= 14.0: get_parent().world.ckp.look_drag(e.relative)
+		elif f == "knob":
+			look_mv[e.index] = float(look_mv.get(e.index, 0.0)) + e.relative.length()
+			if float(look_mv[e.index]) >= 14.0:
+				knob_acc[e.index] = float(knob_acc.get(e.index, 0.0)) + e.relative.x
+				while absf(float(knob_acc[e.index])) >= 16.0:
+					var dr := 1 if float(knob_acc[e.index]) > 0.0 else -1
+					knob_acc[e.index] = float(knob_acc[e.index]) - 16.0 * dr
+					get_parent().world.ckp.knob_step(knob_it[e.index], dr)
 		elif f == "yoke": _set_yoke(e.position - y_org)
 		elif f.begins_with("t"): _set_thr(int(f.substr(1)), e.position)
 
