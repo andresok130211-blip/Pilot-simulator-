@@ -211,13 +211,52 @@ func _leg(parent: Node3D, x: float, z: float, top: float, bot: float, twin: floa
 		_wheel(leg, r, 0.34, Vector3(0, bot - top + r, sz * twin))
 
 func _build_gear(L: float) -> void:
-	gear = Node3D.new(); gear.position = Vector3(0, -1.1, 0); plane.add_child(gear)
-	var top := minf(-1.1, gnd * 0.5); var bot := gnd
+	gear = _gear_into(plane, L, gnd)
+
+func _gear_into(par: Node3D, L: float, gnd_: float) -> Node3D:
+	var gear := Node3D.new(); gear.position = Vector3(0, -1.1, 0); par.add_child(gear)
+	var top := minf(-1.1, gnd_ * 0.5); var bot := gnd_
 	var gx := L * 0.068
 	_leg(gear, 0.0, -L * 0.36, top, bot, 0.2, 0.42)
 	for sx in [-1.0, 1.0]:
 		_leg(gear, sx * gx, L * 0.04, top, bot, 0.45, 0.55)
 		_box(gear, Vector3(0.05, 1.3, 1.6), Color(0.85, 0.86, 0.88), Vector3(sx * (gx - 0.55), -0.1, L * 0.04))   # створка
+	return gear
+
+# стоящие на стоянке самолёты (для осмотра и погрузки): модель + шасси, земля на уровне gnd текущего самолёта
+func parked_plane(parent: Node3D, m: String, pos: Vector3, yaw_deg: float) -> Node3D:
+	var root := Node3D.new(); parent.add_child(root)
+	var inst: Node3D = load("res://assets/planes/%s_nologo.glb" % m).instantiate()
+	var L: float = float(MODEL_LEN[m]) * 1.05
+	var k: float = L / float(MODEL_LEN[m])
+	inst.scale = Vector3.ONE * k; inst.rotation_degrees = Vector3(0, MODEL_YAW, 0); root.add_child(inst)
+	var lowest := 0.0
+	var stk: Array = [inst]
+	while not stk.is_empty():
+		var nd: Node = stk.pop_back()
+		for c in nd.get_children(): stk.append(c)
+		if nd is MeshInstance3D:
+			var ab: AABB = (nd as MeshInstance3D).get_aabb()
+			lowest = minf(lowest, (inst.transform * (nd as Node3D).transform * ab).position.y)
+	var g_ := lowest * 1.0 - 0.7 * (L / 39.0) if lowest < 0.0 else -2.3
+	_gear_into(root, L, g_)
+	root.position = Vector3(pos.x, gnd - g_ + pos.y, pos.z); root.rotation_degrees.y = yaw_deg
+	return root
+
+func build_stands(parent: Node3D, x0: float, zs: float) -> void:
+	var gs := gnd
+	var slab := _box(parent, Vector3(190, 0.12, 150), Color(1, 1, 1), Vector3(x0 + 95, gs - 0.06, zs))
+	var sm := StandardMaterial3D.new(); sm.albedo_texture = mip_tex("res://assets/tex/det_r.png"); sm.albedo_color = Color(0.9, 0.91, 0.93); sm.uv1_triplanar = true; sm.uv1_scale = Vector3(0.18, 0.18, 0.18); sm.roughness = 0.95
+	slab.material_override = sm
+	var mods := ["B737", "A350", "B787", "A320", "B737"]
+	var zz := [-6.0, 4.0, -10.0, 8.0, -4.0]
+	for i in range(mods.size()):
+		parked_plane(parent, mods[i], Vector3(x0 + 28.0 + i * 38.0, 0, zs + zz[i]), 0.0)
+		_box(parent, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(x0 + 28.0 + i * 38.0, gs + 0.01, zs + zz[i] - 28.0))
+	# телегa с багажом и трап у дальних самолётов
+	for i in range(3):
+		_box(parent, Vector3(3.4, 1.1, 1.8), Color(0.9, 0.85, 0.2), Vector3(x0 + 50.0 + i * 38.0, gs + 0.55, zs + 14.0))
+		_box(parent, Vector3(1.6, 3.0, 4.5), Color(0.9, 0.9, 0.95), Vector3(x0 + 40.0 + i * 38.0, gs + 1.5, zs - 12.0))
 
 func _blink_light(pos: Vector3, col: Color, sz: float, strobe: bool, kind := "nav") -> void:
 	var sm := SphereMesh.new(); sm.radius = sz; sm.height = sz * 2.0
@@ -306,8 +345,10 @@ func _build_boarding(L: float):
 	var sm := StandardMaterial3D.new(); sm.albedo_texture = mip_tex("res://assets/tex/det_r.png"); sm.albedo_color = Color(0.9, 0.91, 0.93); sm.uv1_triplanar = true; sm.uv1_scale = Vector3(0.18, 0.18, 0.18); sm.roughness = 0.95
 	padm.material_override = sm
 	_box(board, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.01, -L * 0.5 - 22))
+	build_stands(board, 40.0, 0.0)
 	# терминал
 	_box(board, Vector3(12, 12, L * 1.1), Color(0.62, 0.7, 0.8), Vector3(-27, gs + 6, 0))
+	_box(board, Vector3(14, 10, 150), Color(0.6, 0.68, 0.78), Vector3(-33, gs + 5, 75 + L * 0.55))
 	_box(board, Vector3(0.2, 3, L * 1.0), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, 0))
 	# телетрап: стеклянный тоннель, выдвигается к двери
 	var br := Node3D.new(); br.name = "bridge"; board.add_child(br)
