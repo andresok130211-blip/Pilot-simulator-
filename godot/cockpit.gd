@@ -409,7 +409,19 @@ func _bind_node(m: Node3D, pat: String, kind: String, act: String, acts := [], t
 	it["acts"] = acts; it["b0"] = pv.transform.basis; it["tgt"] = 0.0; it["ang"] = 0.0; it["fm"] = null; it["trv"] = travel
 	return it
 
+var fcu_lbl := {}
+func _fcu_lab(m: Node3D, key: String, z: float, head: String) -> void:
+	for k in range(2):
+		var l := Label3D.new(); l.font_size = 64 if k == 0 else 30; l.pixel_size = 0.0001 if k == 0 else 0.00007
+		l.modulate = Color(1.0, 0.72, 0.15) if k == 0 else Color(0.85, 0.95, 1.0); l.outline_size = 12; l.outline_modulate = Color(0, 0, 0, 1)
+		l.shaded = false; l.double_sided = true; l.render_priority = 4
+		l.position = Vector3(1.122, 0.074 if k == 0 else 0.083, z); l.no_depth_test = true; l.rotation_degrees = Vector3(0, -90, 0)
+		l.text = head if k == 1 else "---"; m.add_child(l)
+		if k == 0: fcu_lbl[key] = l
+
 func _fcu_real(m: Node3D) -> void:
+	fcu_lbl.clear()
+	_fcu_lab(m, "spd", -0.028, "СКОР"); _fcu_lab(m, "hdg", -0.001, "КУРС"); _fcu_lab(m, "alt", 0.027, "ВЫС")
 	_bind_node(m, "Cube_033_main*", "knob", "spd", ["spd-", "spd+"])
 	_bind_node(m, "Cube_024_main*", "knob", "hdg", ["hdg-", "hdg+"])
 	_bind_node(m, "Cube_032_main*", "knob", "alt", ["altd", "altu"])
@@ -467,6 +479,7 @@ func _build_glb() -> void:
 	_lab_on = true
 	_eng_strip(root, Vector3(-0.12, -0.30, -0.35), -35.0, 0.6)
 	_lab_on = false
+	_tone_down(m)
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
 	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
@@ -505,6 +518,24 @@ func _glb_fix(m: Node) -> void:
 				var rn := str(mt.resource_name)
 				nm.albedo_color = adash if rn.contains("dash") else ((Color(0.3, 0.34, 0.42) * (adash * 3.2 + Color(0.2, 0.2, 0.2)).lerp(Color.WHITE, 0.5)) if rn.contains("standed_2") else adash.lerp(Color(0.2, 0.22, 0.28), 0.5))
 				(mi as MeshInstance3D).set_surface_override_material(i, nm)
+
+# светлые материалы модели (белые рамы, обшивка) красим в тёмно-серо-синюю гамму кабины
+func _tone_down(m: Node) -> void:
+	var done := {}
+	for mi in _meshes(m):
+		var mm := mi as MeshInstance3D
+		for i in range(mm.get_surface_override_material_count()):
+			var mat := mm.get_active_material(i)
+			if mat is StandardMaterial3D:
+				var sm := mat as StandardMaterial3D
+				var ac := sm.albedo_color
+				if sm.albedo_texture == null and (ac.r + ac.g + ac.b) / 3.0 > 0.72:
+					if not done.has(sm):
+						var d := sm.duplicate() as StandardMaterial3D
+						d.albedo_color = Color(0.30, 0.34, 0.40); done[sm] = d
+					mm.set_surface_override_material(i, done[sm])
+				elif sm.albedo_texture != null and mm.name.to_lower().contains("frame"):
+					pass
 
 func _meshes(n: Node) -> Array:
 	var out := []
@@ -1023,6 +1054,10 @@ func _mcp(s: Dictionary, c: Dictionary) -> void:
 func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 	var tt := Time.get_ticks_msec() * 0.001
 	var warn: bool = s.alerts.size() > 0 or s.warnings.size() > 0
+	if not fcu_lbl.is_empty():
+		(fcu_lbl["spd"] as Label3D).text = str(int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "АВТО"
+		(fcu_lbl["hdg"] as Label3D).text = "%03d" % (int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg))))
+		(fcu_lbl["alt"] as Label3D).text = str(int(c.apAlt))
 	for it in items:
 		var n: Node3D = it.n
 		var kind: String = it.kind
@@ -1100,8 +1135,22 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 		ab["step"] = clampi(int(c.get("abrk", 0)) + 1, 0, 5)
 
 # ---------- касания ----------
+func knob_at(pos: Vector2) -> Dictionary:
+	var it := _hit(pos)
+	return it if (not it.is_empty() and it.kind == "mknob") else {}
+
+func knob_step(it: Dictionary, dir: int) -> void:
+	it["tgt"] = float(it.tgt) + 0.3 * float(dir)
+	it["t"] = 1.0
+	if snd: snd.call("click", 900.0)
+	hud.call("_on_act", str((it.acts as Array)[1 if dir > 0 else 0]))
+
 func pick(pos: Vector2) -> void:
-	if not active: return
+	var best := _hit(pos)
+	if not best.is_empty(): _activate(best, pos)
+
+func _hit(pos: Vector2) -> Dictionary:
+	if not active: return {}
 	var vs := get_viewport().get_visible_rect().size
 	var p := Vector2(pos.x / vs.x * float(vp.size.x), pos.y / vs.y * float(vp.size.y))
 	var o := cam.project_ray_origin(p); var d := cam.project_ray_normal(p)
@@ -1125,7 +1174,7 @@ func pick(pos: Vector2) -> void:
 		if ok and t1 > 0.0:
 			var tt := maxf(t0, 0.0)
 			if tt < bt: bt = tt; best = it
-	if not best.is_empty(): _activate(best, pos)
+	return best
 
 func _activate(it: Dictionary, pos: Vector2) -> void:
 	var act: String = it.act
