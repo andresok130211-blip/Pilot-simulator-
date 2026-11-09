@@ -247,8 +247,15 @@ func _eng_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.0, roty := 0.0) -
 	_sb(st.transform * _xf(Vector3(0, 0.0, -0.002)), Vector3(0.40, 0.07, 0.008), Color(0.05, 0.06, 0.08))
 	var keep := _lab_on; _lab_on = true
 	_push(st, Vector3(-0.12, 0.0, 0.0), Vector2(0.11, 0.045), Color(0.14, 0.3, 0.16), "start", "ЗАПУСК ДВИГ.", Color(0.3, 1.0, 0.45))
-	_push(st, Vector3(0.05, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.38, 0.08, 0.06), "ext", "ПОЖАР 1", Color(1.0, 0.2, 0.1))
-	_push(st, Vector3(0.14, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.38, 0.08, 0.06), "ext", "ПОЖАР 2", Color(1.0, 0.2, 0.1))
+	_push(st, Vector3(0.05, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.9, 0.06, 0.04), "ext", "ПОЖАР 1", Color(1.0, 0.2, 0.1))
+	_push(st, Vector3(0.14, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.9, 0.06, 0.04), "ext", "ПОЖАР 2", Color(1.0, 0.2, 0.1))
+	_lab_on = keep
+
+func _fire_pair(par: Node3D, o: Vector3, rot_x: float, sc: float) -> void:
+	var st := Node3D.new(); st.position = o; st.basis = Basis.looking_at(o - Vector3(-0.56, 0.2, 0.0), Vector3.UP).scaled(Vector3.ONE * sc); par.add_child(st)
+	var keep := _lab_on; _lab_on = true
+	_push(st, Vector3(-0.06, 0.0, 0.0), Vector2(0.08, 0.08), Color(0.9, 0.06, 0.04), "ext", "ПОЖАР 1", Color(1.0, 0.9, 0.5))
+	_push(st, Vector3(0.06, 0.0, 0.0), Vector2(0.08, 0.08), Color(0.9, 0.06, 0.04), "ext", "ПОЖАР 2", Color(1.0, 0.9, 0.5))
 	_lab_on = keep
 
 # (метки кнопок вне пульта снова под кнопкой)
@@ -478,6 +485,7 @@ func _build_glb() -> void:
 	_bind_lever_node(m, "Cube_030__0", "brake", "СТОЯН.ТОРМ", Vector3(1, 0, 0))
 	_lab_on = true
 	_eng_strip(root, Vector3(-0.12, -0.30, -0.35), -35.0, 0.6)
+	_fire_pair(root, Vector3(0.16, 0.53, -0.13), 0.0, 0.9)
 	_lab_on = false
 	_tone_down(m)
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
@@ -746,7 +754,7 @@ func _overhead() -> void:
 	sec.call("ENGINE START", Vector2(0.0, 0.33), Vector2(0.4, 0.15))
 	_knob(ov, Vector3(0.1, 0.34, 0), "START 1", 4, "start", 0.016, 1); _knob(ov, Vector3(-0.1, 0.34, 0), "START 2", 4, "start", 0.016, 1)
 	_knob(ov, Vector3(0.0, 0.34, 0), "IGN", 3, "", 0.012, 1)
-	_push(ov, Vector3(0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.38, 0.08, 0.06), "ext", "ENG 1 FIRE", Color(1.0, 0.2, 0.1)); _push(ov, Vector3(-0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.38, 0.08, 0.06), "ext", "ENG 2 FIRE", Color(1.0, 0.2, 0.1))
+	_push(ov, Vector3(0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.9, 0.06, 0.04), "ext", "ENG 1 FIRE", Color(1.0, 0.2, 0.1)); _push(ov, Vector3(-0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.9, 0.06, 0.04), "ext", "ENG 2 FIRE", Color(1.0, 0.2, 0.1))
 	_tog(ov, Vector3(0.16, 0.32, 0), "L EEC", "", true); _tog(ov, Vector3(-0.16, 0.32, 0), "R EEC", "", true)
 	sec.call("ANTI-ICE", Vector2(0.0, 0.17), Vector2(0.4, 0.12))
 	for i in range(6): _tog(ov, Vector3(0.16 - i * 0.064, 0.15, 0), ["ENG 1", "ENG 2", "WING", "PROBE A", "PROBE B", "WSHLD"][i], "", false)
