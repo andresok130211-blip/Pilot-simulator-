@@ -236,8 +236,9 @@ export function game_begin(to, drill, kind, id, pf) {
   const emerg = drill ? 0 : (save.emerg && (wearOf(p.id) >= 60 || (save.fatigue || 0) >= 60) ? Math.min(3, save.emerg + 1) : save.emerg);
   contractCur = c; lastResult = null; applied = false;
   F = new Flight({ rnd: o.rnd || Math.random, wx, plane: p, from: from2, to: to2, bearing: brg, distM: rf ? rf.distM : c.km * 1000, hd0: rf ? rf.hd0 : null, hd1: rf ? rf.hd1 : null, pax: c.pax, fuelKg: o.fuel != null ? o.fuel : Math.min(p.fuelCap, c.fuel + ((save.emerg || drill) ? p.burnHr * 0.25 : 0)),
-    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: false, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : true, drill: !!drill, force: drill ? [drill] : undefined,
+    driftK: [1, 0.5, 0.15, 0][save.driftIdx == null ? 1 : save.driftIdx], trackHold: save.trackHold !== false, cold: !drill && !lessonCur && !o.air, flex: !!o.flex, cg: o.cg || 0.25, extraEv: o.extraEv, emerg, taxi: drill ? false : true, drill: !!drill, force: drill ? [drill] : undefined,
     copilot: save.copilot, fatigue: save.fatigue || 0, assist: { auto: drill ? true : (save.mode ? false : save.assistAuto), config: drill ? true : (save.mode > 1 ? false : save.assistCfg), hints: save.mode > 1 ? false : save.hints, taxi: save.mode > 1 ? false : save.assistTaxi }, tod, recAlt: recommendedCruise(c.km) });
+  if (F.cold) { F.gate.done = true; F.gate.board = F.gate.fuel = F.gate.bags = 1; }
   if (lessonCur) { F.assist.auto = lessonCur.auto; F.assist.config = lessonCur.config; }
   F.daily = dailyKey;
   F.flaps0 = 2; F.c.flaps = 2; F.flapAct = 2; F.c.brake = true; F.c.thr = 0;

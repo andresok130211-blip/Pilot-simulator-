@@ -241,6 +241,16 @@ func _ctl_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.55, extra := fals
 		_push(st, Vector3(0.10, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl-", "ЗАКРЫЛКИ −", gl)
 		_push(st, Vector3(0.30, -0.07, 0.0), Vector2(0.09, 0.03), dk, "fl+", "ЗАКРЫЛКИ +", gl)
 
+# запуск двигателей и пожарные кнопки рядом с рычагами тяги
+func _eng_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.0, roty := 0.0) -> void:
+	var st := Node3D.new(); st.position = o; st.rotation_degrees = Vector3(rot_x, roty, 0); st.scale = Vector3.ONE * sc; par.add_child(st)
+	_sb(st.transform * _xf(Vector3(0, 0.0, -0.002)), Vector3(0.40, 0.07, 0.008), Color(0.05, 0.06, 0.08))
+	var keep := _lab_on; _lab_on = true
+	_push(st, Vector3(-0.12, 0.0, 0.0), Vector2(0.11, 0.045), Color(0.14, 0.3, 0.16), "start", "ЗАПУСК ДВИГ.", Color(0.3, 1.0, 0.45))
+	_push(st, Vector3(0.05, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.38, 0.08, 0.06), "ext", "ПОЖАР 1", Color(1.0, 0.2, 0.1))
+	_push(st, Vector3(0.14, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.38, 0.08, 0.06), "ext", "ПОЖАР 2", Color(1.0, 0.2, 0.1))
+	_lab_on = keep
+
 # (метки кнопок вне пульта снова под кнопкой)
 # горизонтальная площадка с кнопками (пьедестал): локальный +z смотрит вверх
 func _pad(par: Node3D, o: Vector3, rot_x: float) -> Node3D:
@@ -370,6 +380,9 @@ func _build_787() -> void:
 			if mi != null: mi.reparent(pv, true)
 		thr787.append(pv)
 	_mcp_real(m)
+	_lab_on = true
+	_eng_strip(m, Vector3(0.0, 0.4, -1.4), -70.0, 1.0)
+	_lab_on = false
 	# шасси, закрылки и стояночный тормоз — настоящие рычаги модели
 	if not _levers_real(m):
 		var gp := _pad(m, Vector3(0.0, 0.64, -2.03), 0.0)
@@ -451,7 +464,8 @@ func _build_glb() -> void:
 	_lever3d(m, Vector3(1.0, 0.003, 0.02), "gear", "ШАССИ", Color(0.9, 0.15, 0.12))
 	_bind_lever_node(m, "a random_060_cockpit*", "fl", "ЗАКРЫЛКИ", Vector3(0, 0, 1))
 	_bind_lever_node(m, "Cube_030__0", "brake", "СТОЯН.ТОРМ", Vector3(1, 0, 0))
-	_ctl_strip(root, Vector3(-0.1, 0.11, -0.5), -30.0, 0.7, false)
+	_lab_on = true
+	_eng_strip(root, Vector3(-0.12, -0.30, -0.35), -35.0, 0.6)
 	_lab_on = false
 	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
 	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
@@ -701,6 +715,7 @@ func _overhead() -> void:
 	sec.call("ENGINE START", Vector2(0.0, 0.33), Vector2(0.4, 0.15))
 	_knob(ov, Vector3(0.1, 0.34, 0), "START 1", 4, "start", 0.016, 1); _knob(ov, Vector3(-0.1, 0.34, 0), "START 2", 4, "start", 0.016, 1)
 	_knob(ov, Vector3(0.0, 0.34, 0), "IGN", 3, "", 0.012, 1)
+	_push(ov, Vector3(0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.38, 0.08, 0.06), "ext", "ENG 1 FIRE", Color(1.0, 0.2, 0.1)); _push(ov, Vector3(-0.27, 0.33, 0), Vector2(0.06, 0.06), Color(0.38, 0.08, 0.06), "ext", "ENG 2 FIRE", Color(1.0, 0.2, 0.1))
 	_tog(ov, Vector3(0.16, 0.32, 0), "L EEC", "", true); _tog(ov, Vector3(-0.16, 0.32, 0), "R EEC", "", true)
 	sec.call("ANTI-ICE", Vector2(0.0, 0.17), Vector2(0.4, 0.12))
 	for i in range(6): _tog(ov, Vector3(0.16 - i * 0.064, 0.15, 0), ["ENG 1", "ENG 2", "WING", "PROBE A", "PROBE B", "WSHLD"][i], "", false)
@@ -751,6 +766,7 @@ func _pedestal() -> void:
 	_push(top, Vector3(-0.04, 0.005, 0.07), Vector2(0.03, 0.02), Color(0.7, 0.7, 0.72), "ga", "TO/GA")
 	_push(top, Vector3(0.04, 0.005, 0.07), Vector2(0.03, 0.02), Color(0.7, 0.7, 0.72), "ga", "TO/GA")
 	_push(top, Vector3(0.0, 0.005, 0.04), Vector2(0.034, 0.02), Color(0.3, 0.1, 0.1), "rev", "REVERSE")
+	_eng_strip(top, Vector3(0.0, 0.004, 0.33), 0.0, 0.8)
 	_push(top, Vector3(-0.0, 0.005, 0.01), Vector2(0.034, 0.02), Color(0.3, 0.3, 0.34), "at", "A/T DISC")
 	# спойлеры и закрылки (рычаги по бокам)
 	spd_lever = _side_lever(top, Vector3(-0.105, 0.0, 0.03), "SPEED BRAKE", Color(0.85, 0.7, 0.1), "")
@@ -1023,6 +1039,11 @@ func _sync(s: Dictionary, c: Dictionary, dt: float) -> void:
 			"rev": it["on"] = bool(c.rev)
 			"hdgm": it["on"] = bool(c.get("hdgM", false))
 			"spda": it["on"] = c.get("spdSel") != null
+			"start": it["on"] = (float(s.eng[0]) > 0.5 and float(s.eng[1]) > 0.5) or fmod(tt, 1.0) < 0.5
+			"ext":
+				var fl := false
+				for al in s.alerts: if str(al).begins_with("ПОЖАР"): fl = true
+				it["on"] = fl and fmod(tt, 0.6) < 0.3
 		if it.has("hot") and not act in ["appr", "nav"]: pass
 		if it.has("flash"): it["on"] = warn and fmod(tt, 0.8) < 0.4
 		if kind == "push":

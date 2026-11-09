@@ -1,7 +1,7 @@
 extends CanvasLayer
 # Внешний осмотр: ходим по небольшой площадке вокруг самолёта, осматриваем узлы, находим неисправности.
 signal finished(found: Array)
-const GS := -2.3
+var GS := -2.3
 const EYE := 1.7
 const SPEED := 4.5
 # неисправность из game_preflight -> [узел, что видно снаружи]
@@ -51,6 +51,8 @@ func _btn(text: String, r: Rect2, col: Color) -> Button:
 
 func start(w: Node3D, defs: Array, all := false):
 	world = w; defects = defs; reveal_all = all
+	GS = w.gnd
+	w.cam_mode = 0; w.ckp.set_active(false)
 	layer = 6
 	var L: float = w.board_L
 	world.terrain.visible = false
@@ -58,6 +60,7 @@ func start(w: Node3D, defs: Array, all := false):
 	for a in world.airports: a.node.visible = false
 	world.board.visible = false
 	world.plane.position = Vector3.ZERO; world.plane.rotation = Vector3.ZERO; world.plane.visible = true
+	if world.gear: world.gear.visible = true; world.gear.scale = Vector3.ONE
 	saved_cam = [world.cam.near, world.cam.far]; world.cam.near = 0.15; world.cam.far = 3000.0
 	half = Vector2(L * 0.48 + 9.0, L * 0.5 + 16.0)
 	pos = Vector2(-4.0, -L * 0.5 - 8.0); yaw = PI + 0.25
@@ -99,6 +102,8 @@ func _build_site(L: float) -> void:
 	var pd: MeshInstance3D = world._box(root3, Vector3(half.x * 2.0 + 4.0, 0.12, half.y * 2.0 + 4.0), Color(1, 1, 1), Vector3(0, GS - 0.06, 0))
 	pd.material_override = _tex_mat(world.mip_tex("res://assets/tex/det_r.png"), Color(0.95, 0.96, 0.98), 0.18)
 	world._box(root3, Vector3(0.3, 0.02, half.y * 2.0), Color(0.95, 0.8, 0.1), Vector3(0, GS + 0.02, 0))
+	world.build_stands(root3, half.x + 6.0, 0.0)
+	world._box(root3, Vector3(14, 10, 190), Color(0.6, 0.68, 0.78), Vector3(-half.x - 24.0, GS + 5, 0))
 	for sx in [-1.0, 1.0]:   # ограждение площадки
 		world._box(root3, Vector3(0.15, 1.0, half.y * 2.0 + 4.0), Color(0.9, 0.35, 0.1), Vector3(sx * (half.x + 2.0), GS + 0.5, 0))
 	for sz in [-1.0, 1.0]:

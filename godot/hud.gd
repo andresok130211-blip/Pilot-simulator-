@@ -120,7 +120,7 @@ func _lamp(k: String) -> void:
 func set_viewer(on: bool) -> void:
 	viewer = on
 	pads.visible = not on
-	for k2 in ["c_warp", "c_altp"]: btn[k2].visible = not on
+	for k2 in ["c_warp"]: btn[k2].visible = not on
 	if lightp: lightp.visible = false
 	(ckbar.get_child(ckbar.get_child_count() - 1) as Button).text = "ВЫХОД" if on else "ПАУЗА"
 	for n in [info, hint, alert, log_l, evbox, get_node("link"), get_node("start")]: n.visible = not on
@@ -149,7 +149,7 @@ func boarding(left: float):
 		instr.visible = cockpit
 	if ckbar: ckbar.visible = (cockpit or viewer) and not on
 	if svcbar: svcbar.visible = not cockpit and not on
-	if ctlbar: ctlbar.visible = cockpit and not viewer and not on
+	if ctlbar: ctlbar.visible = false
 	if on:
 		var bt: float = get_parent().world.BOARD_T - left
 		l.text = "%s… %d%%" % [get_parent().world.board_phase(bt), int(bt / get_parent().world.BOARD_T * 100.0)]
@@ -183,7 +183,7 @@ func _build_appanel() -> void:
 
 func _ap_update(s: Dictionary, c: Dictionary) -> void:
 	if appanel == null: return
-	appanel.visible = not viewer and not paused and float(get_parent().board_left) <= 0.0
+	appanel.visible = not viewer and not cockpit and not paused and float(get_parent().board_left) <= 0.0
 	if not appanel.visible: return
 	appanel.position = Vector2(300, 408) if cockpit else Vector2(440, 112)
 	var hd := int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg)))
@@ -248,10 +248,11 @@ func _ready():
 	var defs2 := [["ВЫС +", "altu"], ["ПОСАДКА", "appr"], ["АВТО\nРУЛ", "taxi"], ["РЕВЕРС", "rev"], ["АВТОТОРМ", "abrk"], ["ВИД", "view"], ["РАДИО", "radio"], ["ЗАПАСН.", "altp"], ["ПАУЗА", "pause"]]
 	for d in defs1: var b := _button(d[0], d[1], 74); btn[d[1]] = b; r1.add_child(b)
 	for d in defs2: var b2 := _button(d[0], d[1], 74); btn[d[1]] = b2; r2.add_child(b2)
-	ckbar = HBoxContainer.new(); ckbar.add_theme_constant_override("separation", 4); ckbar.position = Vector2(300, 588); ckbar.visible = false; add_child(ckbar)
+	ckbar = HBoxContainer.new(); ckbar.add_theme_constant_override("separation", 4); ckbar.position = Vector2(1000, 4); ckbar.visible = false; add_child(ckbar)
 	for d in [["СБРОС\nГОЛОВЫ", "ck:fwd"], ["ДРУГОЙ\nПИЛОТ", "ck:other"], ["МЕСТО\nКАП/2П", "ck:seat"], ["ЗУМ", "ck:zoom"], ["×1", "warp"], ["ЗАПАСН.", "altp"], ["ВИД", "view"], ["ПАУЗА", "pause"]]:
 		var kb := _button(d[0], d[1], 86); kb.add_theme_font_size_override("font_size", 13)
 		if d[1] == "warp" or d[1] == "altp": btn["c_" + d[1]] = kb
+		if d[1] in ["ck:other", "ck:seat", "ck:zoom", "altp", "ck:fwd"]: kb.visible = false
 		ckbar.add_child(kb)
 	_build_lightp()
 	ctlbar = HBoxContainer.new(); ctlbar.add_theme_constant_override("separation", 4); ctlbar.position = Vector2(286, 530); ctlbar.visible = false; add_child(ctlbar)
@@ -409,7 +410,9 @@ func update_state(s: Dictionary):
 	instr.put(s, mode, cockpit)
 	info.visible = mode == 0 and not cockpit and not viewer
 	_topbar(s)
-	if lightp: lightp.visible = cockpit and not paused and get_parent().world.ckp.pitch > 0.42
+	if lightp: lightp.visible = false
+	if cockpit and not viewer:
+		pads.visible = false; get_node("link").visible = false
 	if viewer:
 		for n in [hint, alert, log_l, evbox]: n.visible = false
 	log_l.position = Vector2(130, -540) if cockpit else Vector2(300, -300)
@@ -436,7 +439,7 @@ func update_state(s: Dictionary):
 			var bb := _button(str(b.t), "ev:" + str(b.k), 200); ev_row.add_child(bb)
 	_labels(s, c)
 	_mark("gear", c.gear); _mark("brake", c.brake); _mark("ap", c.apOn); _mark("at", c.atOn); _mark("appr", c.appr); _mark("rev", c.rev)
-	var st = get_node_or_null("start"); if st: st.visible = not viewer and not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
+	var st = get_node_or_null("start"); if st: st.visible = not viewer and not cockpit and not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
 	if c.atOn and not fingers.values().has("t0") and not fingers.values().has("t1"): thr = [float(c.thr), float(c.thr)]; pads.queue_redraw()
 
 func _labels(s: Dictionary, c: Dictionary):
@@ -446,7 +449,7 @@ func _labels(s: Dictionary, c: Dictionary):
 	btn["k_gear"].text = "ШАССИ\n" + ("▼" if gr > 0.98 else ("▲" if gr < 0.02 else "…")); btn["k_fl-"].text = "ЗАКР −\n(%s)" % str(s.flapName)
 	btn["warp"].text = "×%d" % int(c.warp); btn["c_warp"].text = "×%d" % int(c.warp)
 	btn["abrk"].text = "АВТОТОРМ\n" + ["—", "1", "2", "MAX"][clampi(int(c.get("abrk", 0)), 0, 3)]
-	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ"][get_parent().world.cam_mode]
+	btn["view"].text = "ВИД:\n" + ["СНАРУЖИ", "КАБИНА", "БАШНЯ", "КРЫЛО", "ХВОСТ", "ШАССИ", "СЗАДИ", "СПЕРЕДИ"][get_parent().world.cam_mode]
 	_mark("nav", c.get("nav", true)); _mark("taxi", c.get("taxiAuto", false)); _ap_update(s, c)
 
 func _mark(k: String, on) -> void:
