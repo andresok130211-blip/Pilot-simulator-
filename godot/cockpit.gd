@@ -332,7 +332,7 @@ func _bind_lever(m: Node3D, ids: Array, act: String, label: String, base := 0.25
 	it["b0"] = pv.transform.basis; it["ang"] = 0.0
 	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.0005; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = bb.get_center() + Vector3(0, bb.size.y * 0.5 + 0.02, 0.01); l.render_priority = 5
-	m.add_child(l)
+	l.free()
 	return it
 
 func _levers_real(m: Node3D) -> bool:
@@ -411,7 +411,7 @@ func _bind_node(m: Node3D, pat: String, kind: String, act: String, acts := [], t
 
 var fcu_lbl := {}
 func _fcu_lab(m: Node3D, key: String, z: float, head: String) -> void:
-	for k in range(2):
+	for k in range(1):
 		var l := Label3D.new(); l.font_size = 64 if k == 0 else 30; l.pixel_size = 0.0001 if k == 0 else 0.00007
 		l.modulate = Color(1.0, 0.72, 0.15) if k == 0 else Color(0.85, 0.95, 1.0); l.outline_size = 12; l.outline_modulate = Color(0, 0, 0, 1)
 		l.shaded = false; l.double_sided = true; l.render_priority = 4
@@ -441,7 +441,7 @@ func _lever3d(m: Node3D, p: Vector3, act: String, label: String, col: Color) -> 
 	it["b0"] = pv.transform.basis; it["ang"] = 0.0; it["axis"] = Vector3(0, 0, 1)
 	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.00007; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = p + Vector3(0, 0.036, 0); l.render_priority = 5
-	m.add_child(l)
+	l.free()
 
 func _bind_lever_node(m: Node3D, pat: String, act: String, label: String, axis: Vector3) -> void:
 	var mi := m.find_child(pat, true, false) as MeshInstance3D
@@ -454,7 +454,7 @@ func _bind_lever_node(m: Node3D, pat: String, act: String, label: String, axis: 
 	it["b0"] = pv.transform.basis; it["ang"] = 0.0; it["axis"] = axis
 	var l := Label3D.new(); l.text = label; l.font_size = 40; l.pixel_size = 0.00007; l.modulate = Color(1, 0.95, 0.6); l.outline_size = 10; l.outline_modulate = Color(0, 0, 0, 0.95)
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.shaded = false; l.position = b.get_center() + Vector3(0, 0.03, 0); l.render_priority = 5
-	m.add_child(l)
+	l.free()
 
 func _build_glb() -> void:
 	if is787:
@@ -936,6 +936,10 @@ func _dress(n: Node, idx: int) -> void:
 			_g(sk, l + "UpLeg", Basis(Vector3(1, 0, 0), -PI * 0.5), true)
 			_g(sk, l + "Leg", Basis.IDENTITY, true)
 		for l in ["Left", "Right"]: _g(sk, l + "ForeArm", Basis(Vector3(1, 0, 0), -0.9), false)
+	for mi in _meshes(n):
+		var nm := String((mi as Node).name).to_lower()
+		for k in ["head", "hair", "eye", "teeth", "glass", "beard", "brow", "lash", "cap", "hat"]:
+			if nm.contains(k): (mi as MeshInstance3D).visible = false
 	_tint(n, idx)
 
 func _tint(n: Node, idx: int) -> void:
