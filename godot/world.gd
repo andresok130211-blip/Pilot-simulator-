@@ -253,10 +253,15 @@ func build_stands(parent: Node3D, x0: float, zs: float) -> void:
 	for i in range(mods.size()):
 		parked_plane(parent, mods[i], Vector3(x0 + 28.0 + i * 38.0, 0, zs + zz[i]), 0.0)
 		_box(parent, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(x0 + 28.0 + i * 38.0, gs + 0.01, zs + zz[i] - 28.0))
-	# телегa с багажом и трап у дальних самолётов
-	for i in range(3):
-		_box(parent, Vector3(3.4, 1.1, 1.8), Color(0.9, 0.85, 0.2), Vector3(x0 + 50.0 + i * 38.0, gs + 0.55, zs + 14.0))
-		_box(parent, Vector3(1.6, 3.0, 4.5), Color(0.9, 0.9, 0.95), Vector3(x0 + 40.0 + i * 38.0, gs + 1.5, zs - 12.0))
+	# машины у самолётов
+	for i in range(5):
+		var bx := x0 + 28.0 + i * 38.0
+		var bz: float = zs + zz[i]
+		_veh_tractor(parent, Vector3(bx + 13.0, gs, bz + 6.0), gs * 0.0 + 0.0, 2).rotation.y = PI * 0.5 if i % 2 == 0 else 0.0
+		if i % 2 == 0: _veh_fuel(parent, Vector3(bx - 14.0, gs, bz + 2.0), 0.0)
+		else: _veh_stairs(parent, Vector3(bx - 9.0, gs, bz - 6.0), 0.0).rotation.y = PI * 0.5
+	_veh_bus(parent, Vector3(x0 + 20.0, gs, zs + 40.0), 0.0)
+	_veh_catering(parent, Vector3(x0 + 96.0, gs, zs + 34.0), 0.0)
 
 func _blink_light(pos: Vector3, col: Color, sz: float, strobe: bool, kind := "nav") -> void:
 	var sm := SphereMesh.new(); sm.radius = sz; sm.height = sz * 2.0
@@ -371,26 +376,21 @@ func _build_boarding(L: float):
 	var mar := _person(Color(1.0, 0.5, 0.1), false); board.add_child(mar.root); mar.root.position = Vector3(-3.5, gs, -L * 0.5 - 7); mar.root.rotation.y = PI; bd["mar"] = mar
 	var rmp := _person(Color(1.0, 0.5, 0.1), false); board.add_child(rmp.root); rmp.root.position = Vector3(9.5, gs, -L * 0.06); rmp.root.rotation.y = PI * 0.5; bd["rmp"] = rmp
 	var fuel := Node3D.new(); board.add_child(fuel); bd["fuel"] = fuel
-	_box(fuel, Vector3(2.6, 2.2, 6.5), Color(0.9, 0.7, 0.1), Vector3(17, gs + 1.1, -L * 0.03))
-	_cyl(fuel, 1.15, 5.0, Color(0.85, 0.85, 0.88), Vector3(17, gs + 3.1, L * 0.0), Vector3(90, 0, 0))
-	_cyl(fuel, 0.07, 9.5, Color(0.1, 0.1, 0.1), Vector3(12.0, gs + 1.9, -L * 0.03), Vector3(0, 0, 70))
+	_veh_fuel(fuel, Vector3(17, 0, -L * 0.03), gs).rotation.y = PI * 0.5 * 0.0
 	# багажный погрузчик: наклонная лента и чемоданы
-	var belt := _box(board, Vector3(0.9, 0.16, 6.4), Color(0.2, 0.2, 0.22), Vector3(5.2, gs + 1.35, L * 0.12)); belt.rotation_degrees = Vector3(0, 0, 0)
-	belt.rotation_degrees = Vector3(0, 90, 0); belt.rotation_degrees.z = 0
-	belt.mesh.size = Vector3(6.4, 0.16, 0.9); belt.rotation_degrees = Vector3(0, 0, 24)
-	_box(board, Vector3(1.6, 1.0, 2.2), Color(0.9, 0.85, 0.2), Vector3(8.2, gs + 0.5, L * 0.12))
+	var belt := _box(board, Vector3(6.4, 0.16, 0.9), Color(0.2, 0.2, 0.22), Vector3(5.2, gs + 1.35, L * 0.12)); belt.rotation_degrees = Vector3(0, 0, 24)
+	_veh_tractor(board, Vector3(10.5, 0, L * 0.12), gs, 2).rotation.y = PI * 0.5
 	var bags := []
 	for i in range(6):
 		var bg := _box(board, Vector3(0.7, 0.4, 0.5), Color.from_hsv(randf(), 0.5, 0.6), Vector3(0, 0, 0)); bags.append(bg)
 	bd["bags"] = bags
 	# кейтеринг на задней левой двери
 	var cat := Node3D.new(); board.add_child(cat); bd["cat"] = cat
-	var ct := _box(cat, Vector3(5.0, 2.6, 2.4), Color(0.9, 0.9, 0.95), Vector3(-9.5, gs + 1.7, L * 0.30))
+	_veh_catering(cat, Vector3(-9.5, 0, L * 0.30), gs).rotation.y = PI * 0.5
 	var plat := _box(cat, Vector3(2.4, 0.2, 2.2), Color(0.7, 0.72, 0.78), Vector3(-5.0, gs + 1.4, L * 0.30)); bd["plat"] = plat
 	# буксировщик заходит к носу
 	var tug := Node3D.new(); board.add_child(tug); bd["tug"] = tug
-	_box(tug, Vector3(2.4, 1.0, 3.6), Color(0.7, 0.15, 0.12), Vector3(0, gs + 0.5, 0)); _box(tug, Vector3(1.8, 0.8, 1.4), Color(0.8, 0.8, 0.85), Vector3(0, gs + 1.3, 0.6))
-	_box(tug, Vector3(0.12, 0.12, 3.0), Color(0.2, 0.2, 0.22), Vector3(0, gs + 0.45, -3.2))
+	_veh_tug(tug, Vector3.ZERO, gs)
 	# конусы
 	var cn := CylinderMesh.new(); cn.top_radius = 0.02; cn.bottom_radius = 0.22; cn.height = 0.6
 	for q in [[-5.5, -L * 0.5 - 3.0], [5.5, -L * 0.5 - 3.0], [-14.0, -L * 0.1], [14.0, L * 0.35], [-14.0, L * 0.4], [11.0, -L * 0.3]]:
@@ -399,6 +399,78 @@ func _build_boarding(L: float):
 	var bm := SphereMesh.new(); bm.radius = 0.2; bm.height = 0.4
 	var bc := _mk(bm, Color(1, 0.1, 0.1), Vector3(0, 2.6, -L * 0.05)); (bc.material_override as StandardMaterial3D).emission_enabled = true; (bc.material_override as StandardMaterial3D).emission = Color(1, 0.1, 0.1)
 	board.add_child(bc); bd["beacon"] = bc
+
+# ---------- наземные машины ----------
+func _wheels(par: Node3D, xs: Array, zs: Array, r: float, gs: float) -> void:
+	for x in xs:
+		for z in zs:
+			_cyl(par, r, 0.32, Color(0.06, 0.06, 0.07), Vector3(x, gs + r, z), Vector3(0, 0, 90))
+			_cyl(par, r * 0.5, 0.34, Color(0.6, 0.62, 0.66), Vector3(x, gs + r, z), Vector3(0, 0, 90))
+
+func _veh_fuel(par: Node3D, o: Vector3, gs: float) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(2.5, 0.35, 8.0), Color(0.15, 0.15, 0.17), Vector3(0, gs + 0.75, 0))
+	_box(v, Vector3(2.5, 1.9, 1.9), Color(0.95, 0.95, 0.97), Vector3(0, gs + 1.7, -3.1))
+	_box(v, Vector3(2.3, 0.8, 0.05), Color(0.2, 0.3, 0.4), Vector3(0, gs + 2.1, -4.07))
+	_cyl(v, 1.2, 5.2, Color(0.92, 0.2, 0.12), Vector3(0, gs + 2.2, 1.1), Vector3(90, 0, 0))
+	_box(v, Vector3(2.45, 0.12, 5.2), Color(0.95, 0.95, 0.95), Vector3(0, gs + 2.45, 1.1)).scale = Vector3(1, 1, 1)
+	_box(v, Vector3(1.4, 0.3, 4.6), Color(0.7, 0.7, 0.72), Vector3(0, gs + 3.45, 1.1))
+	_cyl(v, 0.07, 6.0, Color(0.1, 0.1, 0.1), Vector3(-1.3, gs + 1.5, 1.0), Vector3(90, 0, 0))
+	_wheels(v, [-1.1, 1.1], [-3.0, 1.2, 2.9], 0.5, gs)
+	_box(v, Vector3(0.4, 0.15, 0.15), Color(1, 0.6, 0.1), Vector3(0, gs + 2.75, -3.1))
+	return v
+
+func _veh_tug(par: Node3D, o: Vector3, gs: float) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(2.3, 0.7, 4.0), Color(0.75, 0.12, 0.1), Vector3(0, gs + 0.7, 0))
+	_box(v, Vector3(2.1, 1.2, 1.7), Color(0.8, 0.14, 0.12), Vector3(0, gs + 1.55, 0.7))
+	_box(v, Vector3(1.9, 0.6, 0.05), Color(0.2, 0.3, 0.4), Vector3(0, gs + 1.7, -0.17))
+	_box(v, Vector3(2.3, 0.08, 2.0), Color(0.2, 0.2, 0.22), Vector3(0, gs + 2.2, 0.7))
+	_wheels(v, [-1.0, 1.0], [-1.3, 1.3], 0.45, gs)
+	_box(v, Vector3(0.12, 0.12, 3.0), Color(0.2, 0.2, 0.22), Vector3(0, gs + 0.55, -3.2))
+	return v
+
+func _veh_tractor(par: Node3D, o: Vector3, gs: float, carts := 2) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(1.4, 0.5, 2.2), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.55, 0))
+	_box(v, Vector3(1.3, 1.1, 1.0), Color(0.95, 0.8, 0.1), Vector3(0, gs + 1.15, 0.4))
+	_box(v, Vector3(1.3, 0.05, 1.0), Color(0.25, 0.3, 0.35), Vector3(0, gs + 1.4, -0.1))
+	_wheels(v, [-0.6, 0.6], [-0.7, 0.8], 0.3, gs)
+	for c in range(carts):
+		var z := -2.6 - c * 3.3
+		_box(v, Vector3(1.8, 0.18, 2.8), Color(0.45, 0.47, 0.5), Vector3(0, gs + 0.42, z))
+		_box(v, Vector3(1.7, 0.7, 0.1), Color(0.5, 0.5, 0.55), Vector3(0, gs + 0.8, z - 1.3))
+		_wheels(v, [-0.8, 0.8], [z - 0.8, z + 0.8], 0.22, gs)
+		_box(v, Vector3(0.12, 0.12, 0.8), Color(0.2, 0.2, 0.22), Vector3(0, gs + 0.45, z + 1.6))
+		for q in range(3): _box(v, Vector3(0.6, 0.35, 0.45), Color.from_hsv(randf(), 0.5, 0.55), Vector3(-0.4 + q * 0.4, gs + 0.72, z + randf_range(-0.6, 0.6)))
+	return v
+
+func _veh_catering(par: Node3D, o: Vector3, gs: float) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(2.4, 0.5, 6.0), Color(0.2, 0.2, 0.22), Vector3(0, gs + 0.7, 0))
+	_box(v, Vector3(2.4, 2.2, 1.8), Color(0.95, 0.95, 0.97), Vector3(0, gs + 1.9, -2.1))
+	_box(v, Vector3(2.2, 0.7, 0.05), Color(0.2, 0.3, 0.4), Vector3(0, gs + 2.3, -3.03))
+	_box(v, Vector3(2.4, 2.3, 3.6), Color(0.88, 0.9, 0.93), Vector3(0, gs + 2.0, 1.4))
+	_box(v, Vector3(2.5, 0.12, 3.7), Color(0.9, 0.2, 0.15), Vector3(0, gs + 3.2, 1.4))
+	_wheels(v, [-1.1, 1.1], [-2.1, 1.0, 2.4], 0.5, gs)
+	return v
+
+func _veh_bus(par: Node3D, o: Vector3, gs: float) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(2.5, 2.4, 11.0), Color(0.92, 0.55, 0.12), Vector3(0, gs + 1.5, 0))
+	_box(v, Vector3(2.52, 0.9, 10.0), Color(0.2, 0.3, 0.4), Vector3(0, gs + 1.9, 0))
+	_box(v, Vector3(2.3, 0.1, 10.5), Color(0.95, 0.95, 0.95), Vector3(0, gs + 2.75, 0))
+	_wheels(v, [-1.1, 1.1], [-3.6, 3.6], 0.5, gs)
+	return v
+
+func _veh_stairs(par: Node3D, o: Vector3, gs: float) -> Node3D:
+	var v := Node3D.new(); v.position = o; par.add_child(v)
+	_box(v, Vector3(1.8, 0.7, 3.2), Color(0.9, 0.9, 0.95), Vector3(0, gs + 0.7, 0))
+	_box(v, Vector3(1.4, 0.12, 5.2), Color(0.55, 0.57, 0.6), Vector3(0, gs + 1.6, 2.4)).rotation_degrees = Vector3(-20, 0, 0)
+	_box(v, Vector3(1.8, 0.12, 1.8), Color(0.55, 0.57, 0.6), Vector3(0, gs + 2.6, -0.6))
+	_box(v, Vector3(0.06, 0.9, 1.8), Color(0.9, 0.8, 0.1), Vector3(-0.85, gs + 3.0, -0.6)); _box(v, Vector3(0.06, 0.9, 1.8), Color(0.9, 0.8, 0.1), Vector3(0.85, gs + 3.0, -0.6))
+	_wheels(v, [-0.8, 0.8], [-1.0, 0.9], 0.4, gs)
+	return v
 
 func _walk(p: Dictionary, t: float, ph: float, amp := 0.7):
 	var s := sin(t * 9.0 + ph) * amp
