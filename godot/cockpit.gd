@@ -537,10 +537,10 @@ func _tone_down(m: Node) -> void:
 			if mat is StandardMaterial3D:
 				var sm := mat as StandardMaterial3D
 				var ac := sm.albedo_color
-				if sm.albedo_texture == null and (ac.r + ac.g + ac.b) / 3.0 > 0.72:
+				if (sm.albedo_texture == null and (ac.r + ac.g + ac.b) / 3.0 > 0.72) or sm.resource_name.to_lower().contains("white"):
 					if not done.has(sm):
 						var d := sm.duplicate() as StandardMaterial3D
-						d.albedo_color = Color(0.30, 0.34, 0.40); done[sm] = d
+						d.albedo_texture = null; d.albedo_color = Color(0.36, 0.41, 0.49); d.emission_enabled = false; done[sm] = d
 					mm.set_surface_override_material(i, done[sm])
 				elif sm.albedo_texture != null and mm.name.to_lower().contains("frame"):
 					pass
