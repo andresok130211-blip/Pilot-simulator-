@@ -145,7 +145,7 @@ func boarding(left: float):
 	l.visible = on; get_node("board_skip").visible = on
 	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
 	if cockpit and not viewer and not on:
-		pads.visible = false; get_node("link").visible = false; info.visible = false
+		info.visible = false
 	if (cockpit or viewer) and not on:
 		rows.visible = false; get_node("cabin").visible = false
 	if viewer:
@@ -427,8 +427,6 @@ func update_state(s: Dictionary):
 	info.visible = mode == 0 and not cockpit and not viewer
 	_topbar(s)
 	if lightp: lightp.visible = false
-	if cockpit and not viewer:
-		pads.visible = false; get_node("link").visible = false
 	if viewer:
 		for n in [hint, alert, log_l, evbox]: n.visible = false
 	log_l.position = Vector2(130, -540) if cockpit else Vector2(300, -300)
