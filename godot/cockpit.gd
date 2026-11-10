@@ -251,6 +251,15 @@ func _eng_strip(par: Node3D, o: Vector3, rot_x := 0.0, sc := 1.0, roty := 0.0) -
 	_push(st, Vector3(0.14, 0.0, 0.0), Vector2(0.07, 0.045), Color(0.9, 0.06, 0.04), "ext", "ПОЖАР 2", Color(1.0, 0.2, 0.1))
 	_lab_on = keep
 
+func _ap_strip(par: Node3D, o: Vector3, sc: float) -> void:
+	var st := Node3D.new(); st.position = o; st.basis = Basis.looking_at(o - Vector3(-0.56, 0.2, 0.0), Vector3.UP).scaled(Vector3.ONE * sc); par.add_child(st)
+	var keep := _lab_on; _lab_on = true
+	var dk := Color(0.12, 0.13, 0.16); var gl := Color(0.3, 1.0, 0.45)
+	var names := [["at", "АВТОТЯГА"], ["nav", "МАРШРУТ"], ["ap", "АВТОПИЛОТ"], ["appr", "ПОСАДКА"]]
+	for i in range(4):
+		_push(st, Vector3((i - 1.5) * 0.095, 0.0, 0.0), Vector2(0.085, 0.05), dk, str(names[i][0]), str(names[i][1]), gl)
+	_lab_on = keep
+
 func _fire_pair(par: Node3D, o: Vector3, rot_x: float, sc: float) -> void:
 	var st := Node3D.new(); st.position = o; st.basis = Basis.looking_at(o - Vector3(-0.56, 0.2, 0.0), Vector3.UP).scaled(Vector3.ONE * sc); par.add_child(st)
 	var keep := _lab_on; _lab_on = true
@@ -479,6 +488,7 @@ func _build_glb() -> void:
 		var cb: AABB = (inv0 * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 		if cb.get_center().z > 0.3 and cb.position.z > 0.0: mi.queue_free()
 	_fcu_real(m)
+	_ap_strip(root, (m.transform * Vector3(1.115, 0.098, 0.0)), 0.9)
 	_lever3d(m, Vector3(1.0, 0.003, 0.02), "gear", "ШАССИ", Color(0.9, 0.15, 0.12))
 	_bind_lever_node(m, "a random_060_cockpit*", "fl", "ЗАКРЫЛКИ", Vector3(0, 0, 1))
 	_bind_lever_node(m, "Cube_030__0", "brake", "СТОЯН.ТОРМ", Vector3(1, 0, 0))
