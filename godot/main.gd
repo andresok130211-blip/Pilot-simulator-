@@ -83,6 +83,7 @@ func _walk():
 	menu.close()
 	world.visible = true
 	var pid: String = Sim.g("game_hub").plane
+	for ua in OS.get_cmdline_user_args(): if ua.begins_with("--plane="): pid = ua.substr(8)
 	var col := Color.WHITE
 	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
 	world.build_plane(pid, col)
