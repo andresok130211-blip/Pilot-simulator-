@@ -386,6 +386,8 @@ func _build_787() -> void:
 	var xs := [-0.575, -0.225, 0.225, 0.575]; var ks := ["pfd", "nd", "nd", "pfd"]
 	for i in range(4):
 		_gdisplay(m, Vector3(float(xs[i]), 0.69, -2.036), 0.22, str(ks[i]), Vector2i(256, 256), 0.0, Vector2(0.31, 0.22))
+	_gdisplay(m, Vector3(0.0, 0.735, -2.036), 0.2, "eng", Vector2i(256, 176), 0.0, Vector2(0.22, 0.16))
+	_gdisplay(m, Vector3(0.0, 0.57, -2.036), 0.17, "sys", Vector2i(280, 340), 0.0, Vector2(0.19, 0.19))
 	# рычаги тяги двигаются вместе с тягой
 	thr787.clear()
 	for grp in [["1347", "1349", "1351", "1367"], ["1378", "1380", "1382", "1362"]]:
