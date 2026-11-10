@@ -175,7 +175,7 @@ func _view(id: String) -> void:
 	viewer = true
 	_start("", "none")
 	if not playing: viewer = false; Sim.g("game_view_end"); menu.open("hub"); return
-	board_left = 0.0; hud.viewer = true; hud.set_viewer(true); world.orbit = 35.0
+	board_left = 0.0; world.cam_mode = 0; hud.viewer = true; hud.set_viewer(true); world.orbit = 35.0
 	world.svc_reset(); world.svc_manual = true; world.board_tick(true, 0.0)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--oview="):

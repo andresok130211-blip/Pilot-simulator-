@@ -400,6 +400,24 @@ func _build_boarding(L: float):
 	var bc := _mk(bm, Color(1, 0.1, 0.1), Vector3(0, 2.6, -L * 0.05)); (bc.material_override as StandardMaterial3D).emission_enabled = true; (bc.material_override as StandardMaterial3D).emission = Color(1, 0.1, 0.1)
 	board.add_child(bc); bd["beacon"] = bc
 
+# телетрап: ротонда у терминала, гармошка из секций, кабина у двери, опора на колёсах
+func _jetway(par: Node3D, o: Vector3, z_end: float) -> void:
+	var zl := o.z - z_end
+	_cyl(par, 2.6, 3.6, Color(0.6, 0.63, 0.68), Vector3(o.x, 5.2, o.z - 0.5))
+	var secs := 5
+	for i in range(secs):
+		var t := float(i) / float(secs)
+		var w := lerpf(3.4, 2.6, t)
+		var zc := o.z - zl * (t + 0.5 / secs)
+		_box(par, Vector3(w, 3.0, zl / secs * 0.92), Color(0.82, 0.84, 0.88), Vector3(o.x, 5.0 - t * 0.6, zc))
+		_box(par, Vector3(w + 0.1, 0.9, zl / secs * 0.92), Color(0.25, 0.4, 0.55), Vector3(o.x, 5.3 - t * 0.6, zc))
+		_box(par, Vector3(w + 0.2, 3.1, 0.12), Color(0.35, 0.37, 0.4), Vector3(o.x, 5.0 - t * 0.6, zc - zl / secs * 0.47))
+	_cyl(par, 1.9, 3.2, Color(0.7, 0.72, 0.76), Vector3(o.x, 4.4, z_end - 1.0))
+	_box(par, Vector3(0.6, 4.0, 0.6), Color(0.9, 0.8, 0.1), Vector3(o.x - 1.2, 2.0, z_end + 1.5))
+	_box(par, Vector3(0.6, 4.0, 0.6), Color(0.9, 0.8, 0.1), Vector3(o.x + 1.2, 2.0, z_end + 1.5))
+	_box(par, Vector3(3.0, 0.4, 0.8), Color(0.2, 0.2, 0.22), Vector3(o.x, 0.4, z_end + 1.5))
+	for sx in [-1.2, 1.2]: _cyl(par, 0.4, 0.5, Color(0.05, 0.05, 0.06), Vector3(o.x + sx, 0.4, z_end + 1.5), Vector3(0, 0, 90))
+
 # ---------- наземные машины ----------
 func _wheels(par: Node3D, xs: Array, zs: Array, r: float, gs: float) -> void:
 	for x in xs:
@@ -713,11 +731,10 @@ func _airport_details(par: Node3D, len: float) -> void:
 	var gl := _box(n, Vector3(tlen - 4, 7, 0.4), Color(0.2, 0.3, 0.42), Vector3(tx0 + tlen * 0.5, 6.2, 281.6))
 	var gm := _m(Color(0.25, 0.4, 0.55)); gm.emission_enabled = true; gm.emission = Color(0.5, 0.7, 0.9); gm.emission_energy_multiplier = 0.35; gl.material_override = gm
 	var acs: PackedScene = load("res://assets/planes/A320_nologo.glb")
-	var nac := int(clampf(tlen / 62.0, 2.0, 5.0))
+	var nac := int(clampf(tlen / 62.0, 2.0, 8.0))
 	for i in range(nac):
 		var gx := tx0 + 40.0 + i * 62.0
-		_box(n, Vector3(3.2, 3.2, 26.0), Color(0.7, 0.72, 0.76), Vector3(gx + 6.0, 5.0, 266.0))   # телетрап
-		_box(n, Vector3(1.2, 5.0, 1.2), Color(0.5, 0.5, 0.55), Vector3(gx + 6.0, 2.5, 253.0))
+		_jetway(n, Vector3(gx + 6.0, 0.0, 281.0), 252.0)
 		var ac: Node3D = acs.instantiate(); n.add_child(ac)
 		var kk := 36.0 / float(MODEL_LEN["A320"])
 		ac.scale = Vector3.ONE * kk; ac.rotation_degrees = Vector3(0, -90.0, 0); ac.position = Vector3(gx, 3.0, 232.0)
