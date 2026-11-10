@@ -140,8 +140,8 @@ func boarding(left: float):
 	var on := left > 0.0
 	var l = get_node_or_null("board_l")
 	if l == null:
-		l = _lbl(34); l.name = "board_l"; l.position = Vector2(200, 90); add_child(l)
-		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 150); add_child(sk)
+		l = _lbl(34); l.name = "board_l"; l.position = Vector2(200, 130); add_child(l)
+		var sk := _button("ПРОПУСТИТЬ", "skipboard", 220); sk.name = "board_skip"; sk.position = Vector2(530, 200); add_child(sk)
 	l.visible = on; get_node("board_skip").visible = on
 	for n in [instr, pads, rows, get_node("link"), get_node("cabin"), info, hint, log_l]: n.visible = not on
 	if cockpit and not viewer and not on:
@@ -453,7 +453,7 @@ func update_state(s: Dictionary):
 			var bb := _button(str(b.t), "ev:" + str(b.k), 200); ev_row.add_child(bb)
 	_labels(s, c)
 	_mark("gear", c.gear); _mark("brake", c.brake); _mark("ap", c.apOn); _mark("at", c.atOn); _mark("appr", c.appr); _mark("rev", c.rev)
-	var st = get_node_or_null("start"); if st: st.visible = not viewer and not cockpit and not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
+	var st = get_node_or_null("start"); var bl = get_node_or_null("board_l"); if st: st.visible = not viewer and not (bl != null and bl.visible) and not cockpit and not s.air and float(s.thr) < 0.01 and s.eng[0] == 0 and s.eng[1] == 0
 	if c.atOn and not fingers.values().has("t0") and not fingers.values().has("t1"): thr = [float(c.thr), float(c.thr)]; pads.queue_redraw()
 
 func _labels(s: Dictionary, c: Dictionary):
