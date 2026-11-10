@@ -365,8 +365,7 @@ func _build_787() -> void:
 		for i in range(me.get_surface_count()):
 			var mt := me.surface_get_material(i)
 			if mt != null and str(mt.resource_name) == "787_Glass":
-				var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.12); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
-				(mi as MeshInstance3D).set_surface_override_material(i, gm)
+				(mi as MeshInstance3D).set_surface_override_material(i, null); (mi as MeshInstance3D).visible = false
 			elif mt is StandardMaterial3D:
 				var nm := (mt as StandardMaterial3D).duplicate() as StandardMaterial3D
 				var rn := str(mt.resource_name)
@@ -488,10 +487,8 @@ func _build_glb() -> void:
 	_fire_pair(root, Vector3(0.16, 0.53, -0.13), 0.0, 0.9)
 	_lab_on = false
 	_tone_down(m)
-	# стекло: полупрозрачная оболочка в проёмах лобовых и боковых окон
-	var gl := MeshInstance3D.new(); var gs := SphereMesh.new(); gs.radius = 1.0; gs.height = 2.0; gs.radial_segments = 24; gs.rings = 12; gl.mesh = gs
-	var gm := StandardMaterial3D.new(); gm.albedo_color = Color(0.5, 0.72, 0.85, 0.11); gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; gm.cull_mode = BaseMaterial3D.CULL_DISABLED; gm.render_priority = 10
-	gl.material_override = gm; gl.position = Vector3(1.17, 0.085, 0.0); gl.scale = Vector3(0.21, 0.15, 0.215); m.add_child(gl)
+	for mi in _meshes(m):
+		if String((mi as Node).name).begins_with("Cylinder_026") or String((mi as Node).name) == "Cylinder_fuselarge_0" or String((mi as Node).name).begins_with("Cylinder_002_white"): (mi as MeshInstance3D).visible = false
 	# живые экраны поверх макетных
 	var fx := 1.1294 - 0.0004
 	for it in [[-0.0911, 0.0543, "pfd", Vector2i(256, 256)], [-0.0586, 0.0543, "nd", Vector2i(256, 256)], [-0.0011, 0.0573, "eng", Vector2i(256, 176)], [-0.0011, 0.0287, "sys", Vector2i(280, 340)], [0.0564, 0.0543, "nd", Vector2i(256, 256)], [0.0889, 0.0543, "pfd", Vector2i(256, 256)]]:
