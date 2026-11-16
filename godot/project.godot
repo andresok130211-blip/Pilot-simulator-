@@ -24,3 +24,8 @@ pointing/emulate_touch_from_mouse=true
 [autoload]
 
 Sim="*res://sim.gd"
+
+[debug]
+
+file_logging/enable_file_logging=true
+file_logging/enable_file_logging.pc=true

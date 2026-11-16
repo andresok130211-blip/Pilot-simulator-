@@ -15,6 +15,7 @@ var root: Control
 var body: VBoxContainer
 var sel_to := ""
 var scr := "hub"
+var rep_lbl: Label
 var pre = {}
 var pf_i = {}
 var sc: ScrollContainer
@@ -268,6 +269,11 @@ func _settings():
 	b.add_child(_btn("Поставить точку и скачать здания вокруг (нужен интернет)", func():
 		Sim.g("game_opt", "\"poi\",%s" % JSON.stringify(poi_ed.text.strip_edges())); Sim.persist(); poi_request.emit(), 19))
 	b.add_child(_lbl("Модели самолётов: amvlab/aircraft-models (CC BY 4.0). Снимки Земли: Sentinel-2 cloudless 2020 by EOX (CC BY-NC 4.0), содержит изменённые данные Copernicus Sentinel.", 15, Color(0.5, 0.6, 0.75)))
+	rep_lbl = _lbl("", 16, Color(0.6, 1, 0.75))
+	b.add_child(_btn("Скопировать отчёт о работе игры (FPS, ошибки) — вставьте в чат разработчику", func():
+		var r = get_parent().get_node_or_null("Report")
+		if r: r.copy(); rep_lbl.text = "Скопировано в буфер обмена. Откройте чат и вставьте.", 19))
+	b.add_child(rep_lbl)
 	b.add_child(_lbl("Версия: Godot-предпросмотр. Сохранение хранится на устройстве.", 16, Color(0.5, 0.6, 0.75)))
 
 func _toggle(b: VBoxContainer, text: String, key: String, val: bool):
