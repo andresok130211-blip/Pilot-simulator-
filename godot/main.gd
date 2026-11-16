@@ -21,6 +21,7 @@ func _ready():
 	hud.cabin_pressed.connect(_cabin)
 	snd = load("res://sound.gd").new(); add_child(snd)
 	world.ckp.setup(world, hud, snd)
+	var rep := Node.new(); rep.set_script(load("res://report.gd")); rep.name = "Report"; add_child(rep)
 	menu = load("res://menu.gd").new(); menu.name = "Menu"; add_child(menu)
 	menu.start_flight.connect(func(to, drill): _start(to, drill))
 	menu.walk_request.connect(_walk)
@@ -83,6 +84,7 @@ func _walk():
 	menu.close()
 	world.visible = true
 	var pid: String = Sim.g("game_hub").plane
+	var rp = get_node_or_null("Report"); if rp: rp.plane = pid; rp.where = "полёт"; rp.note("старт полёта " + pid)
 	for ua in OS.get_cmdline_user_args(): if ua.begins_with("--plane="): pid = ua.substr(8)
 	var col := Color.WHITE
 	for p in Sim.data.planes: if p.id == pid: col = Color(str(p.color))
@@ -199,6 +201,7 @@ func _to_menu():
 func _end_flight():
 	if cabin != null: cabin._close()
 	playing = false; hud.visible = false
+	var rp = get_node_or_null("Report"); if rp: rp.where = "меню"; rp.note("конец полёта")
 	var r := Sim.finish()
 	last_r = r; menu.profile = prof.duplicate(); menu.has_replay = rec.size() > 20
 	world.visible = false
@@ -223,6 +226,8 @@ var taps := []   # отладка: --tap=x,y,t (касание), --drag=x,y,x2,y
 
 func _process(delta: float):
 	t_all += delta
+	if t_all > 6.0 and "--report" in OS.get_cmdline_user_args():
+		print(get_node("Report").copy()); get_tree().quit()
 	if shot != "" and t_all > shot_t and (playing or screen_arg != ""):
 		get_viewport().get_texture().get_image().save_png(shot)
 		get_tree().quit()
