@@ -346,15 +346,15 @@ func _build_boarding(L: float):
 	var gs := gnd            # уровень площадки относительно центра самолёта
 	var zd := -L * 0.30       # передняя левая дверь
 	var fl := -0.05           # пол телетрапа
-	var padm: MeshInstance3D = _box(board, Vector3(80, 0.12, L * 2.4), Color(1, 1, 1), Vector3(-6, gs - 0.06, 0))
+	var padm: MeshInstance3D = _box(board, Vector3(150, 0.12, L * 2.6), Color(1, 1, 1), Vector3(29, gs - 0.06, 0))
 	var sm := StandardMaterial3D.new(); sm.albedo_texture = mip_tex("res://assets/tex/det_r.png"); sm.albedo_color = Color(0.9, 0.91, 0.93); sm.uv1_triplanar = true; sm.uv1_scale = Vector3(0.18, 0.18, 0.18); sm.roughness = 0.95
 	padm.material_override = sm
 	_box(board, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.01, -L * 0.5 - 22))
-	build_stands(board, 40.0, 0.0)
+	build_stands(board, 90.0, 0.0)
 	# терминал
-	_box(board, Vector3(12, 12, L * 1.1), Color(0.62, 0.7, 0.8), Vector3(-27, gs + 6, 0))
-	_box(board, Vector3(14, 10, 150), Color(0.6, 0.68, 0.78), Vector3(-33, gs + 5, 75 + L * 0.55))
-	_box(board, Vector3(0.2, 3, L * 1.0), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, 0))
+	_box(board, Vector3(9, 10, 16), Color(0.62, 0.7, 0.8), Vector3(-25.5, gs + 5, zd))      # небольшой павильон у телетрапа
+	_box(board, Vector3(0.2, 3, 12), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, zd))
+	_box(board, Vector3(16, 12, 220), Color(0.6, 0.68, 0.78), Vector3(-110, gs + 6, 20))     # дальний терминал-фон
 	# телетрап: стеклянный тоннель, выдвигается к двери
 	var br := Node3D.new(); br.name = "bridge"; board.add_child(br)
 	bd["bridge"] = br
@@ -703,13 +703,14 @@ func set_airports(aps: Array, route_brg: float):
 
 func _airport_details(par: Node3D, len: float) -> void:
 	var n := Node3D.new(); n.add_to_group("det"); par.add_child(n)
+	var dz := 100.0 if len >= 3600.0 else 0.0   # большой аэропорт: терминал за дальним краем перрона (гейт на z=305)
 	var rnd := RandomNumberGenerator.new(); rnd.seed = int(len * 7.0)
 	for k in range(2):   # ангары
 		var hx := len * (0.22 + 0.07 * k)
-		_box(n, Vector3(60, 14, 48), Color(0.75, 0.77, 0.8), Vector3(hx, 7, 330))
-		var rf := _cyl(n, 24.0, 60.0, Color(0.55, 0.6, 0.68), Vector3(hx, 14, 330), Vector3(0, 0, 90))
+		_box(n, Vector3(60, 14, 48), Color(0.75, 0.77, 0.8), Vector3(hx, 7, 330 + dz))
+		var rf := _cyl(n, 24.0, 60.0, Color(0.55, 0.6, 0.68), Vector3(hx, 14, 330 + dz), Vector3(0, 0, 90))
 		(rf.mesh as CylinderMesh).height = 60.0; rf.scale = Vector3(0.28, 1, 1); rf.rotation_degrees = Vector3(90, 0, 90)
-		_box(n, Vector3(30, 11, 0.5), Color(0.25, 0.3, 0.38), Vector3(hx, 5.5, 306))
+		_box(n, Vector3(30, 11, 0.5), Color(0.25, 0.3, 0.38), Vector3(hx, 5.5, 306 + dz))
 	var hm := _m(Color(1, 0.9, 0.6)); hm.emission_enabled = true; hm.emission = Color(1, 0.85, 0.5); hm.emission_energy_multiplier = 1.2
 	var x := len * 0.2
 	while x < len * 0.72:   # фонари перрона
@@ -726,21 +727,22 @@ func _airport_details(par: Node3D, len: float) -> void:
 			for j in range(3): _box(n, Vector3(2.6, 1.0, 1.8), Color(0.35, 0.37, 0.4), Vector3(vx - 4.5 - j * 3.0, 0.9, vz))   # багажные тележки
 	# терминал со стеклом, телетрапы, припаркованные самолёты, диспетчерская башня, ветроуказатель
 	var tx0 := len * 0.30; var tlen := len * 0.30
-	_box(n, Vector3(tlen, 12, 36), Color(0.82, 0.84, 0.88), Vector3(tx0 + tlen * 0.5, 6, 300))
-	_box(n, Vector3(tlen + 4, 1.2, 40), Color(0.35, 0.38, 0.44), Vector3(tx0 + tlen * 0.5, 12.6, 300))
-	var gl := _box(n, Vector3(tlen - 4, 7, 0.4), Color(0.2, 0.3, 0.42), Vector3(tx0 + tlen * 0.5, 6.2, 281.6))
+	_box(n, Vector3(tlen, 12, 36), Color(0.82, 0.84, 0.88), Vector3(tx0 + tlen * 0.5, 6, 300 + dz))
+	_box(n, Vector3(tlen + 4, 1.2, 40), Color(0.35, 0.38, 0.44), Vector3(tx0 + tlen * 0.5, 12.6, 300 + dz))
+	var gl := _box(n, Vector3(tlen - 4, 7, 0.4), Color(0.2, 0.3, 0.42), Vector3(tx0 + tlen * 0.5, 6.2, 281.6 + dz))
 	var gm := _m(Color(0.25, 0.4, 0.55)); gm.emission_enabled = true; gm.emission = Color(0.5, 0.7, 0.9); gm.emission_energy_multiplier = 0.35; gl.material_override = gm
 	var acs: PackedScene = load("res://assets/planes/A320_nologo.glb")
 	var nac := int(clampf(tlen / 62.0, 2.0, 8.0))
 	for i in range(nac):
 		var gx := tx0 + 40.0 + i * 62.0
-		_jetway(n, Vector3(gx + 6.0, 0.0, 281.0), 252.0)
+		if absf(gx - len * 0.45) < 50.0: continue
+		_jetway(n, Vector3(gx + 6.0, 0.0, 281.0 + dz), 252.0 + dz)
 		var ac: Node3D = acs.instantiate(); n.add_child(ac)
 		var kk := 36.0 / float(MODEL_LEN["A320"])
-		ac.scale = Vector3.ONE * kk; ac.rotation_degrees = Vector3(0, -90.0, 0); ac.position = Vector3(gx, 3.0, 232.0)
-	_cyl(n, 4.0, 60.0, Color(0.8, 0.82, 0.85), Vector3(tx0 + tlen + 60.0, 30, 320))   # башня
-	_cyl(n, 8.0, 7.0, Color(0.25, 0.4, 0.5), Vector3(tx0 + tlen + 60.0, 63.5, 320))
-	_cyl(n, 9.0, 1.0, Color(0.3, 0.3, 0.34), Vector3(tx0 + tlen + 60.0, 67.5, 320))
+		ac.scale = Vector3.ONE * kk; ac.rotation_degrees = Vector3(0, -90.0, 0); ac.position = Vector3(gx, 3.0, 232.0 + dz)
+	_cyl(n, 4.0, 60.0, Color(0.8, 0.82, 0.85), Vector3(tx0 + tlen + 60.0, 30, 320 + dz))   # башня
+	_cyl(n, 8.0, 7.0, Color(0.25, 0.4, 0.5), Vector3(tx0 + tlen + 60.0, 63.5, 320 + dz))
+	_cyl(n, 9.0, 1.0, Color(0.3, 0.3, 0.34), Vector3(tx0 + tlen + 60.0, 67.5, 320 + dz))
 	_cyl(n, 0.12, 9.0, Color(0.85, 0.85, 0.88), Vector3(len * 0.12, 4.5, -70))   # ветроуказатель
 	var ws := CylinderMesh.new(); ws.top_radius = 0.2; ws.bottom_radius = 0.6; ws.height = 3.5
 	var wi := MeshInstance3D.new(); wi.mesh = ws; wi.material_override = _m(Color(1.0, 0.45, 0.1)); wi.position = Vector3(len * 0.12 + 1.8, 8.6, -70); wi.rotation_degrees = Vector3(0, 0, 90); n.add_child(wi)
