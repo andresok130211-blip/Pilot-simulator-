@@ -346,15 +346,14 @@ func _build_boarding(L: float):
 	var gs := gnd            # уровень площадки относительно центра самолёта
 	var zd := -L * 0.30       # передняя левая дверь
 	var fl := -0.05           # пол телетрапа
-	var padm: MeshInstance3D = _box(board, Vector3(150, 0.12, L * 2.6), Color(1, 1, 1), Vector3(29, gs - 0.06, 0))
+	var padm: MeshInstance3D = _box(board, Vector3(230, 0.12, L * 2.6), Color(1, 1, 1), Vector3(69, gs - 0.06, 0))
 	var sm := StandardMaterial3D.new(); sm.albedo_texture = mip_tex("res://assets/tex/det_r.png"); sm.albedo_color = Color(0.9, 0.91, 0.93); sm.uv1_triplanar = true; sm.uv1_scale = Vector3(0.18, 0.18, 0.18); sm.roughness = 0.95
 	padm.material_override = sm
 	_box(board, Vector3(0.3, 0.02, 40), Color(0.95, 0.8, 0.1), Vector3(0, gs + 0.01, -L * 0.5 - 22))
-	build_stands(board, 90.0, 0.0)
+	build_stands(board, 170.0, 0.0)
 	# терминал
-	_box(board, Vector3(9, 10, 16), Color(0.62, 0.7, 0.8), Vector3(-25.5, gs + 5, zd))      # небольшой павильон у телетрапа
-	_box(board, Vector3(0.2, 3, 12), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, zd))
-	_box(board, Vector3(16, 12, 220), Color(0.6, 0.68, 0.78), Vector3(-110, gs + 6, 20))     # дальний терминал-фон
+	_box(board, Vector3(2.4, 4.6, 5.0), Color(0.62, 0.7, 0.8), Vector3(-22.2, gs + 4.1, zd))      # небольшой павильон у телетрапа
+	_box(board, Vector3(0.2, 3, 4), Color(0.15, 0.25, 0.35), Vector3(-20.95, gs + 3.5, zd))
 	# телетрап: стеклянный тоннель, выдвигается к двери
 	var br := Node3D.new(); br.name = "bridge"; board.add_child(br)
 	bd["bridge"] = br
@@ -685,17 +684,7 @@ func set_airports(aps: Array, route_brg: float):
 	for a in aps:
 		var n := Node3D.new(); add_child(n)
 		var mi := MeshInstance3D.new(); mi.mesh = _airport_mesh(float(a.len)); n.add_child(mi)
-		var tb := BoxMesh.new(); tb.size = Vector3(float(a.len) * 0.16, 16, 36)
-		var tm := MeshInstance3D.new(); tm.mesh = tb
-		var sm := StandardMaterial3D.new(); sm.albedo_color = Color(0.72, 0.76, 0.84); tm.material_override = sm
-		tm.position = Vector3(float(a.len) * 0.45, 8, 255); n.add_child(tm)
-		n.add_child(_light_node(float(a.len)))
-		# башня и ангар
-		var tw := BoxMesh.new(); tw.size = Vector3(7, 36, 7)
-		var twm := MeshInstance3D.new(); twm.mesh = tw; twm.material_override = sm
-		twm.position = Vector3(float(a.len) * 0.55, 18, 262); n.add_child(twm)
-		var cab := BoxMesh.new(); cab.size = Vector3(12, 6, 12)
-		var cm := _mk(cab, Color(0.25, 0.4, 0.5), Vector3(float(a.len) * 0.55, 39, 262)); n.add_child(cm)
+		n.add_child(_light_node(float(a.len)))   # терминал, башня и ангары строит _airport_details
 		_airport_details(n, float(a.len))
 		var hd: float = float(a.hd) if a.has("hd") and a.hd != null else route_brg
 		airports.append({"node": n, "lat": a.lat, "lon": a.lon, "elev": a.elev, "len": a.len, "id": a.id, "hd": hd})
@@ -832,6 +821,9 @@ func _bo() -> float:
 	return 40.0 + sin(Time.get_ticks_msec() * 0.0004) * 22.0
 
 func _camera(s: Dictionary, hdg: float, alt: float):
+	if OS.get_cmdline_user_args().has("--top"):
+		var pt: Vector3 = plane.global_position
+		cam.position = pt + Vector3(0, 420, 0.1); cam.look_at(pt, Vector3.UP); cam.far = 6000; return
 	if cam_mode != 1: cam.fov = 62.0
 	var back := Vector3(0, 0, 1).rotated(Vector3.UP, -deg_to_rad(hdg))
 	var pp := plane.position
