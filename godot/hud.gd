@@ -175,26 +175,29 @@ func _build_appanel() -> void:
 	appanel = PanelContainer.new(); appanel.visible = false
 	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.03, 0.06, 0.1, 0.8); sb.set_corner_radius_all(10); sb.content_margin_left = 8; sb.content_margin_right = 8; sb.content_margin_top = 4; sb.content_margin_bottom = 5
 	appanel.add_theme_stylebox_override("panel", sb); add_child(appanel)
-	var hb := HBoxContainer.new(); hb.add_theme_constant_override("separation", 12); appanel.add_child(hb)
+	var hb := VBoxContainer.new(); hb.add_theme_constant_override("separation", 6); appanel.add_child(hb)
 	for g in [["КУРС", "hdg", "hdgm", "РЕЖИМ"], ["СКОРОСТЬ", "spd", "spda", "АВТО"], ["ВЫСОТА", "alt", "", ""]]:
 		var col := VBoxContainer.new(); col.add_theme_constant_override("separation", 2); hb.add_child(col)
 		var t := _lbl(15); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; col.add_child(t); ap_lbl[str(g[1])] = t
 		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 3); col.add_child(row)
 		var kd: String = "altd" if g[1] == "alt" else str(g[1]) + "-"; var ku: String = "altu" if g[1] == "alt" else str(g[1]) + "+"
+		var row2: HBoxContainer = row
 		for it in [["−", kd], ["+", ku], [str(g[3]), str(g[2])]]:
 			if str(it[1]) == "" or str(it[1]) == "-" : continue
-			var b := _button(str(it[0]), str(it[1]), 44 if str(it[0]).length() < 2 else 66); b.custom_minimum_size = Vector2(44 if str(it[0]).length() < 2 else 66, 36); b.add_theme_font_size_override("font_size", 14); row.add_child(b); btn["ap_" + str(it[1])] = b
+			var wide: bool = str(it[0]).length() > 1
+			if wide: row2 = HBoxContainer.new(); col.add_child(row2)
+			var b := _button(str(it[0]), str(it[1]), 44 if not wide else 91); b.custom_minimum_size = Vector2(44 if not wide else 91, 36); b.add_theme_font_size_override("font_size", 14); row2.add_child(b); btn["ap_" + str(it[1])] = b
 
 func _ap_update(s: Dictionary, c: Dictionary) -> void:
 	if appanel == null: return
 	appanel.visible = not viewer and not cockpit and not paused and float(get_parent().board_left) <= 0.0
 	if not appanel.visible: return
-	appanel.position = Vector2(300, 408) if cockpit else Vector2(440, 112)
+	appanel.position = Vector2(get_viewport().get_visible_rect().size.x - appanel.size.x - 8.0, 56.0)
 	var hd := int(float(c.hdgSel)) if c.get("hdgSel") != null else int(round(float(s.hdg)))
 	var mode := "HDG" if c.get("hdgM", false) else ("NAV" if c.get("nav", true) else "—")
-	ap_lbl["hdg"].text = "КУРС %03d°  [%s]" % [hd, mode]
-	ap_lbl["spd"].text = ("СКОР %d км/ч  [выбр.]" % int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "СКОРОСТЬ [авто]"
-	ap_lbl["alt"].text = "ВЫС %d м%s" % [int(c.apAlt), "" if c.apOn else "  (АП выкл.)"]
+	ap_lbl["hdg"].text = "КУРС %03d° %s" % [hd, mode]
+	ap_lbl["spd"].text = ("СКОР %d км/ч" % int(float(c.spdSel) * 3.6)) if c.get("spdSel") != null else "СКОР. авто"
+	ap_lbl["alt"].text = "ВЫС %d м%s" % [int(c.apAlt), "" if c.apOn else " (выкл.)"]
 	btn["ap_hdgm"].modulate = Color(0.55, 1, 0.65) if c.get("hdgM", false) else Color(1, 1, 1)
 	btn["ap_spda"].modulate = Color(1, 0.85, 0.45) if c.get("spdSel") != null else Color(0.55, 1, 0.65)
 
