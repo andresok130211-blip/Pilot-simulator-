@@ -265,7 +265,7 @@ func _ready():
 		btn["k_" + d[1]] = cb2; ctlbar.add_child(cb2)
 	_build_appanel()
 	ev_row = HBoxContainer.new(); ev_row.set_anchors_preset(Control.PRESET_TOP_RIGHT); ev_row.position = Vector2(-640, 210); add_child(ev_row)
-	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(400, 200); start.name = "start"; add_child(start)
+	var start := _button("ЗАПУСК ДВИГАТЕЛЕЙ", "start", 240); start.position = Vector2(450, 215); start.name = "start"; add_child(start)
 	# запасные
 	altp = PanelContainer.new(); altp.visible = false; altp.position = Vector2(300, 90); add_child(altp)
 	altp_v = VBoxContainer.new(); altp.add_child(altp_v)
